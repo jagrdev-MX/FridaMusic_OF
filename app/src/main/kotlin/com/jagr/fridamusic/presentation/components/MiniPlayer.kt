@@ -28,7 +28,6 @@ import coil3.compose.AsyncImage
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.utils.resize
 
-
 @Composable
 fun MiniPlayer(
     playerConnection: PlayerConnection,
@@ -42,10 +41,11 @@ fun MiniPlayer(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .height(64.dp)
-            .shadow(16.dp, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f))
+            .shadow(elevation = 8.dp, shape = CircleShape)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

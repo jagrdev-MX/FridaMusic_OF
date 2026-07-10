@@ -39,30 +39,32 @@ fun MainScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            Column {
-                if (playerConnection != null) {
-                    MiniPlayer(
-                        playerConnection = playerConnection,
-                        onClick = { /* pantalla Now Playing: siguiente paso */ },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .padding(bottom = 8.dp),
+            if (currentRoute != "now_playing") {
+                Column {
+                    if (playerConnection != null) {
+                        MiniPlayer(
+                            playerConnection = playerConnection,
+                            onClick = { navController.navigate("now_playing") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 8.dp),
+                        )
+                    }
+                    ModernBottomNav(
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            if (route != currentRoute) {
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        },
+                        onFabClick = { navController.navigate("settings") },
                     )
                 }
-                ModernBottomNav(
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        if (route != currentRoute) {
-                            navController.navigate(route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    },
-                    onFabClick = { navController.navigate("settings") },
-                )
             }
         },
     ) { paddingValues ->
@@ -94,6 +96,14 @@ fun MainScreen(
                 }
                 composable("library") { PlaceholderScreen("Library") }
                 composable("settings") { PlaceholderScreen("Settings") }
+                composable("now_playing") {
+                    if (playerConnection != null) {
+                        NowPlayingScreen(
+                            playerConnection = playerConnection,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                }
             }
         }
     }

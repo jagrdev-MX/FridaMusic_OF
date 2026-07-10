@@ -74,25 +74,6 @@ fun ModernBottomNav(
                 onClick = { onNavigate("library") }
             )
         }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .shadow(16.dp, CircleShape)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f))
-                .clickable(onClick = onFabClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Settings,
-                contentDescription = "Más opciones",
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(28.dp)
-            )
-        }
     }
 }
 
