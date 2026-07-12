@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,15 +20,20 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.constants.DisableScreenshotKey
+import com.jagr.fridamusic.constants.KeepScreenOn
 import com.jagr.fridamusic.playback.MusicService
 import com.jagr.fridamusic.playback.MusicService.MusicBinder
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.screens.MainScreen
 import com.jagr.fridamusic.presentation.theme.FridaMusicTheme
+import com.jagr.fridamusic.utils.dataStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -73,6 +79,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        observeWindowPreferences()
         setContent {
             FridaMusicTheme {
                 CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
@@ -80,6 +87,31 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun observeWindowPreferences() {
+        lifecycleScope.launch {
+            dataStore.data
+                .map { preferences ->
+                    (preferences[KeepScreenOn] ?: false) to
+                        (preferences[DisableScreenshotKey] ?: false)
+                }
+                .distinctUntilChanged()
+                .collect { (keepScreenOn, disableScreenshots) ->
+                    window.setFlagsOrClear(
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                        keepScreenOn,
+                    )
+                    window.setFlagsOrClear(
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                        disableScreenshots,
+                    )
+                }
+        }
+    }
+
+    private fun android.view.Window.setFlagsOrClear(flag: Int, enabled: Boolean) {
+        if (enabled) setFlags(flag, flag) else clearFlags(flag)
     }
 
     override fun onStart() {

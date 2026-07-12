@@ -21,6 +21,7 @@ object LyricsUtils {
     
     private val AGENT_REGEX = "\\{agent:([^}]+)\\}".toRegex()
     private val BACKGROUND_REGEX = "^\\{bg\\}".toRegex()
+    private val OFFSET_REGEX = "^\\[offset:([+-]?\\d+)]\\s*$".toRegex(RegexOption.IGNORE_CASE)
 
     private val KANA_ROMAJI_MAP: Map<String, String> = mapOf(
         
@@ -355,8 +356,11 @@ object LyricsUtils {
         
         val decodedLyrics = decodeHtmlEntities(unescapedLyrics)
         
+        val sourceOffsetMs = decodedLyrics.lines()
+            .firstNotNullOfOrNull { OFFSET_REGEX.matchEntire(it.trim())?.groupValues?.get(1)?.toLongOrNull() }
+            ?: 0L
         val lines = decodedLyrics.lines()
-            .filter { it.isNotBlank() && !it.trim().startsWith("[offset:") }
+            .filter { it.isNotBlank() && !OFFSET_REGEX.matches(it.trim()) }
         
         
         val isRichSync = lines.any { line ->
@@ -364,11 +368,12 @@ object LyricsUtils {
             RICH_SYNC_WORD_REGEX.containsMatchIn(line)
         }
         
-        return if (isRichSync) {
+        val entries = if (isRichSync) {
             parseRichSyncLyrics(lines)
         } else {
             parseStandardLyrics(lines)
         }
+        return if (sourceOffsetMs == 0L) entries else entries.map { it.copy(time = (it.time + sourceOffsetMs).coerceAtLeast(0L)) }
     }
     
     
@@ -561,12 +566,7 @@ object LyricsUtils {
         lines: List<LyricsEntry>,
         position: Long,
     ): Int {
-        for (index in lines.indices) {
-            if (lines[index].time >= position + 300L) {
-                return index - 1
-            }
-        }
-        return lines.lastIndex
+        return lines.indexOfLast { it.time <= position }
     }
 
     

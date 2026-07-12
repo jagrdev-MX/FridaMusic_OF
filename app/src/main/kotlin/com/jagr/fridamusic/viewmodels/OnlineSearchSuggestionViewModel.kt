@@ -13,6 +13,7 @@ import com.music.innertube.models.filterVideoSongs
 import com.music.innertube.utils.YouTubeUrlParser
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
+import com.jagr.fridamusic.constants.PauseSearchHistoryKey
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.SearchHistory
 import com.jagr.fridamusic.utils.dataStore
@@ -20,9 +21,11 @@ import com.jagr.fridamusic.utils.get
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -33,7 +36,7 @@ class OnlineSearchSuggestionViewModel
 @Inject
 constructor(
     @ApplicationContext val context: Context,
-    database: MusicDatabase,
+    private val database: MusicDatabase,
 ) : ViewModel() {
     val query = MutableStateFlow("")
     private val _viewState = MutableStateFlow(SearchSuggestionViewState())
@@ -84,6 +87,17 @@ constructor(
                 }.collect {
                     _viewState.value = it
                 }
+        }
+    }
+
+    fun saveSearch(query: String) {
+        if (query.isBlank()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            if (context.dataStore.get(PauseSearchHistoryKey, false)) return@launch
+            if (database.searchHistory(query).first().none { it.query == query }) {
+                database.insert(SearchHistory(query = query))
+            }
         }
     }
 

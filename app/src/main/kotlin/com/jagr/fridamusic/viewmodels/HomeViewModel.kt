@@ -22,6 +22,7 @@ import com.music.innertube.pages.ExplorePage
 import com.music.innertube.pages.HomePage
 import com.music.innertube.utils.completed
 import com.jagr.fridamusic.constants.HideExplicitKey
+import com.jagr.fridamusic.constants.EchoBrainEnabledKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.HideYoutubeShortsKey
 import com.jagr.fridamusic.constants.InnerTubeCookieKey
@@ -407,6 +408,10 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun getEchoBrainPlaylists() {
+        if (!context.dataStore.get(EchoBrainEnabledKey, false)) {
+            echoBrainPlaylists.value = emptyList()
+            return
+        }
         val brainMix = echoBrainEngine.generateBrainMix()
         
         if (brainMix.isNotEmpty()) {

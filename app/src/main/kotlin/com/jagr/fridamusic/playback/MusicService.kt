@@ -115,6 +115,7 @@ import com.jagr.fridamusic.constants.ScrobbleDelayPercentKey
 import com.jagr.fridamusic.constants.ScrobbleDelaySecondsKey
 import com.jagr.fridamusic.constants.ScrobbleMinSongDurationKey
 import com.jagr.fridamusic.constants.ShowLyricsKey
+import com.jagr.fridamusic.constants.StopMusicOnTaskClearKey
 import com.jagr.fridamusic.constants.ShuffleModeKey
 import com.jagr.fridamusic.constants.ShufflePlaylistFirstKey
 import com.jagr.fridamusic.constants.PreventDuplicateTracksInQueueKey
@@ -3059,6 +3060,10 @@ class MusicService :
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
+        if (dataStore.get(StopMusicOnTaskClearKey, false)) {
+            player.stop()
+            stopSelf()
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession

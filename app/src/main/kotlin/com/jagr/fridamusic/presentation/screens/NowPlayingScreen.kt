@@ -12,10 +12,8 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.filled.Favorite
@@ -50,7 +48,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.datastore.preferences.core.edit
 import androidx.media3.common.Player
 import coil3.compose.AsyncImage
 import coil3.imageLoader
@@ -58,10 +55,10 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.jagr.fridamusic.constants.ShowLyricsKey
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
+import com.jagr.fridamusic.presentation.components.KaraokeLyrics
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.resize
 import kotlinx.coroutines.delay
@@ -78,17 +75,10 @@ fun NowPlayingScreen(
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
 
-    LaunchedEffect(Unit) {
-        context.dataStore.edit { settings ->
-            if (settings[ShowLyricsKey] != true) {
-                settings[ShowLyricsKey] = true
-            }
-        }
-    }
-
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    val karaokePositionMs by playerConnection.playbackPositionMs.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
     val playbackError by playerConnection.error.collectAsState()
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
@@ -425,6 +415,9 @@ fun NowPlayingScreen(
         ) {
             FullScreenLyricsView(
                 lyrics = currentLyrics?.lyrics ?: "",
+                positionMs = karaokePositionMs,
+                lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
+                onSeekTo = { playerConnection.player.seekTo(it) },
                 onClose = { showFullScreenLyrics = false },
                 songTitle = song.title,
                 animatedBackground = animatedBackground,
@@ -639,6 +632,9 @@ private fun QueueActionButton(
 @Composable
 private fun FullScreenLyricsView(
     lyrics: String,
+    positionMs: Long,
+    lyricsOffsetMs: Long,
+    onSeekTo: (Long) -> Unit,
     onClose: () -> Unit,
     songTitle: String,
     animatedBackground: Color,
@@ -703,15 +699,12 @@ private fun FullScreenLyricsView(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
-            Text(
-                text = lyrics.ifEmpty { "Cargando letra…" },
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.White.copy(alpha = 0.9f),
-                lineHeight = MaterialTheme.typography.titleLarge.lineHeight * 1.5f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+            KaraokeLyrics(
+                lyrics = lyrics,
+                positionMs = positionMs,
+                offsetMs = lyricsOffsetMs,
+                onSeekTo = onSeekTo,
+                modifier = Modifier.fillMaxWidth().weight(1f),
             )
         }
     }

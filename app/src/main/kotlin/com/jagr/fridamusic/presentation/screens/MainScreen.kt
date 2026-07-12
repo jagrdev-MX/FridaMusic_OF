@@ -21,6 +21,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jagr.fridamusic.db.entities.Album
+import com.jagr.fridamusic.db.entities.Artist
+import com.jagr.fridamusic.db.entities.LocalItem
+import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.MiniPlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
@@ -39,7 +43,7 @@ fun MainScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (currentRoute != "now_playing") {
+            if (currentRoute != "now_playing" && currentRoute != "settings") {
                 Column {
                     if (playerConnection != null) {
                         MiniPlayer(
@@ -94,8 +98,15 @@ fun MainScreen(
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable("library") { PlaceholderScreen("Library") }
-                composable("settings") { PlaceholderScreen("Settings") }
+                composable("library") {
+                    LibraryScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onLocalItemClick = { item -> navController.navigateToDetail(item) },
+                    )
+                }
+                composable("settings") {
+                    SettingsScreen(onBack = { navController.popBackStack() })
+                }
                 composable("now_playing") {
                     if (playerConnection != null) {
                         NowPlayingScreen(
@@ -103,6 +114,34 @@ fun MainScreen(
                             onBack = { navController.popBackStack() },
                         )
                     }
+                }
+                composable(
+                    route = "album/{albumId}",
+                    arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
+                ) {
+                    AlbumScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(
+                    route = "artist/{artistId}",
+                    arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
+                ) {
+                    ArtistScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onAlbumClick = { album -> navController.navigateToDetail(album) },
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+                composable(
+                    route = "playlist/{playlistId}",
+                    arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+                ) {
+                    PlaylistScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onBack = { navController.popBackStack() },
+                    )
                 }
             }
         }
@@ -120,5 +159,15 @@ private fun PlaceholderScreen(name: String) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+private fun NavHostController.navigateToDetail(item: LocalItem) {
+    val encodedId = Uri.encode(item.id)
+    when (item) {
+        is Album -> navigate("album/$encodedId")
+        is Artist -> navigate("artist/$encodedId")
+        is Playlist -> navigate("playlist/$encodedId")
+        else -> { /* tipo no soportado todavía */ }
     }
 }

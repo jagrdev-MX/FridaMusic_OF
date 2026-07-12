@@ -53,6 +53,7 @@ fun SearchScreen(
 
     fun submit(query: String) {
         if (query.isBlank()) return
+        viewModel.saveSearch(query)
         onSearchSubmit(query)
     }
 

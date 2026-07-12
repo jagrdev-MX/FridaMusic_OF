@@ -77,6 +77,8 @@ constructor(
         val providers = resolveLyricsProviders()
         val scope = CoroutineScope(SupervisorJob())
         val deferred = scope.async {
+            var bestResult: LyricsWithProvider? = null
+            var bestScore = 0
             for (provider in providers) {
                 if (provider.isEnabled(context)) {
                     try {
@@ -87,10 +89,24 @@ constructor(
                             mediaMetadata.duration,
                             mediaMetadata.album?.title,
                         )
-                        result.onSuccess { lyrics ->
-                            return@async LyricsWithProvider(lyrics, provider.name)
-                        }.onFailure {
-                            reportException(it)
+                        val lyrics = result.getOrNull()
+                        if (lyrics != null) {
+                            val entries = LyricsUtils.parseLyrics(lyrics)
+                            val score = when {
+                                entries.any { !it.words.isNullOrEmpty() } -> 3
+                                entries.isNotEmpty() -> 2
+                                lyrics.isNotBlank() && lyrics != LYRICS_NOT_FOUND -> 1
+                                else -> 0
+                            }
+                            if (score > bestScore) {
+                                bestScore = score
+                                bestResult = LyricsWithProvider(lyrics, provider.name)
+                            }
+                            if (score == 3) {
+                                return@async bestResult!!
+                            }
+                        } else {
+                            result.exceptionOrNull()?.let(::reportException)
                         }
                     } catch (e: Exception) {
                         
@@ -98,7 +114,7 @@ constructor(
                     }
                 }
             }
-            return@async LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
+            return@async bestResult ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
         }
 
         val result = deferred.await()

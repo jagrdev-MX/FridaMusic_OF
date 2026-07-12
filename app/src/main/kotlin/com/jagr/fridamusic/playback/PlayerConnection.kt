@@ -38,6 +38,7 @@ import com.jagr.fridamusic.models.SponsorBlockSegment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerConnection(
@@ -152,6 +153,8 @@ class PlayerConnection(
     val canSkipNext = MutableStateFlow(true)
 
     val error = MutableStateFlow<PlaybackException?>(null)
+    /** Playback clock for consumers that need sub-second synchronization, such as karaoke lyrics. */
+    val playbackPositionMs = MutableStateFlow(player.currentPosition)
     val isMuted = service.isMuted
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
@@ -175,6 +178,13 @@ class PlayerConnection(
 
     init {
         try {
+            scope.launch {
+                while (isActive) {
+                    playbackPositionMs.value = player.currentPosition
+                    delay(if (player.isPlaying) 50L else 250L)
+                }
+            }
+
             
             scope.launch {
                 service.playerFlow.collect { newPlayer ->
@@ -206,6 +216,7 @@ class PlayerConnection(
         playbackState.value = newPlayer.playbackState
         playWhenReady.value = newPlayer.playWhenReady
         mediaMetadata.value = newPlayer.currentMetadata
+        playbackPositionMs.value = newPlayer.currentPosition
         queueTitle.value = service.queueTitle
         queueWindows.value = newPlayer.getQueueWindows()
         currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
@@ -436,6 +447,7 @@ class PlayerConnection(
         reason: Int,
     ) {
         mediaMetadata.value = mediaItem?.metadata
+        playbackPositionMs.value = player.currentPosition
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
