@@ -9,33 +9,44 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.view.Window // <-- Importación necesaria para el warning del qualifier
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.lifecycle.lifecycleScope
-import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.constants.DisableScreenshotKey
 import com.jagr.fridamusic.constants.KeepScreenOn
+import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.playback.MusicService
 import com.jagr.fridamusic.playback.MusicService.MusicBinder
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.screens.MainScreen
+import com.jagr.fridamusic.presentation.screens.OnboardingScreen
 import com.jagr.fridamusic.presentation.theme.FridaMusicTheme
 import com.jagr.fridamusic.utils.dataStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds // <-- Importación para el delay()
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -43,6 +54,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_RECOGNITION = "com.jagr.fridamusic.action.RECOGNITION"
         const val EXTRA_AUTO_START_RECOGNITION = "auto_start_recognition"
+        val ONBOARDING_COMPLETED_KEY = booleanPreferencesKey("onboarding_completed")
     }
 
     @Inject
@@ -59,7 +71,7 @@ class MainActivity : ComponentActivity() {
                 } catch (e: Exception) {
                     Timber.tag("MainActivity").e(e, "Falló la creación de PlayerConnection, reintentando en 500ms")
                     lifecycleScope.launch {
-                        delay(500)
+                        delay(500.milliseconds)
                         try {
                             playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
                             Timber.tag("MainActivity").d("PlayerConnection creado en el reintento")
@@ -80,10 +92,32 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         observeWindowPreferences()
+
         setContent {
+            val isFirstRunFlow = remember {
+                dataStore.data.map { preferences ->
+                    !(preferences[ONBOARDING_COMPLETED_KEY] ?: false)
+                }
+            }
+            val isFirstRun by isFirstRunFlow.collectAsState(initial = null)
+
             FridaMusicTheme {
                 CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
-                    MainScreen()
+                    when (isFirstRun) {
+                        null -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            )
+                        }
+                        true -> {
+                            OnboardingScreen(onFinish = {})
+                        }
+                        false -> {
+                            MainScreen()
+                        }
+                    }
                 }
             }
         }
@@ -94,7 +128,7 @@ class MainActivity : ComponentActivity() {
             dataStore.data
                 .map { preferences ->
                     (preferences[KeepScreenOn] ?: false) to
-                        (preferences[DisableScreenshotKey] ?: false)
+                            (preferences[DisableScreenshotKey] ?: false)
                 }
                 .distinctUntilChanged()
                 .collect { (keepScreenOn, disableScreenshots) ->
@@ -110,7 +144,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun android.view.Window.setFlagsOrClear(flag: Int, enabled: Boolean) {
+    private fun Window.setFlagsOrClear(flag: Int, enabled: Boolean) {
         if (enabled) setFlags(flag, flag) else clearFlags(flag)
     }
 

@@ -1,0 +1,667 @@
+package com.jagr.fridamusic.presentation.screens
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.HighQuality
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.jagr.fridamusic.constants.AudioNormalizationKey
+import com.jagr.fridamusic.constants.AudioOffload
+import com.jagr.fridamusic.constants.AudioQuality
+import com.jagr.fridamusic.constants.AudioQualityKey
+import com.jagr.fridamusic.constants.DownloadQuality
+import com.jagr.fridamusic.constants.DownloadQualityKey
+import com.jagr.fridamusic.constants.EchoBrainEnabledKey
+import com.jagr.fridamusic.constants.EnableDiscordRPCKey
+import com.jagr.fridamusic.constants.EnableLastFMScrobblingKey
+import com.jagr.fridamusic.constants.HideExplicitKey
+import com.jagr.fridamusic.constants.PauseListenHistoryKey
+import com.jagr.fridamusic.constants.PauseSearchHistoryKey
+import com.jagr.fridamusic.constants.SkipSilenceKey
+import com.jagr.fridamusic.constants.SponsorBlockEnabledKey
+import com.jagr.fridamusic.presentation.theme.EchoLavender
+import com.jagr.fridamusic.presentation.theme.FridaPink
+import com.jagr.fridamusic.presentation.theme.FridaPurple
+import com.jagr.fridamusic.utils.rememberEnumPreference
+import com.jagr.fridamusic.utils.rememberPreference
+import com.jagr.fridamusic.viewmodels.SetupStep
+import com.jagr.fridamusic.viewmodels.SetupViewModel
+
+@Composable
+fun OnboardingScreen(
+    onFinish: () -> Unit,
+    viewModel: SetupViewModel = hiltViewModel(),
+) {
+    val step by viewModel.step.collectAsState()
+    val isFirst = step == SetupStep.WELCOME
+    val isLast = step == SetupStep.DONE
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(280.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            FridaPurple.copy(alpha = 0.12f),
+                            Color.Transparent,
+                        )
+                    )
+                )
+        )
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!isFirst) {
+                    IconButton(onClick = viewModel::back) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Atrás",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(48.dp))
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SetupStep.entries.forEachIndexed { index, s ->
+                        val active = s == step
+                        val passed = index < SetupStep.entries.indexOf(step)
+                        Box(
+                            modifier = Modifier
+                                .size(if (active) 24.dp else 8.dp, 8.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    when {
+                                        active -> EchoLavender
+                                        passed -> EchoLavender.copy(alpha = 0.4f)
+                                        else -> MaterialTheme.colorScheme.surfaceVariant
+                                    }
+                                )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.size(48.dp))
+            }
+
+            AnimatedContent(
+                targetState = step,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 24.dp),
+                transitionSpec = {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    (slideInHorizontally(tween(300)) { if (forward) it else -it } + fadeIn(tween(200)))
+                        .togetherWith(slideOutHorizontally(tween(300)) { if (forward) -it else it } + fadeOut(tween(200)))
+                },
+                label = "setup_step",
+            ) { currentStep ->
+                when (currentStep) {
+                    SetupStep.WELCOME -> WelcomeStep()
+                    SetupStep.QUALITY -> QualityStep()
+                    SetupStep.PRIVACY -> PrivacyStep()
+                    SetupStep.SERVICES -> ServicesStep()
+                    SetupStep.DONE -> DoneStep()
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Button(
+                    onClick = {
+                        if (isLast) {
+                            viewModel.complete()
+                            onFinish()
+                        } else {
+                            viewModel.next()
+                        }
+                    },
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = EchoLavender,
+                        contentColor = Color(0xFF050510),
+                    ),
+                    modifier = Modifier.height(52.dp),
+                ) {
+                    Text(
+                        text = if (isLast) "Empezar" else "Continuar",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = if (isLast) Icons.Rounded.Check else Icons.AutoMirrored.Rounded.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WelcomeStep() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(listOf(FridaPink, FridaPurple, EchoLavender))
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.MusicNote,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(60.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(36.dp))
+        Text(
+            text = "FridaMusic",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Tu música. Sin anuncios.\nSin límites.",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp,
+        )
+        Spacer(modifier = Modifier.height(48.dp))
+
+        val context = LocalContext.current
+        val hasAudio = remember {
+            mutableStateOf(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+                else
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+            )
+        }
+        val hasNotif = remember {
+            mutableStateOf(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                else true
+            )
+        }
+        val audioLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasAudio.value = it }
+        val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasNotif.value = it }
+
+        PermissionTile(
+            icon = Icons.Rounded.LibraryMusic,
+            label = "Acceder a tu música local",
+            granted = hasAudio.value,
+            onRequest = {
+                audioLauncher.launch(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                        Manifest.permission.READ_MEDIA_AUDIO
+                    else
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                )
+            },
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        PermissionTile(
+            icon = Icons.Rounded.Notifications,
+            label = "Notificaciones del reproductor",
+            granted = hasNotif.value,
+            onRequest = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+        )
+    }
+}
+
+@Composable
+private fun QualityStep() {
+    var audioQuality by rememberEnumPreference<AudioQuality>(AudioQualityKey, AudioQuality.OPUS)
+    var downloadQuality by rememberEnumPreference<DownloadQuality>(DownloadQualityKey, DownloadQuality.YOUTUBE)
+
+    var audioNorm by rememberPreference(AudioNormalizationKey, false)
+    var skipSilence by rememberPreference(SkipSilenceKey, false)
+    var audioOffload by rememberPreference(AudioOffload, false)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        StepTitle(
+            icon = Icons.Rounded.HighQuality,
+            title = "Calidad de audio",
+            subtitle = "Podés cambiarlo en cualquier momento desde Ajustes.",
+        )
+
+        SetupSectionLabel("Calidad de streaming")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AudioQuality.values().forEach { q ->
+                QualityPill(
+                    label = q.name,
+                    selected = audioQuality == q,
+                    modifier = Modifier.weight(1f),
+                    onClick = { audioQuality = q },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SetupSectionLabel("Calidad de descarga")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            DownloadQuality.values().forEach { q ->
+                QualityPill(
+                    label = q.name,
+                    selected = downloadQuality == q,
+                    modifier = Modifier.weight(1f),
+                    onClick = { downloadQuality = q },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SetupSectionLabel("Extras")
+        SetupToggle(
+            icon = Icons.Rounded.GraphicEq,
+            title = "Normalización de volumen",
+            subtitle = "Iguala el volumen entre canciones",
+            checked = audioNorm,
+            onCheckedChange = { audioNorm = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.Tune,
+            title = "Omitir silencios",
+            subtitle = "Salta partes silenciosas automáticamente",
+            checked = skipSilence,
+            onCheckedChange = { skipSilence = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.Settings,
+            title = "Audio offload",
+            subtitle = "Ahorra batería delegando la reproducción al hardware",
+            checked = audioOffload,
+            onCheckedChange = { audioOffload = it },
+        )
+    }
+}
+
+@Composable
+private fun PrivacyStep() {
+    var pauseHistory by rememberPreference(PauseListenHistoryKey, false)
+    var pauseSearch by rememberPreference(PauseSearchHistoryKey, false)
+    var hideExplicit by rememberPreference(HideExplicitKey, false)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        StepTitle(
+            icon = Icons.Rounded.Lock,
+            title = "Privacidad y contenido",
+            subtitle = "Todo bajo tu control.",
+        )
+        SetupToggle(
+            icon = Icons.Rounded.History,
+            title = "Pausar historial de escucha",
+            subtitle = "No registra qué canciones reproducís",
+            checked = pauseHistory,
+            onCheckedChange = { pauseHistory = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.Search,
+            title = "Pausar historial de búsqueda",
+            subtitle = "No guarda tus búsquedas",
+            checked = pauseSearch,
+            onCheckedChange = { pauseSearch = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.Block,
+            title = "Ocultar contenido explícito",
+            subtitle = "Filtra canciones marcadas como explícitas",
+            checked = hideExplicit,
+            onCheckedChange = { hideExplicit = it },
+        )
+    }
+}
+
+@Composable
+private fun ServicesStep() {
+    var lastFm by rememberPreference(EnableLastFMScrobblingKey, false)
+    var discord by rememberPreference(EnableDiscordRPCKey, false)
+    var sponsorBlock by rememberPreference(SponsorBlockEnabledKey, false)
+    var echoBrain by rememberPreference(EchoBrainEnabledKey, false)
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        StepTitle(
+            icon = Icons.Rounded.Settings,
+            title = "Servicios externos",
+            subtitle = "Desactivados por defecto. Activá lo que quieras ahora o desde Ajustes.",
+        )
+        SetupToggle(
+            icon = Icons.Rounded.MusicNote,
+            title = "Last.fm Scrobbling",
+            subtitle = "Registra tus escuchas en Last.fm",
+            checked = lastFm,
+            onCheckedChange = { lastFm = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.MusicNote,
+            title = "Discord Rich Presence",
+            subtitle = "Muestra la canción actual en tu perfil de Discord",
+            checked = discord,
+            onCheckedChange = { discord = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.Block,
+            title = "SponsorBlock",
+            subtitle = "Salta patrocinadores en videos de YouTube automáticamente",
+            checked = sponsorBlock,
+            onCheckedChange = { sponsorBlock = it },
+        )
+        SetupToggle(
+            icon = Icons.Rounded.GraphicEq,
+            title = "EchoBrain (IA)",
+            subtitle = "Habilita el asistente de IA para recomendaciones personalizadas",
+            checked = echoBrain,
+            onCheckedChange = { echoBrain = it },
+        )
+    }
+}
+
+@Composable
+private fun DoneStep() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(FridaPurple, EchoLavender))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(60.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(36.dp))
+        Text(
+            text = "¡Todo listo!",
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "FridaMusic está configurado.\nPodés cambiar cualquier ajuste\nen cualquier momento.",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp,
+        )
+    }
+}
+
+@Composable
+private fun StepTitle(icon: ImageVector, title: String, subtitle: String) {
+    Spacer(modifier = Modifier.height(24.dp))
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = EchoLavender,
+        modifier = Modifier.size(40.dp),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+        text = title,
+        style = MaterialTheme.typography.headlineMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onBackground,
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Text(
+        text = subtitle,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(modifier = Modifier.height(28.dp))
+}
+
+@Composable
+private fun SetupSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = EchoLavender,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(bottom = 8.dp),
+    )
+}
+
+@Composable
+private fun QualityPill(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) EchoLavender
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) Color(0xFF050510) else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PermissionTile(
+    icon: ImageVector,
+    label: String,
+    granted: Boolean,
+    onRequest: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (granted) EchoLavender else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            if (granted) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = "Concedido",
+                    tint = EchoLavender,
+                    modifier = Modifier.size(24.dp),
+                )
+            } else {
+                FilledTonalButton(onClick = onRequest) { Text("Conceder") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupToggle(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (checked) EchoLavender.copy(alpha = 0.15f)
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (checked) EchoLavender else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color(0xFF050510),
+                checkedTrackColor = EchoLavender,
+            ),
+        )
+    }
+}
