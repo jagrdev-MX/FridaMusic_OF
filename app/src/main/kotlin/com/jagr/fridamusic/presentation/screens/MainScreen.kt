@@ -5,9 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,9 +30,12 @@ import com.jagr.fridamusic.presentation.components.MiniPlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
+import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.YTItem
 
 @Composable
-@Suppress("UnusedMaterial3ScaffoldPaddingParameter")
 fun MainScreen(
     navController: NavHostController = rememberNavController(),
 ) {
@@ -40,109 +43,123 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            if (currentRoute != "now_playing" && currentRoute != "settings") {
-                Column {
-                    if (playerConnection != null) {
-                        MiniPlayer(
-                            playerConnection = playerConnection,
-                            onClick = { navController.navigate("now_playing") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .padding(bottom = 8.dp),
-                        )
-                    }
-                    ModernBottomNav(
-                        currentRoute = currentRoute,
-                        onNavigate = { route ->
-                            if (route != currentRoute) {
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        },
-                        onFabClick = { navController.navigate("settings") },
+    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings"
+
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        // ── Contenido principal (ocupa toda la pantalla) ──────────────────
+        NavHost(
+            navController = navController,
+            startDestination = "home",
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            composable("home") {
+                HomeScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onItemClick = { item -> playerConnection?.playYTItem(item) },
+                    onSettingsClick = { navController.navigate("settings") },
+                )
+            }
+            composable("search") {
+                SearchScreen(
+                    onSearchSubmit = { query ->
+                        navController.navigate("search_result/${Uri.encode(query)}")
+                    },
+                    onItemClick = { item ->
+                        navController.handleYTItemClick(item, playerConnection?.let { pc -> { pc.playYTItem(item) } })
+                    },
+                )
+            }
+            composable(
+                route = "search_result/{query}",
+                arguments = listOf(navArgument("query") { type = NavType.StringType }),
+            ) {
+                SearchResultScreen(
+                    onItemClick = { item ->
+                        navController.handleYTItemClick(item, playerConnection?.let { pc -> { pc.playYTItem(item) } })
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("library") {
+                LibraryScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onLocalItemClick = { item -> navController.navigateToDetail(item) },
+                )
+            }
+            composable("settings") {
+                SettingsScreen(onBack = { navController.popBackStack() })
+            }
+            composable("now_playing") {
+                if (playerConnection != null) {
+                    NowPlayingScreen(
+                        playerConnection = playerConnection,
+                        onBack = { navController.popBackStack() },
                     )
                 }
             }
-        },
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            NavHost(navController = navController, startDestination = "home") {
-                composable("home") {
-                    HomeScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onItemClick = { item -> playerConnection?.playYTItem(item) },
-                        onSettingsClick = { navController.navigate("settings") },
+            composable(
+                route = "album/{albumId}",
+                arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
+            ) {
+                AlbumScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "artist/{artistId}",
+                arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
+            ) {
+                ArtistScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onAlbumClick = { album -> navController.navigateToDetail(album) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "playlist/{playlistId}",
+                arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+            ) {
+                PlaylistScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+        }
+
+        // ── MiniPlayer + BottomNav flotando encima ────────────────────────
+        if (showOverlay) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+            ) {
+                if (playerConnection != null) {
+                    MiniPlayer(
+                        playerConnection = playerConnection,
+                        onClick = { navController.navigate("now_playing") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp),
                     )
                 }
-                composable("search") {
-                    SearchScreen(
-                        onSearchSubmit = { query ->
-                            navController.navigate("search_result/${Uri.encode(query)}")
-                        },
-                        onItemClick = { item -> playerConnection?.playYTItem(item) },
-                    )
-                }
-                composable(
-                    route = "search_result/{query}",
-                    arguments = listOf(navArgument("query") { type = NavType.StringType }),
-                ) {
-                    SearchResultScreen(
-                        onItemClick = { item -> playerConnection?.playYTItem(item) },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable("library") {
-                    LibraryScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onLocalItemClick = { item -> navController.navigateToDetail(item) },
-                    )
-                }
-                composable("settings") {
-                    SettingsScreen(onBack = { navController.popBackStack() })
-                }
-                composable("now_playing") {
-                    if (playerConnection != null) {
-                        NowPlayingScreen(
-                            playerConnection = playerConnection,
-                            onBack = { navController.popBackStack() },
-                        )
-                    }
-                }
-                composable(
-                    route = "album/{albumId}",
-                    arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
-                ) {
-                    AlbumScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable(
-                    route = "artist/{artistId}",
-                    arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
-                ) {
-                    ArtistScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onAlbumClick = { album -> navController.navigateToDetail(album) },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
-                composable(
-                    route = "playlist/{playlistId}",
-                    arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
-                ) {
-                    PlaylistScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onBack = { navController.popBackStack() },
-                    )
-                }
+                ModernBottomNav(
+                    currentRoute = currentRoute,
+                    onNavigate = { route ->
+                        if (route != currentRoute) {
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    },
+                    onFabClick = { navController.navigate("settings") },
+                )
             }
         }
     }
@@ -169,5 +186,15 @@ private fun NavHostController.navigateToDetail(item: LocalItem) {
         is Artist -> navigate("artist/$encodedId")
         is Playlist -> navigate("playlist/$encodedId")
         else -> { /* tipo no soportado todavía */ }
+    }
+}
+
+private fun NavHostController.handleYTItemClick(item: YTItem, playSong: (() -> Unit)?) {
+    val encodedId = Uri.encode(item.id)
+    when (item) {
+        is ArtistItem -> navigate("artist/$encodedId")
+        is AlbumItem -> navigate("album/$encodedId")
+        is PlaylistItem -> navigate("playlist/$encodedId")
+        else -> playSong?.invoke()
     }
 }
