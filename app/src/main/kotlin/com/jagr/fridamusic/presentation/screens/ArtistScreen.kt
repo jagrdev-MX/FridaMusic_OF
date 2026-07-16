@@ -1,5 +1,8 @@
 package com.jagr.fridamusic.presentation.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,11 +13,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,8 +30,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
+import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.SongItem
+import com.music.innertube.models.YTItem
 
 @Composable
 fun ArtistScreen(
@@ -33,65 +45,233 @@ fun ArtistScreen(
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel(),
 ) {
+    val playerConnection = LocalPlayerConnection.current
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
+    val artistPage = viewModel.artistPage
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Volver", tint = MaterialTheme.colorScheme.onBackground)
-            }
+
+    val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name ?: ""
+    val artistThumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
+    val subscriberCount = artistPage?.subscriberCountText
+    val description = artistPage?.description
+
+
+    val remoteSections = artistPage?.sections ?: emptyList()
+    val remoteSongs = remoteSections
+        .flatMap { it.items }
+        .filterIsInstance<SongItem>()
+    val remoteAlbums = remoteSections
+        .flatMap { it.items }
+        .filterIsInstance<AlbumItem>()
+
+    val isLoadingRemote = artistPage == null
+
+    Box(modifier = Modifier.fillMaxSize()) {
+
+        if (artistThumbnail != null) {
+            AsyncImage(
+                model = artistThumbnail.resize(width = 400),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .blur(60.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.3f),
+                                MaterialTheme.colorScheme.background,
+                            )
+                        )
+                    )
+            )
         }
 
-        LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 160.dp),
+        ) {
+
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Volver",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                        )
+                    }
+                }
+            }
+
+
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     AsyncImage(
-                        model = libraryArtist?.artist?.thumbnailUrl?.resize(width = 400),
-                        contentDescription = libraryArtist?.artist?.name,
+                        model = artistThumbnail?.resize(width = 400),
+                        contentDescription = artistName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(140.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = libraryArtist?.artist?.name ?: "",
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = artistName,
+                        style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
-                    Spacer(modifier = Modifier.height(20.dp))
+                    if (subscriberCount != null) {
+                        Text(
+                            text = subscriberCount,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+
+                    if (remoteSongs.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = { playerConnection?.playYTItem(remoteSongs.first()) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Reproducir")
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    remoteSongs.shuffled().firstOrNull()
+                                        ?.let { playerConnection?.playYTItem(it) }
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Shuffle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Aleatorio")
+                            }
+                        }
+                    }
                 }
             }
 
-            if (libraryAlbums.isNotEmpty()) {
+
+            item {
+                AnimatedVisibility(
+                    visible = isLoadingRemote,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                }
+            }
+
+
+            remoteSections.forEach { section ->
+                val songs = section.items.filterIsInstance<SongItem>()
+                val albums = section.items.filterIsInstance<AlbumItem>()
+                val others = section.items.filter { it !is SongItem && it !is AlbumItem }
+
+                if (section.items.isNotEmpty()) {
+                    item(key = "section_title_${section.title}") {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+
+
+                if (songs.isNotEmpty()) {
+                    items(songs, key = { "remote_song_${it.id}" }) { song ->
+                        RemoteSongRow(
+                            song = song,
+                            onClick = { playerConnection?.playYTItem(song) },
+                        )
+                    }
+                }
+
+                // Albums / playlists row
+                if (albums.isNotEmpty() || others.isNotEmpty()) {
+                    item(key = "section_row_${section.title}") {
+                        val rowItems: List<YTItem> = albums + others
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            items(rowItems, key = { "remote_item_${it.id}" }) { item ->
+                                RemoteItemCard(
+                                    item = item,
+                                    onClick = { playerConnection?.playYTItem(item) },
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+
+            if (description != null) {
+                item {
+                    Text(
+                        text = "Acerca del artista",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+
+            if (remoteSections.isEmpty() && libraryAlbums.isNotEmpty()) {
                 item {
                     Text(
                         text = "Álbumes",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                     )
-                }
-                item {
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -123,21 +303,21 @@ fun ArtistScreen(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                item { Spacer(modifier = Modifier.height(16.dp)) }
             }
 
-            if (librarySongs.isNotEmpty()) {
+            if (remoteSections.isEmpty() && librarySongs.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Canciones",
+                        text = "Canciones en biblioteca",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                     )
                 }
-                items(librarySongs, key = { it.song.id }) { song ->
+                items(librarySongs, key = { "local_${it.song.id}" }) { song ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -166,6 +346,103 @@ fun ArtistScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RemoteSongRow(
+    song: SongItem,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        AsyncImage(
+            model = song.thumbnail.resize(width = 96),
+            contentDescription = song.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = song.artists.joinToString(", ") { it.name },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RemoteItemCard(
+    item: YTItem,
+    onClick: () -> Unit,
+) {
+    val thumbnail = when (item) {
+        is AlbumItem -> item.thumbnail
+        is SongItem -> item.thumbnail
+        else -> null
+    }
+    val title = when (item) {
+        is AlbumItem -> item.title
+        is SongItem -> item.title
+        else -> ""
+    }
+    val subtitle = when (item) {
+        is AlbumItem -> item.year?.toString() ?: ""
+        is SongItem -> item.artists.joinToString(", ") { it.name }
+        else -> ""
+    }
+
+    Column(
+        modifier = Modifier
+            .width(150.dp)
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AsyncImage(
+            model = thumbnail?.resize(width = 300),
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(150.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (subtitle.isNotEmpty()) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

@@ -47,7 +47,6 @@ fun MainScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Contenido principal (ocupa toda la pantalla) ──────────────────
         NavHost(
             navController = navController,
             startDestination = "home",
@@ -122,13 +121,14 @@ fun MainScreen(
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
             ) {
                 PlaylistScreen(
+                    playlistId = it.arguments?.getString("playlistId") ?: "",
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
                     onBack = { navController.popBackStack() },
                 )
             }
+
         }
 
-        // ── MiniPlayer + BottomNav flotando encima ────────────────────────
         if (showOverlay) {
             Column(
                 modifier = Modifier
