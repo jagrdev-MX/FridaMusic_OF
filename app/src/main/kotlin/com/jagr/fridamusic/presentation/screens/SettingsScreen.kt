@@ -1,9 +1,14 @@
 package com.jagr.fridamusic.presentation.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -22,16 +27,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.jagr.fridamusic.constants.*
+import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
 import java.net.Proxy
 
+private enum class SettingsTab(val label: String, val icon: ImageVector) {
+    PLAYBACK  ("Reproducción", Icons.Rounded.PlayCircle),
+    APPEARANCE("Apariencia",   Icons.Rounded.Palette),
+    LYRICS    ("Letras",       Icons.Rounded.Lyrics),
+    CONTENT   ("Contenido",    Icons.Rounded.FilterList),
+    SERVICES  ("Servicios",    Icons.Rounded.Sync),
+    PRIVACY   ("Privacidad",   Icons.Rounded.Lock),
+    NETWORK   ("Red",          Icons.Rounded.Wifi),
+}
+
+
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
+    var activeTab by remember { mutableStateOf(SettingsTab.PLAYBACK) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
         Row(
             modifier = Modifier
@@ -54,159 +74,456 @@ fun SettingsScreen(onBack: () -> Unit) {
             )
         }
 
-        LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+        ScrollableTabRow(
+            selectedTabIndex = activeTab.ordinal,
+            edgePadding = 16.dp,
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.primary,
+            divider = {},
+        ) {
+            SettingsTab.entries.forEach { tab ->
+                Tab(
+                    selected = tab == activeTab,
+                    onClick = { activeTab = tab },
+                    text = {
+                        Text(
+                            text = tab.label,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                )
+            }
+        }
 
-            item { SectionHeader("Reproducción", Icons.Rounded.PlayCircle) }
-            item {
-                var skipSilence by rememberPreference(SkipSilenceKey, false)
-                SettingSwitch(icon = Icons.AutoMirrored.Rounded.VolumeOff, title = "Omitir silencios", subtitle = "Salta partes silenciosas automáticamente", checked = skipSilence, onCheckedChange = { skipSilence = it })
-            }
-            item {
-                var audioNorm by rememberPreference(AudioNormalizationKey, true)
-                SettingSwitch(icon = Icons.Rounded.Equalizer, title = "Normalización de volumen", subtitle = "Iguala el volumen entre canciones", checked = audioNorm, onCheckedChange = { audioNorm = it })
-            }
-            item {
-                var persistentQueue by rememberPreference(PersistentQueueKey, true)
-                SettingSwitch(icon = Icons.AutoMirrored.Rounded.QueueMusic, title = "Cola persistente", subtitle = "Recuerda la cola al cerrar la app", checked = persistentQueue, onCheckedChange = { persistentQueue = it })
-            }
-            item {
-                var autoSkip by rememberPreference(AutoSkipNextOnErrorKey, false)
-                SettingSwitch(icon = Icons.Rounded.SkipNext, title = "Saltar si hay error", subtitle = "Pasa a la siguiente canción si no puede reproducir", checked = autoSkip, onCheckedChange = { autoSkip = it })
-            }
-            item {
-                var crossfade by rememberPreference(CrossfadeEnabledKey, false)
-                SettingSwitch(icon = Icons.Rounded.Tune, title = "Crossfade entre canciones", subtitle = "Transición suave al cambiar de canción", checked = crossfade, onCheckedChange = { crossfade = it })
-            }
-            item {
-                var pauseOnMute by rememberPreference(PauseOnMute, false)
-                SettingSwitch(icon = Icons.AutoMirrored.Rounded.VolumeOff, title = "Pausar al silenciar", subtitle = "Pausa la música cuando el volumen llega a 0", checked = pauseOnMute, onCheckedChange = { pauseOnMute = it })
-            }
-            item {
-                var stopOnTaskClear by rememberPreference(StopMusicOnTaskClearKey, false)
-                SettingSwitch(icon = Icons.Rounded.Stop, title = "Detener al cerrar la app", subtitle = "Para la música al limpiar la app del reciente", checked = stopOnTaskClear, onCheckedChange = { stopOnTaskClear = it })
-            }
-            item {
-                var keepScreenOn by rememberPreference(KeepScreenOn, false)
-                SettingSwitch(icon = Icons.Rounded.WbSunny, title = "Mantener pantalla activa", subtitle = "Evita que la pantalla se apague mientras suena música", checked = keepScreenOn, onCheckedChange = { keepScreenOn = it })
-            }
-            item {
-                var preloadNext by rememberPreference(PreloadNextSongEnabledKey, true)
-                SettingSwitch(icon = Icons.Rounded.FastForward, title = "Precargar siguiente canción", subtitle = "Descarga en caché la siguiente canción antes de que empiece", checked = preloadNext, onCheckedChange = { preloadNext = it })
-            }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            item { SectionHeader("Calidad de audio", Icons.Rounded.HighQuality) }
-            item {
-                var audioQuality by rememberEnumPreference<AudioQuality>(AudioQualityKey, AudioQuality.OPUS)
-                SettingDropdown(icon = Icons.Rounded.GraphicEq, title = "Calidad de streaming", options = listOf("OPUS" to "Opus"), selectedKey = audioQuality.name, onSelect = { audioQuality = AudioQuality.valueOf(it) })
+        AnimatedContent(
+            targetState = activeTab,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "settings_tab",
+        ) { tab ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 8.dp, bottom = 160.dp),
+            ) {
+                when (tab) {
+                    SettingsTab.PLAYBACK   -> playbackItems()
+                    SettingsTab.APPEARANCE -> appearanceItems()
+                    SettingsTab.LYRICS     -> lyricsItems()
+                    SettingsTab.CONTENT    -> contentItems()
+                    SettingsTab.SERVICES   -> servicesItems()
+                    SettingsTab.PRIVACY    -> privacyItems()
+                    SettingsTab.NETWORK    -> networkItems()
+                }
             }
-            item {
-                var downloadQuality by rememberEnumPreference<DownloadQuality>(DownloadQualityKey, DownloadQuality.YOUTUBE)
-                SettingDropdown(icon = Icons.Rounded.Download, title = "Calidad de descarga", options = listOf("YOUTUBE" to "YouTube"), selectedKey = downloadQuality.name, onSelect = { downloadQuality = DownloadQuality.valueOf(it) })
-            }
-            item {
-                var audioOffload by rememberPreference(AudioOffload, false)
-                SettingSwitch(icon = Icons.Rounded.BatteryChargingFull, title = "Audio offload", subtitle = "Ahorra batería delegando la reproducción al hardware", checked = audioOffload, onCheckedChange = { audioOffload = it })
-            }
+        }
+    }
+}
+private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
+    item {
+        SettingGroup("General") {
+            PrefSwitch(Icons.AutoMirrored.Rounded.QueueMusic, "Cola persistente",
+                "Recuerda la cola al cerrar la app", PersistentQueueKey, true)
+            PrefSwitch(Icons.Rounded.SkipNext, "Saltar si hay error",
+                "Pasa a la siguiente canción si no puede reproducir", AutoSkipNextOnErrorKey, false)
+            PrefSwitch(Icons.Rounded.FastForward, "Precargar siguiente canción",
+                "Descarga en caché la siguiente canción antes de que empiece", PreloadNextSongEnabledKey, true)
+            PrefSwitch(Icons.Rounded.WbSunny, "Mantener pantalla activa",
+                "Evita que la pantalla se apague mientras suena música", KeepScreenOn, false)
+            PrefSwitch(Icons.Rounded.Stop, "Detener al cerrar la app",
+                "Para la música al limpiar la app del reciente", StopMusicOnTaskClearKey, false)
+        }
+    }
+    item {
+        SettingGroup("Audio") {
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, "Omitir silencios",
+                "Salta partes silenciosas automáticamente", SkipSilenceKey, false)
+            PrefSwitch(Icons.Rounded.Equalizer, "Normalización de volumen",
+                "Iguala el volumen entre canciones", AudioNormalizationKey, true)
+            PrefSwitch(Icons.Rounded.Tune, "Crossfade entre canciones",
+                "Transición suave al cambiar de canción", CrossfadeEnabledKey, false)
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, "Pausar al silenciar",
+                "Pausa la música cuando el volumen llega a 0", PauseOnMute, false)
+            PrefSwitch(Icons.Rounded.BatteryChargingFull, "Audio offload",
+                "Ahorra batería delegando la reproducción al hardware", AudioOffload, false)
+        }
+    }
+    item {
+        SettingGroup("Calidad") {
+            PrefDropdownEnum<AudioQuality>(
+                icon = Icons.Rounded.GraphicEq,
+                title = "Calidad de streaming",
+                options = listOf(
+                    AudioQuality.OPUS.name    to "Opus (recomendado)",
+                    AudioQuality.SAAVN.name   to "Saavn",
+                    AudioQuality.LOSSLESS.name to "Sin pérdida",
+                ),
+                prefKey = AudioQualityKey,
+                default = AudioQuality.OPUS,
+            )
+            PrefDropdownEnum<DownloadQuality>(
+                icon = Icons.Rounded.Download,
+                title = "Calidad de descarga",
+                options = listOf(
+                    DownloadQuality.YOUTUBE.name  to "YouTube",
+                    DownloadQuality.SAAVN.name    to "Saavn",
+                    DownloadQuality.LOSSLESS.name to "Sin pérdida",
+                ),
+                prefKey = DownloadQualityKey,
+                default = DownloadQuality.YOUTUBE,
+            )
+        }
+    }
+}
 
-            item { SectionHeader("Letras", Icons.Rounded.Lyrics) }
-            item {
-                var showLyrics by rememberPreference(ShowLyricsKey, false)
-                SettingSwitch(icon = Icons.Rounded.Lyrics, title = "Buscar letras automáticamente", subtitle = "Descarga letras al reproducir", checked = showLyrics, onCheckedChange = { showLyrics = it })
-            }
-            item {
-                var kugou by rememberPreference(EnableKugouKey, true)
-                SettingSwitch(icon = Icons.Rounded.MusicNote, title = "Proveedor KuGou", subtitle = "Activa la búsqueda de letras en KuGou", checked = kugou, onCheckedChange = { kugou = it })
-            }
-            item {
-                var lrclib by rememberPreference(EnableLrcLibKey, true)
-                SettingSwitch(icon = Icons.Rounded.MusicNote, title = "Proveedor LRCLib", subtitle = "Activa la búsqueda de letras en LRCLib", checked = lrclib, onCheckedChange = { lrclib = it })
-            }
-            item {
-                var preloadLyrics by rememberPreference(PreloadLyricsEnabledKey, true)
-                SettingSwitch(icon = Icons.Rounded.Cached, title = "Precargar letras", subtitle = "Descarga las letras antes de que empiece la canción", checked = preloadLyrics, onCheckedChange = { preloadLyrics = it })
-            }
+private fun androidx.compose.foundation.lazy.LazyListScope.appearanceItems() {
+    item {
+        SettingGroup("Tema") {
+            PrefDropdownString(
+                icon = Icons.Rounded.DarkMode,
+                title = "Modo de color",
+                options = listOf(
+                    "SYSTEM_DEFAULT" to "Según el sistema",
+                    "ON"             to "Oscuro",
+                    "OFF"            to "Claro",
+                ),
+                prefKey = DarkModeKey,
+                default = "SYSTEM_DEFAULT",
+            )
+            PrefSwitch(Icons.Rounded.AutoAwesome, "Colores dinámicos",
+                "Adapta los colores al artwork de la canción (Material You)", DynamicThemeKey, true)
+            PrefSwitch(Icons.Rounded.Contrast, "Negro puro (AMOLED)",
+                "Usa negro absoluto en el fondo para pantallas AMOLED", PureBlackKey, false)
+        }
+    }
+}
 
-            item { SectionHeader("Contenido", Icons.Rounded.FilterList) }
-            item {
-                var hideExplicit by rememberPreference(HideExplicitKey, false)
-                SettingSwitch(icon = Icons.Rounded.Block, title = "Ocultar contenido explícito", subtitle = "Filtra canciones marcadas como explícitas", checked = hideExplicit, onCheckedChange = { hideExplicit = it })
-            }
-            item {
-                var hideVideoSongs by rememberPreference(HideVideoSongsKey, false)
-                SettingSwitch(icon = Icons.Rounded.VideocamOff, title = "Ocultar canciones de video", subtitle = "Filtra canciones provenientes de videos de YouTube", checked = hideVideoSongs, onCheckedChange = { hideVideoSongs = it })
-            }
-            item {
-                var hideShorts by rememberPreference(HideYoutubeShortsKey, false)
-                SettingSwitch(icon = Icons.Rounded.VideoLibrary, title = "Ocultar YouTube Shorts", subtitle = "No incluye Shorts en los resultados", checked = hideShorts, onCheckedChange = { hideShorts = it })
-            }
-            item {
-                var sponsorBlock by rememberPreference(SponsorBlockEnabledKey, false)
-                SettingSwitch(icon = Icons.Rounded.Block, title = "SponsorBlock", subtitle = "Salta segmentos de patrocinadores automáticamente", checked = sponsorBlock, onCheckedChange = { sponsorBlock = it })
-            }
+private fun androidx.compose.foundation.lazy.LazyListScope.lyricsItems() {
+    item {
+        SettingGroup("General") {
+            PrefSwitch(Icons.Rounded.Lyrics, "Buscar letras automáticamente",
+                "Descarga letras al reproducir una canción", ShowLyricsKey, false)
+            PrefSwitch(Icons.Rounded.Cached, "Precargar letras",
+                "Descarga las letras antes de que empiece la canción", PreloadLyricsEnabledKey, true)
+        }
+    }
+    item {
+        SettingGroup("Proveedores") {
+            LyricsProviderOrderSection()
+        }
+    }
+}
 
-            item { SectionHeader("Privacidad", Icons.Rounded.Lock) }
-            item {
-                var pauseHistory by rememberPreference(PauseListenHistoryKey, false)
-                SettingSwitch(icon = Icons.Rounded.History, title = "Pausar historial de escucha", subtitle = "No guarda canciones en el historial", checked = pauseHistory, onCheckedChange = { pauseHistory = it })
-            }
-            item {
-                var pauseSearch by rememberPreference(PauseSearchHistoryKey, false)
-                SettingSwitch(icon = Icons.AutoMirrored.Rounded.ManageSearch, title = "Pausar historial de búsqueda", subtitle = "No guarda las búsquedas realizadas", checked = pauseSearch, onCheckedChange = { pauseSearch = it })
-            }
-            item {
-                var disableScreenshot by rememberPreference(DisableScreenshotKey, false)
-                SettingSwitch(icon = Icons.Rounded.Monitor, title = "Bloquear capturas de pantalla", subtitle = "Impide hacer capturas dentro de la app", checked = disableScreenshot, onCheckedChange = { disableScreenshot = it })
-            }
+private fun androidx.compose.foundation.lazy.LazyListScope.contentItems() {
+    item {
+        SettingGroup("Filtros") {
+            PrefSwitch(Icons.Rounded.Block, "Ocultar contenido explícito",
+                "Filtra canciones marcadas como explícitas", HideExplicitKey, false)
+            PrefSwitch(Icons.Rounded.VideocamOff, "Ocultar canciones de video",
+                "Filtra canciones provenientes de videos de YouTube", HideVideoSongsKey, false)
+            PrefSwitch(Icons.Rounded.VideoLibrary, "Ocultar YouTube Shorts",
+                "No incluye Shorts en los resultados", HideYoutubeShortsKey, false)
+        }
+    }
+    item {
+        SettingGroup("SponsorBlock") {
+            PrefSwitch(Icons.Rounded.Block, "Activar SponsorBlock",
+                "Salta segmentos de patrocinadores automáticamente", SponsorBlockEnabledKey, false)
+        }
+    }
+    item {
+        SettingGroup("Descargas") {
+            PrefSwitch(Icons.Rounded.FavoriteBorder, "Descargar al dar like",
+                "Descarga automáticamente la canción cuando la agregas a favoritos",
+                AutoDownloadOnLikeKey, false)
+        }
+    }
+}
 
-            item { SectionHeader("Caché", Icons.Rounded.Storage) }
-            item {
-                var autoDownloadOnLike by rememberPreference(AutoDownloadOnLikeKey, false)
-                SettingSwitch(icon = Icons.Rounded.FavoriteBorder, title = "Descargar al dar like", subtitle = "Descarga automáticamente la canción cuando la agregas a favoritos", checked = autoDownloadOnLike, onCheckedChange = { autoDownloadOnLike = it })
-            }
+private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
+    item {
+        SettingGroup("Last.fm") {
+            LastFmSection()
+        }
+    }
+    item {
+        SettingGroup("ListenBrainz") {
+            ListenBrainzSection()
+        }
+    }
+    item {
+        SettingGroup("Discord") {
+            PrefSwitch(Icons.AutoMirrored.Rounded.Chat, "Discord Rich Presence",
+                "Muestra la canción actual en tu estado de Discord", EnableDiscordRPCKey, true)
+        }
+    }
+    item {
+        SettingGroup("EchoBrain IA") {
+            PrefSwitch(Icons.Rounded.AutoAwesome, "Habilitar EchoBrain",
+                "Activa el asistente de IA para recomendaciones y análisis", EchoBrainEnabledKey, false)
+        }
+    }
+}
 
-            item { SectionHeader("Servicios externos", Icons.Rounded.Sync) }
-            item {
-                var lastFmEnabled by rememberPreference(EnableLastFMScrobblingKey, false)
-                SettingSwitch(icon = Icons.Rounded.Radio, title = "Last.fm Scrobbling", subtitle = "Registra las canciones que escuchás en Last.fm", checked = lastFmEnabled, onCheckedChange = { lastFmEnabled = it })
-            }
-            item {
-                var discordRpc by rememberPreference(EnableDiscordRPCKey, true)
-                SettingSwitch(icon = Icons.AutoMirrored.Rounded.Chat, title = "Discord Rich Presence", subtitle = "Muestra la canción actual en tu estado de Discord", checked = discordRpc, onCheckedChange = { discordRpc = it })
-            }
-            item {
-                var listenBrainz by rememberPreference(ListenBrainzEnabledKey, false)
-                SettingSwitch(icon = Icons.Rounded.MusicNote, title = "ListenBrainz", subtitle = "Envía scrobbles a ListenBrainz", checked = listenBrainz, onCheckedChange = { listenBrainz = it })
-            }
-            item {
-                var echoBrain by rememberPreference(EchoBrainEnabledKey, false)
-                SettingSwitch(icon = Icons.Rounded.AutoAwesome, title = "EchoBrain (IA)", subtitle = "Habilita el asistente de IA para recomendaciones y análisis", checked = echoBrain, onCheckedChange = { echoBrain = it })
-            }
+private fun androidx.compose.foundation.lazy.LazyListScope.privacyItems() {
+    item {
+        SettingGroup("Historial") {
+            PrefSwitch(Icons.Rounded.History, "Pausar historial de escucha",
+                "No guarda canciones en el historial", PauseListenHistoryKey, false)
+            PrefSwitch(Icons.AutoMirrored.Rounded.ManageSearch, "Pausar historial de búsqueda",
+                "No guarda las búsquedas realizadas", PauseSearchHistoryKey, false)
+        }
+    }
+    item {
+        SettingGroup("Pantalla") {
+            PrefSwitch(Icons.Rounded.Monitor, "Bloquear capturas de pantalla",
+                "Impide hacer capturas dentro de la app", DisableScreenshotKey, false)
+        }
+    }
+}
 
-            item { SectionHeader("Red", Icons.Rounded.Wifi) }
-            item {
-                var proxyEnabled by rememberPreference(ProxyEnabledKey, false)
-                SettingSwitch(icon = Icons.Rounded.Key, title = "Usar proxy", subtitle = "Enruta el tráfico a través de un servidor proxy", checked = proxyEnabled, onCheckedChange = { proxyEnabled = it })
+private fun androidx.compose.foundation.lazy.LazyListScope.networkItems() {
+    item {
+        SettingGroup("Proxy") {
+            ProxySettings()
+        }
+    }
+}
+
+
+@Composable
+private fun SettingGroup(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        content()
+    }
+}
+
+
+@Composable
+private fun PrefSwitch(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    key: androidx.datastore.preferences.core.Preferences.Key<Boolean>,
+    default: Boolean,
+) {
+    var value by rememberPreference(key, default)
+    SettingSwitch(icon, title, subtitle, value) { value = it }
+}
+
+@Composable
+private fun PrefDropdownString(
+    icon: ImageVector,
+    title: String,
+    options: List<Pair<String, String>>,
+    prefKey: androidx.datastore.preferences.core.Preferences.Key<String>,
+    default: String,
+) {
+    var value by rememberPreference(prefKey, default)
+    SettingDropdown(icon, title, options, value) { value = it }
+}
+
+@Composable
+private inline fun <reified E : Enum<E>> PrefDropdownEnum(
+    icon: ImageVector,
+    title: String,
+    options: List<Pair<String, String>>,
+    prefKey: androidx.datastore.preferences.core.Preferences.Key<String>,
+    default: E,
+) {
+    var value by rememberEnumPreference<E>(prefKey, default)
+    SettingDropdown(icon, title, options, value.name) { value = enumValueOf(it) }
+}
+
+
+
+@Composable
+private fun LyricsProviderOrderSection() {
+    var orderString by rememberPreference(LyricsProviderOrderKey, "")
+    val allProviders = LyricsProviderRegistry.providerNames
+
+    val currentOrder = remember(orderString) {
+        val saved = orderString.split(",").filter { it.isNotBlank() && it in allProviders }
+        val missing = allProviders.filter { it !in saved }
+        (saved + missing).toMutableStateList()
+    }
+
+    Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+        Text(
+            text = "El primer proveedor que encuentre letra sincronizada gana. Toca ↑↓ para reordenar.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        currentOrder.forEachIndexed { index, name ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "${index + 1}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    text = LyricsProviderRegistry.getDisplayName(name),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f),
+                )
+                if (index > 0) {
+                    IconButton(
+                        onClick = {
+                            val list = currentOrder.toMutableList()
+                            val tmp = list[index - 1]; list[index - 1] = list[index]; list[index] = tmp
+                            orderString = list.joinToString(",")
+                        },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Subir",
+                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (index < currentOrder.size - 1) {
+                    IconButton(
+                        onClick = {
+                            val list = currentOrder.toMutableList()
+                            val tmp = list[index + 1]; list[index + 1] = list[index]; list[index] = tmp
+                            orderString = list.joinToString(",")
+                        },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Bajar",
+                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
-            item { ProxySettings() }
+        }
+    }
+}
+
+
+@Composable
+private fun LastFmSection() {
+    var enabled  by rememberPreference(EnableLastFMScrobblingKey, false)
+    var username by rememberPreference(LastFMUsernameKey, "")
+    var nowPlaying by rememberPreference(LastFMUseNowPlaying, true)
+    var sendLikes  by rememberPreference(LastFMUseSendLikes, false)
+
+    SettingSwitch(
+        icon = Icons.Rounded.Radio,
+        title = "Scrobbling en Last.fm",
+        subtitle = if (username.isNotEmpty()) "Conectado como $username" else "Registra las canciones que escuchas en Last.fm",
+        checked = enabled,
+        onCheckedChange = { enabled = it },
+    )
+    if (enabled) {
+        Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
+            SettingTextField("Usuario", "Tu nombre de usuario en Last.fm", username) { username = it }
+            SettingSwitch(Icons.Rounded.Podcasts, "Now Playing",
+                "Muestra la canción actual como 'escuchando ahora'", nowPlaying) { nowPlaying = it }
+            SettingSwitch(Icons.Rounded.Favorite, "Sincronizar likes",
+                "Manda un ♥ en Last.fm cuando das like en FridaMusic", sendLikes) { sendLikes = it }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(title: String, icon: ImageVector) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-            .padding(top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        Text(text = title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+private fun ListenBrainzSection() {
+    var enabled by rememberPreference(ListenBrainzEnabledKey, false)
+    var token   by rememberPreference(ListenBrainzTokenKey, "")
+
+    SettingSwitch(
+        icon = Icons.Rounded.MusicNote,
+        title = "ListenBrainz",
+        subtitle = if (token.isNotEmpty()) "Token configurado" else "Envía scrobbles a ListenBrainz",
+        checked = enabled,
+        onCheckedChange = { enabled = it },
+    )
+    if (enabled) {
+        Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
+            SettingTextField("Token", "Pega tu token de ListenBrainz", token, isPassword = true) { token = it }
+            Text(
+                text = "Obtén tu token en listenbrainz.org/profile",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
     }
-    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
+
+
+@Composable
+private fun ProxySettings() {
+    var enabled  by rememberPreference(ProxyEnabledKey, false)
+    var url      by rememberPreference(ProxyUrlKey, "")
+    var type     by rememberEnumPreference<Proxy.Type>(ProxyTypeKey, Proxy.Type.HTTP)
+    var username by rememberPreference(ProxyUsernameKey, "")
+    var password by rememberPreference(ProxyPasswordKey, "")
+
+    SettingSwitch(Icons.Rounded.Key, "Usar proxy",
+        "Enruta el tráfico a través de un servidor proxy", enabled) { enabled = it }
+
+    if (enabled) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+            Text(
+                text = "Los cambios se aplican al reiniciar la app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            SettingDropdown(
+                icon = Icons.Rounded.SettingsEthernet,
+                title = "Tipo",
+                options = listOf("HTTP" to "HTTP", "SOCKS" to "SOCKS"),
+                selectedKey = type.name,
+                onSelect = { type = Proxy.Type.valueOf(it) },
+            )
+            SettingTextField("Servidor", "host:puerto", url) { url = it }
+            SettingTextField("Usuario (opcional)", "Usuario", username) { username = it }
+            SettingTextField("Contraseña (opcional)", "Contraseña", password, isPassword = true) { password = it }
+        }
+    }
+}
+
 
 @Composable
 private fun SettingSwitch(
@@ -217,16 +534,22 @@ private fun SettingSwitch(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }.padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -241,62 +564,36 @@ private fun SettingDropdown(
     onSelect: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = options.find { it.first == selectedKey }?.second ?: selectedKey
+    val label = options.find { it.first == selectedKey }?.second ?: selectedKey
 
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { expanded = true }.padding(horizontal = 20.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        }
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
-            Text(text = selectedLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
         Box {
-            Icon(imageVector = Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Rounded.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { (key, label) ->
+                options.forEach { (key, lbl) ->
                     DropdownMenuItem(
-                        text = { Text(label) },
+                        text = { Text(lbl) },
                         onClick = { onSelect(key); expanded = false },
-                        trailingIcon = { if (key == selectedKey) Icon(Icons.Rounded.Check, contentDescription = null) },
+                        trailingIcon = {
+                            if (key == selectedKey) Icon(Icons.Rounded.Check, contentDescription = null)
+                        },
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ProxySettings() {
-    var enabled by rememberPreference(ProxyEnabledKey, false)
-    if (!enabled) return
-
-    var url by rememberPreference(ProxyUrlKey, "")
-    var type by rememberEnumPreference<Proxy.Type>(ProxyTypeKey, Proxy.Type.HTTP)
-    var username by rememberPreference(ProxyUsernameKey, "")
-    var password by rememberPreference(ProxyPasswordKey, "")
-
-    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-        Text(
-            text = "La configuración se aplicará al reiniciar la aplicación.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-        SettingDropdown(
-            icon = Icons.Rounded.SettingsEthernet,
-            title = "Tipo de proxy",
-            options = listOf("HTTP" to "HTTP", "SOCKS" to "SOCKS"),
-            selectedKey = type.name,
-            onSelect = { type = Proxy.Type.valueOf(it) },
-        )
-        SettingTextField("Servidor", "host:puerto", url) { url = it }
-        SettingTextField("Usuario (opcional)", "Usuario", username) { username = it }
-        SettingTextField("Contraseña (opcional)", "Contraseña", password, isPassword = true) { password = it }
     }
 }
 
@@ -314,7 +611,10 @@ private fun SettingTextField(
         label = { Text(label) },
         placeholder = { Text(placeholder) },
         singleLine = true,
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        visualTransformation = if (isPassword) PasswordVisualTransformation()
+        else androidx.compose.ui.text.input.VisualTransformation.None,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
     )
 }

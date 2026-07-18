@@ -2,16 +2,20 @@ package com.jagr.fridamusic.presentation.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jagr.fridamusic.viewmodels.OnlineSearchViewModel
@@ -39,20 +43,18 @@ fun SearchResultScreen(
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val selectedFilter = SEARCH_TABS[selectedTabIndex].filter
 
-    LaunchedEffect(selectedFilter) {
-        viewModel.filter.value = selectedFilter
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .height(56.dp)
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
@@ -62,24 +64,50 @@ fun SearchResultScreen(
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = viewModel.query,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
         }
 
+
         ScrollableTabRow(
             selectedTabIndex = selectedTabIndex,
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.primary,
             edgePadding = 20.dp,
+            divider = {},
+            indicator = { tabPositions ->
+                if (selectedTabIndex < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                        color = MaterialTheme.colorScheme.primary,
+                        height = 3.dp
+                    )
+                }
+            }
         ) {
             SEARCH_TABS.forEachIndexed { index, tab ->
+                val isSelected = selectedTabIndex == index
                 Tab(
-                    selected = selectedTabIndex == index,
-                    onClick = { selectedTabIndex = index },
-                    text = { Text(tab.label) },
+                    selected = isSelected,
+                    onClick = {
+                        selectedTabIndex = index
+                        viewModel.filter.value = tab.filter
+                    },
+                    text = {
+                        Text(
+                            text = tab.label,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
                 )
             }
         }
@@ -109,14 +137,18 @@ private fun SearchSummaryContent(viewModel: OnlineSearchViewModel, onItemClick: 
         return
     }
 
-    LazyColumn(contentPadding = PaddingValues(bottom = 140.dp)) {
+    LazyColumn(
+        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
         summaryPage.summaries.forEach { summary ->
             item(key = summary.title) {
                 Text(
                     text = summary.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
                 )
             }
             items(summary.items, key = { "${summary.title}-${it.id}" }) { item ->
@@ -144,13 +176,20 @@ private fun SearchFilteredContent(
         return
     }
 
-    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 140.dp)) {
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
         items(viewState.items, key = { it.id }) { item ->
             YTItemRow(item = item, onClick = { onItemClick(item) })
         }
+
+
         if (viewState.continuation != null) {
             item {
-                LaunchedEffect(viewState.items.size) {
+
+                LaunchedEffect(Unit) {
                     viewModel.loadMore()
                 }
                 Box(
@@ -159,7 +198,11 @@ private fun SearchFilteredContent(
                         .padding(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = MaterialTheme.colorScheme.primary, // o EchoLavender
+                        strokeWidth = 3.dp
+                    )
                 }
             }
         }
@@ -168,18 +211,39 @@ private fun SearchFilteredContent(
 
 @Composable
 private fun LoadingIndicator() {
-    Box(modifier = Modifier.fillMaxSize().padding(top = 80.dp), contentAlignment = Alignment.TopCenter) {
-        CircularProgressIndicator(color = com.jagr.fridamusic.presentation.theme.EchoLavender)
+    Box(
+        modifier = Modifier.fillMaxSize().padding(top = 80.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        CircularProgressIndicator(
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 
 @Composable
 private fun EmptyResults() {
-    Box(modifier = Modifier.fillMaxSize().padding(top = 80.dp), contentAlignment = Alignment.TopCenter) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(top = 100.dp, start = 32.dp, end = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.SearchOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(64.dp).padding(bottom = 16.dp)
+        )
         Text(
-            text = "Sin resultados",
-            style = MaterialTheme.typography.bodyLarge,
+            text = "No encontramos resultados",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = "Intenta buscar con otras palabras clave",
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
         )
     }
 }

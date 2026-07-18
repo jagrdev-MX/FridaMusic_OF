@@ -4,17 +4,13 @@ import android.graphics.Bitmap
 import android.view.WindowManager
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.AnchoredDraggableState
-import androidx.compose.foundation.gestures.DraggableAnchors
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,9 +46,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -66,7 +62,6 @@ import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
-import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.resize
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -189,25 +184,27 @@ fun NowPlayingScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp, bottom = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "Cerrar",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp),
-                        )
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = "Cerrar",
+                                tint = Color.White,
+                                modifier = Modifier.size(32.dp),
+                            )
+                        }
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.weight(2f), contentAlignment = Alignment.Center) {
                         Text(
                             text = "Reproduciendo ahora",
                             style = MaterialTheme.typography.labelMedium,
                             color = Color.White.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
                         )
                     }
-                    Box {
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                         IconButton(onClick = { showOverflowMenu = true }) {
                             Icon(
                                 imageVector = Icons.Rounded.MoreVert,
@@ -396,8 +393,13 @@ fun NowPlayingScreen(
                         ),
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                            .offset(y = (-4).dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
@@ -414,6 +416,7 @@ fun NowPlayingScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -428,7 +431,7 @@ fun NowPlayingScreen(
                                 Icons.Rounded.SkipPrevious,
                                 contentDescription = "Anterior",
                                 tint = Color.White,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(32.dp),
                             )
                         }
 
@@ -447,7 +450,7 @@ fun NowPlayingScreen(
                                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = if (isPlaying) "Pausar" else "Reproducir",
                                 tint = animatedBackground,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(42.dp),
                             )
                         }
 
@@ -460,7 +463,7 @@ fun NowPlayingScreen(
                                 Icons.Rounded.SkipNext,
                                 contentDescription = "Siguiente",
                                 tint = Color.White,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(32.dp),
                             )
                         }
                     }
@@ -601,11 +604,12 @@ private fun AppleMusicQueueView(
         contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
     ) {
         item {
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -687,7 +691,7 @@ private fun AppleMusicQueueView(
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Icon(imageVector = Icons.Rounded.Menu, contentDescription = "Reordenar", tint = Color.White.copy(alpha = 0.5f))

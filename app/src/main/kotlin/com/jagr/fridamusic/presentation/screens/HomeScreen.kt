@@ -47,6 +47,7 @@ fun HomeScreen(
     val quickPicks by viewModel.quickPicks.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val selectedChip by viewModel.selectedChip.collectAsState()
 
     Box(
         modifier = Modifier
@@ -57,6 +58,8 @@ fun HomeScreen(
             quickPicks = quickPicks,
             homePage = homePage,
             isLoading = isLoading,
+            selectedChip = selectedChip,
+            onChipClick = { viewModel.toggleChip(it) },
             onSongClick = onSongClick,
             onItemClick = onItemClick,
             onSettingsClick = onSettingsClick,
@@ -70,6 +73,8 @@ private fun LazyColumnHome(
     quickPicks: List<Song>?,
     homePage: HomePage?,
     isLoading: Boolean,
+    selectedChip: HomePage.Chip?,
+    onChipClick: (HomePage.Chip?) -> Unit,
     onSongClick: (Song, List<Song>) -> Unit,
     onItemClick: (YTItem) -> Unit,
     onSettingsClick: () -> Unit,
@@ -80,7 +85,13 @@ private fun LazyColumnHome(
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item { HomeHeader(onHistoryClick = onHistoryClick, onSettingsClick = onSettingsClick) }
-        item { MoodChipsRow(chips = homePage?.chips) }
+        item {
+            MoodChipsRow(
+                chips = homePage?.chips,
+                selectedChip = selectedChip,
+                onChipClick = onChipClick,
+            )
+        }
 
         if (!quickPicks.isNullOrEmpty()) {
             item {
@@ -148,25 +159,44 @@ private fun HomeHeader(onHistoryClick: () -> Unit, onSettingsClick: () -> Unit) 
 }
 
 @Composable
-private fun MoodChipsRow(chips: List<HomePage.Chip>?) {
-    val labels = chips?.map { it.title }?.ifEmpty { null }
-        ?: listOf("Para ti", "Enfoque", "Fiesta", "Relax", "Entrenar")
+private fun MoodChipsRow(
+    chips: List<HomePage.Chip>?,
+    selectedChip: HomePage.Chip?,
+    onChipClick: (HomePage.Chip?) -> Unit,
+) {
+    val displayChips = chips?.ifEmpty { null }
+        ?: listOf(
+            HomePage.Chip("Para ti", null, null),
+            HomePage.Chip("Enfoque", null, null),
+            HomePage.Chip("Fiesta", null, null),
+            HomePage.Chip("Relax", null, null),
+            HomePage.Chip("Entrenar", null, null),
+        )
 
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(labels) { label ->
+        items(displayChips) { chip ->
+            val isSelected = chip == selectedChip
             Surface(
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.clickable { /* TODO filtrar por chip: siguiente paso */ },
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.clickable(enabled = chip.endpoint != null) {
+                    onChipClick(if (isSelected) null else chip)
+                },
             ) {
                 Text(
-                    text = label,
+                    text = chip.title,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isSelected)
+                        MaterialTheme.colorScheme.onPrimary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

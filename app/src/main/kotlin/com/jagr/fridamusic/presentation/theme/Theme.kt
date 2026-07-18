@@ -68,9 +68,19 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun FridaMusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    content: @Composable () -> Unit
+    pureBlack: Boolean = false,
+    content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val colorScheme = when {
+        darkTheme && pureBlack -> DarkColorScheme.copy(
+            background = Color.Black,
+            surface = Color(0xFF0A0A0A),
+            surfaceVariant = Color(0xFF111111),
+            surfaceContainerHighest = Color(0xFF111111),
+        )
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
+    }
     val view = LocalView.current
 
     if (!view.isInEditMode) {
@@ -86,6 +96,6 @@ fun FridaMusicTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = LiquidTypography,
-        content = content
+        content = content,
     )
 }

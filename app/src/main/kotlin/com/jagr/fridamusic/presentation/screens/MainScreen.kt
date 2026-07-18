@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -119,12 +117,18 @@ fun MainScreen(
             composable(
                 route = "playlist/{playlistId}",
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
-            ) {
-                PlaylistScreen(
-                    playlistId = it.arguments?.getString("playlistId") ?: "",
-                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                    onBack = { navController.popBackStack() },
-                )
+            ) { backStackEntry ->
+                val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
+                if (playlistId.contains('-')) {
+                    LocalPlaylistScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onBack = { navController.popBackStack() },
+                    )
+                } else {
+                    OnlinePlaylistScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
 
         }
@@ -162,20 +166,6 @@ fun MainScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun PlaceholderScreen(name: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "$name — próximamente",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

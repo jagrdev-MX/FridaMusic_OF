@@ -1,17 +1,20 @@
 package com.jagr.fridamusic.presentation.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.Search
@@ -22,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,7 +42,6 @@ import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 
-
 @Composable
 fun SearchScreen(
     onSearchSubmit: (String) -> Unit,
@@ -48,6 +52,7 @@ fun SearchScreen(
     var text by remember { mutableStateOf("") }
     val viewState by viewModel.viewState.collectAsState()
     val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -55,6 +60,7 @@ fun SearchScreen(
 
     fun submit(query: String) {
         if (query.isBlank()) return
+        keyboardController?.hide()
         viewModel.saveSearch(query)
         onSearchSubmit(query)
     }
@@ -69,7 +75,7 @@ fun SearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -91,37 +97,72 @@ fun SearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester),
-                placeholder = { Text("Buscar canciones, artistas, álbumes…") },
+                placeholder = { Text("Canciones, artistas, álbumes…") },
                 leadingIcon = {
-                    Icon(imageVector = Icons.Rounded.Search, contentDescription = null)
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    AnimatedVisibility(
+                        visible = text.isNotEmpty(),
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        IconButton(onClick = {
+                            text = ""
+                            viewModel.query.value = ""
+                            focusRequester.requestFocus()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Limpiar búsqueda",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(50),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(text) }),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                    focusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedBorderColor = Color.Transparent,
                 ),
             )
         }
 
         LazyColumn(
             contentPadding = PaddingValues(bottom = 140.dp),
+            modifier = Modifier.fillMaxSize()
         ) {
             if (text.isBlank()) {
-                items(viewState.history, key = { it.id }) { history ->
-                    SuggestionRow(
-                        icon = Icons.Rounded.History,
-                        text = history.query,
-                        onClick = {
-                            text = history.query
-                            submit(history.query)
-                        },
-                        onFillClick = { text = history.query; viewModel.query.value = history.query },
-                    )
+                if (viewState.history.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Búsquedas recientes",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
+                        )
+                    }
+                    items(viewState.history, key = { it.id }) { history ->
+                        SuggestionRow(
+                            icon = Icons.Rounded.History,
+                            text = history.query,
+                            onClick = {
+                                text = history.query
+                                submit(history.query)
+                            },
+                            onFillClick = { text = history.query; viewModel.query.value = history.query },
+                        )
+                    }
                 }
             } else {
                 items(viewState.suggestions) { suggestion ->
@@ -137,14 +178,17 @@ fun SearchScreen(
                     item {
                         Text(
                             text = "Resultados directos",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
                         )
                     }
                     items(viewState.items, key = { it.id }) { item ->
-                        YTItemRow(item = item, onClick = { onItemClick(item) })
+                        YTItemRow(item = item, onClick = {
+                            keyboardController?.hide()
+                            onItemClick(item)
+                        })
                     }
                 }
             }
@@ -170,7 +214,7 @@ private fun SuggestionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
         )
         Text(
             text = text,
@@ -180,11 +224,15 @@ private fun SuggestionRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onFillClick) {
+        IconButton(
+            onClick = onFillClick,
+            modifier = Modifier.size(32.dp)
+        ) {
             Icon(
                 imageVector = Icons.Rounded.NorthWest,
                 contentDescription = "Completar búsqueda",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -222,7 +270,7 @@ fun YTItemRow(item: YTItem, onClick: () -> Unit) {
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

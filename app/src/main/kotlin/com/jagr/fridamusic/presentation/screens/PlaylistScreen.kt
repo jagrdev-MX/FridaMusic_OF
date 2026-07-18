@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,7 +27,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
@@ -34,30 +35,11 @@ import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalPlaylistViewModel
 import com.jagr.fridamusic.viewmodels.OnlinePlaylistViewModel
 import com.music.innertube.models.SongItem
-
-private fun isLocalPlaylistId(id: String) = id.contains('-')
-
-@Composable
-fun PlaylistScreen(
-    playlistId: String,
-    onSongClick: (Song, List<Song>) -> Unit,
-    onBack: () -> Unit,
-) {
-    if (isLocalPlaylistId(playlistId)) {
-        LocalPlaylistContent(
-            onSongClick = onSongClick,
-            onBack = onBack,
-        )
-    } else {
-        OnlinePlaylistContent(
-            onBack = onBack,
-        )
-    }
-}
+import com.music.innertube.models.YTItem
 
 
 @Composable
-private fun LocalPlaylistContent(
+fun LocalPlaylistScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onBack: () -> Unit,
     viewModel: LocalPlaylistViewModel = hiltViewModel(),
@@ -96,7 +78,7 @@ private fun LocalPlaylistContent(
 
 
 @Composable
-private fun OnlinePlaylistContent(
+fun OnlinePlaylistScreen(
     onBack: () -> Unit,
     viewModel: OnlinePlaylistViewModel = hiltViewModel(),
 ) {
@@ -114,22 +96,18 @@ private fun OnlinePlaylistContent(
     val shouldLoadMore by remember {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val totalItems = listState.layoutInfo.totalItemsCount
-            lastVisible >= totalItems - 5 && !isLoadingMore && hasContinuation
+            val total = listState.layoutInfo.totalItemsCount
+            lastVisible >= total - 5 && !isLoadingMore && hasContinuation
         }
     }
     LaunchedEffect(shouldLoadMore) {
         if (shouldLoadMore) viewModel.loadMoreSongs()
     }
 
-    val title = playlist?.title ?: ""
-    val artistLine = playlist?.author?.name ?: ""
-    val thumbnailUrl = playlist?.thumbnail
-
     PlaylistScaffold(
-        title = title,
-        artistLine = artistLine,
-        thumbnailUrl = thumbnailUrl,
+        title = playlist?.title ?: "",
+        artistLine = playlist?.author?.name ?: "",
+        thumbnailUrl = playlist?.thumbnail,
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playerConnection?.playYTItem(it) } },
         onShuffle = { songs.shuffled().firstOrNull()?.let { playerConnection?.playYTItem(it) } },
@@ -152,9 +130,7 @@ private fun OnlinePlaylistContent(
         if (isLoadingMore) {
             item {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(28.dp))
@@ -187,7 +163,6 @@ private fun OnlinePlaylistContent(
     }
 }
 
-
 @Composable
 private fun PlaylistScaffold(
     title: String,
@@ -199,8 +174,8 @@ private fun PlaylistScaffold(
     isLoading: Boolean,
     error: String?,
     onRetry: () -> Unit,
-    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
-    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    content: LazyListScope.() -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (thumbnailUrl != null) {
@@ -299,21 +274,11 @@ private fun PlaylistScaffold(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(
-                            onClick = onPlay,
-                            modifier = Modifier.weight(1f),
-                        ) {
+                        Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
                             Text("Reproducir")
                         }
-                        OutlinedButton(
-                            onClick = onShuffle,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(
-                                Icons.Rounded.Shuffle,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
+                        OutlinedButton(onClick = onShuffle, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Aleatorio")
                         }
@@ -321,28 +286,20 @@ private fun PlaylistScaffold(
                 }
             }
 
-            // Loading state
             if (isLoading) {
                 item {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(48.dp),
+                        modifier = Modifier.fillMaxWidth().padding(48.dp),
                         contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    ) { CircularProgressIndicator() }
                 }
                 return@LazyColumn
             }
 
-            // Error state
             if (error != null) {
                 item {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -351,15 +308,12 @@ private fun PlaylistScaffold(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedButton(onClick = onRetry) {
-                            Text("Reintentar")
-                        }
+                        OutlinedButton(onClick = onRetry) { Text("Reintentar") }
                     }
                 }
                 return@LazyColumn
             }
 
-            // Divider before song list
             item {
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
@@ -367,13 +321,10 @@ private fun PlaylistScaffold(
                 )
             }
 
-            // Delegate to caller for song rows and extras
             content()
         }
     }
 }
-
-// ── Shared row ────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SongRow(

@@ -30,7 +30,11 @@ import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.lifecycle.lifecycleScope
 import com.jagr.fridamusic.constants.DisableScreenshotKey
+import com.jagr.fridamusic.constants.DarkModeKey
+import com.jagr.fridamusic.constants.DynamicThemeKey
 import com.jagr.fridamusic.constants.KeepScreenOn
+import com.jagr.fridamusic.constants.PureBlackKey
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.playback.MusicService
 import com.jagr.fridamusic.playback.MusicService.MusicBinder
@@ -96,6 +100,24 @@ class MainActivity : ComponentActivity() {
         observeWindowPreferences()
 
         setContent {
+            val systemDark = isSystemInDarkTheme()
+            val themePrefs by remember {
+                dataStore.data.map { prefs ->
+                    Triple(
+                        prefs[DarkModeKey] ?: "SYSTEM_DEFAULT",
+                        prefs[PureBlackKey] ?: false,
+                        prefs[DynamicThemeKey] ?: true,
+                    )
+                }
+            }.collectAsState(initial = Triple("SYSTEM_DEFAULT", false, true))
+
+            val (darkModePref, pureBlack, _) = themePrefs
+            val isDark = when (darkModePref) {
+                "ON"  -> true
+                "OFF" -> false
+                else  -> systemDark
+            }
+
             val isFirstRunFlow = remember {
                 dataStore.data.map { preferences ->
                     !(preferences[ONBOARDING_COMPLETED_KEY] ?: false)
@@ -103,7 +125,7 @@ class MainActivity : ComponentActivity() {
             }
             val isFirstRun by isFirstRunFlow.collectAsState(initial = null)
 
-            FridaMusicTheme {
+            FridaMusicTheme(darkTheme = isDark, pureBlack = pureBlack) {
                 CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
                     when (isFirstRun) {
                         null -> {
