@@ -26,13 +26,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.jagr.fridamusic.constants.*
 import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
+import com.jagr.fridamusic.viewmodels.AccountSettingsViewModel
 import java.net.Proxy
 
 private enum class SettingsTab(val label: String, val icon: ImageVector) {
+    ACCOUNT   ("Cuenta",       Icons.Rounded.AccountCircle),
     PLAYBACK  ("Reproducción", Icons.Rounded.PlayCircle),
     APPEARANCE("Apariencia",   Icons.Rounded.Palette),
     LYRICS    ("Letras",       Icons.Rounded.Lyrics),
@@ -42,9 +45,11 @@ private enum class SettingsTab(val label: String, val icon: ImageVector) {
     NETWORK   ("Red",          Icons.Rounded.Wifi),
 }
 
-
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onNavigateToLogin: () -> Unit = {},
+) {
     var activeTab by remember { mutableStateOf(SettingsTab.PLAYBACK) }
 
     Column(
@@ -114,6 +119,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 contentPadding = PaddingValues(top = 8.dp, bottom = 160.dp),
             ) {
                 when (tab) {
+                    SettingsTab.ACCOUNT    -> accountItems(onNavigateToLogin)
                     SettingsTab.PLAYBACK   -> playbackItems()
                     SettingsTab.APPEARANCE -> appearanceItems()
                     SettingsTab.LYRICS     -> lyricsItems()
@@ -126,6 +132,163 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 }
+
+private fun androidx.compose.foundation.lazy.LazyListScope.accountItems(
+    onNavigateToLogin: () -> Unit,
+) {
+    item {
+        AccountSection(onNavigateToLogin = onNavigateToLogin)
+    }
+}
+
+@Composable
+private fun AccountSection(
+    onNavigateToLogin: () -> Unit,
+    viewModel: AccountSettingsViewModel = hiltViewModel(),
+) {
+    val accountName by rememberPreference(AccountNameKey, "")
+    val accountEmail by rememberPreference(AccountEmailKey, "")
+    val accountHandle by rememberPreference(AccountChannelHandleKey, "")
+    val cookie by rememberPreference(InnerTubeCookieKey, "")
+    val isLoggedIn = cookie.isNotEmpty() && "SAPISID" in cookie
+
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    SettingGroup("YouTube Music") {
+        if (isLoggedIn) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AccountCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = accountName.ifEmpty { "Cuenta de Google" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    if (accountEmail.isNotEmpty()) {
+                        Text(
+                            text = accountEmail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (accountHandle.isNotEmpty()) {
+                        Text(
+                            text = accountHandle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            )
+            PrefSwitch(
+                icon = Icons.Rounded.Sync,
+                title = "Sincronizar biblioteca con YTM",
+                subtitle = "Importa tus likes, álbumes y playlists de YouTube Music",
+                key = YtmSyncKey,
+                default = true,
+            )
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showLogoutDialog = true }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Logout,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = "Cerrar sesión",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "Iniciá sesión para acceder a tu biblioteca personal de YouTube Music, incluyendo likes, álbumes guardados y playlists.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = onNavigateToLogin,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AccountCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Iniciar sesión con Google")
+                }
+            }
+        }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Cerrar sesión") },
+            text = { Text("¿Qué querés hacer con la música sincronizada de tu biblioteca?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.logoutAndClearSyncedContent {}
+                    showLogoutDialog = false
+                }) {
+                    Text("Cerrar sesión y borrar datos", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    viewModel.logoutKeepData {}
+                    showLogoutDialog = false
+                }) {
+                    Text("Cerrar sesión, conservar datos")
+                }
+            },
+        )
+    }
+}
+
 private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
     item {
         SettingGroup("General") {
@@ -265,7 +428,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
         }
     }
     item {
-        SettingGroup("EchoBrain IA") {
+        SettingGroup("FridaMusic IA") {
             PrefSwitch(Icons.Rounded.AutoAwesome, "Habilitar EchoBrain",
                 "Activa el asistente de IA para recomendaciones y análisis", EchoBrainEnabledKey, false)
         }
@@ -297,7 +460,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.networkItems() {
     }
 }
 
-
 @Composable
 private fun SettingGroup(
     title: String,
@@ -321,7 +483,6 @@ private fun SettingGroup(
         content()
     }
 }
-
 
 @Composable
 private fun PrefSwitch(
@@ -358,8 +519,6 @@ private inline fun <reified E : Enum<E>> PrefDropdownEnum(
     var value by rememberEnumPreference<E>(prefKey, default)
     SettingDropdown(icon, title, options, value.name) { value = enumValueOf(it) }
 }
-
-
 
 @Composable
 private fun LyricsProviderOrderSection() {
@@ -438,7 +597,6 @@ private fun LyricsProviderOrderSection() {
         }
     }
 }
-
 
 @Composable
 private fun LastFmSection() {
@@ -523,7 +681,6 @@ private fun ProxySettings() {
         }
     }
 }
-
 
 @Composable
 private fun SettingSwitch(

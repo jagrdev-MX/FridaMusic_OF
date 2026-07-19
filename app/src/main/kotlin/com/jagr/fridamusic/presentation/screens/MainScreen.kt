@@ -85,7 +85,18 @@ fun MainScreen(
                 )
             }
             composable("settings") {
-                SettingsScreen(onBack = { navController.popBackStack() })
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToLogin = { navController.navigate("login") },
+                )
+            }
+            composable("login") {
+                LoginScreen(
+                    onLoginSuccess = {
+                        navController.popBackStack("settings", inclusive = false)
+                    },
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable("now_playing") {
                 if (playerConnection != null) {

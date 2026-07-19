@@ -488,5 +488,11 @@
     <string name="listenbrainz_scrobbling_description">Automatically submit your listened tracks to ListenBrainz</string>
     <string name="export_directory_unavailable">Unable to access an export directory on this device. Please set one manually.</string>
     <string name="set_listenbrainz_token">Set ListenBrainz Token</string>
+    <string name="volver">Volver</string>
+    <string name="login_google">Iniciar sesión con Google</string>
+    <string name="verificando_cuenta">Verificando cuenta…</string>
+    <string name="reproducir">Reproducir</string>
+    <string name="aleatorio">Aleatorio</string>
+    <string name="acerca_album">Acerca del álbum</string>
 
 </resources>

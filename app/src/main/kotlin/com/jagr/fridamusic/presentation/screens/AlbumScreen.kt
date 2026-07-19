@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +32,7 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
+import com.jagr.fridamusic.R
 import com.music.innertube.models.AlbumItem
 
 @Composable
@@ -100,7 +102,7 @@ fun AlbumScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Volver",
+                            contentDescription = stringResource(R.string.volver),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -154,7 +156,7 @@ fun AlbumScreen(
                                 onClick = { songs.firstOrNull()?.let { onSongClick(it, songs) } },
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("Reproducir")
+                                Text(stringResource(R.string.reproducir))
                             }
                             OutlinedButton(
                                 onClick = {
@@ -168,7 +170,7 @@ fun AlbumScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Aleatorio")
+                                Text(stringResource(R.string.aleatorio))
                             }
                         }
                     }
@@ -236,7 +238,7 @@ fun AlbumScreen(
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
                     Text(
-                        text = "Acerca del álbum",
+                        text = stringResource(R.string.acerca_album),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
