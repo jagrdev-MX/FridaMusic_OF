@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.theme.EchoLavender
 import com.jagr.fridamusic.presentation.theme.FridaPurple
@@ -95,7 +97,7 @@ private fun LazyColumnHome(
 
         if (!quickPicks.isNullOrEmpty()) {
             item {
-                HomeSection(title = "Quick Picks", subtitle = "Basado en lo que ya escuchaste") {
+                HomeSection(title = stringResource(R.string.quick_picks), subtitle = stringResource(R.string.quick_picks_subtitle)) {
                     items(quickPicks, key = { it.song.id }) { song ->
                         SongCard(song = song, onClick = { onSongClick(song, quickPicks) })
                     }
@@ -143,14 +145,14 @@ private fun HomeHeader(onHistoryClick: () -> Unit, onSettingsClick: () -> Unit) 
             IconButton(onClick = onHistoryClick) {
                 Icon(
                     imageVector = Icons.Rounded.History,
-                    contentDescription = "Historial",
+                    contentDescription = stringResource(R.string.history),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             IconButton(onClick = onSettingsClick) {
                 Icon(
                     imageVector = Icons.Rounded.Settings,
-                    contentDescription = "Ajustes",
+                    contentDescription = stringResource(R.string.settings),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -166,11 +168,11 @@ private fun MoodChipsRow(
 ) {
     val displayChips = chips?.ifEmpty { null }
         ?: listOf(
-            HomePage.Chip("Para ti", null, null),
-            HomePage.Chip("Enfoque", null, null),
-            HomePage.Chip("Fiesta", null, null),
-            HomePage.Chip("Relax", null, null),
-            HomePage.Chip("Entrenar", null, null),
+            HomePage.Chip(stringResource(R.string.mood_para_ti), null, null),
+            HomePage.Chip(stringResource(R.string.mood_enfoque), null, null),
+            HomePage.Chip(stringResource(R.string.mood_fiesta), null, null),
+            HomePage.Chip(stringResource(R.string.mood_relax), null, null),
+            HomePage.Chip(stringResource(R.string.mood_entrenar), null, null),
         )
 
     LazyRow(
@@ -253,9 +255,9 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
 private fun YTItemCard(item: YTItem, onClick: () -> Unit) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
-        is AlbumItem -> item.artists?.joinToString(", ") { it.name } ?: "Álbum"
-        is PlaylistItem -> item.author?.name ?: "Playlist"
-        is ArtistItem -> "Artista"
+        is AlbumItem -> item.artists?.joinToString(", ") { it.name } ?: stringResource(R.string.albums)
+        is PlaylistItem -> item.author?.name ?: stringResource(R.string.playlists)
+        is ArtistItem -> stringResource(R.string.artists)
         else -> null
     }
     val isRound = item is ArtistItem
@@ -322,7 +324,7 @@ private fun HomeLoadingState() {
     ) {
         CircularProgressIndicator(color = EchoLavender)
         Text(
-            text = "Preparando tu música…",
+            text = stringResource(R.string.preparing_music),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -345,13 +347,13 @@ private fun HomeEmptyState() {
                 .background(Brush.linearGradient(listOf(FridaPurple.copy(alpha = 0.3f), EchoLavender.copy(alpha = 0.3f))))
         )
         Text(
-            text = "Todavía no hay nada para mostrar",
+            text = stringResource(R.string.home_empty_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "Busca y reproduce algunas canciones para que aparezcan tus recomendaciones acá.",
+            text = stringResource(R.string.home_empty_desc),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,

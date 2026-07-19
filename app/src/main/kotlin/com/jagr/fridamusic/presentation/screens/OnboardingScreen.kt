@@ -74,6 +74,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.AudioNormalizationKey
 import com.jagr.fridamusic.constants.AudioOffload
 import com.jagr.fridamusic.constants.AudioQuality
@@ -135,7 +137,7 @@ fun OnboardingScreen(
                     IconButton(onClick = viewModel::back) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Atrás",
+                            contentDescription = stringResource(R.string.onboarding_back),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -209,7 +211,7 @@ fun OnboardingScreen(
                     modifier = Modifier.height(52.dp),
                 ) {
                     Text(
-                        text = if (isLast) "Empezar" else "Continuar",
+                        text = if (isLast) stringResource(R.string.onboarding_start) else stringResource(R.string.onboarding_continue),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                     )
@@ -250,7 +252,7 @@ private fun WelcomeStep() {
         }
         Spacer(modifier = Modifier.height(36.dp))
         Text(
-            text = "FridaMusic",
+            text = stringResource(R.string.onboarding_welcome_title),
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -258,7 +260,7 @@ private fun WelcomeStep() {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "Tu música. Sin anuncios.\nSin límites.",
+            text = stringResource(R.string.onboarding_welcome_subtitle),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -287,7 +289,7 @@ private fun WelcomeStep() {
 
         PermissionTile(
             icon = Icons.Rounded.LibraryMusic,
-            label = "Acceder a tu música local",
+            label = stringResource(R.string.perm_audio_label),
             granted = hasAudio.value,
             onRequest = {
                 audioLauncher.launch(
@@ -301,7 +303,7 @@ private fun WelcomeStep() {
         Spacer(modifier = Modifier.height(12.dp))
         PermissionTile(
             icon = Icons.Rounded.Notifications,
-            label = "Notificaciones del reproductor",
+            label = stringResource(R.string.perm_notif_label),
             granted = hasNotif.value,
             onRequest = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -327,11 +329,11 @@ private fun QualityStep() {
     ) {
         StepTitle(
             icon = Icons.Rounded.HighQuality,
-            title = "Calidad de audio",
-            subtitle = "Podés cambiarlo en cualquier momento desde Ajustes.",
+            title = stringResource(R.string.onboarding_quality_title),
+            subtitle = stringResource(R.string.onboarding_quality_subtitle),
         )
 
-        SetupSectionLabel("Calidad de streaming")
+        SetupSectionLabel(stringResource(R.string.streaming_quality))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AudioQuality.values().forEach { q ->
                 QualityPill(
@@ -344,7 +346,7 @@ private fun QualityStep() {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        SetupSectionLabel("Calidad de descarga")
+        SetupSectionLabel(stringResource(R.string.download_quality))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DownloadQuality.values().forEach { q ->
                 QualityPill(
@@ -357,25 +359,25 @@ private fun QualityStep() {
         }
 
         Spacer(modifier = Modifier.height(20.dp))
-        SetupSectionLabel("Extras")
+        SetupSectionLabel(stringResource(R.string.onboarding_extras_label))
         SetupToggle(
             icon = Icons.Rounded.GraphicEq,
-            title = "Normalización de volumen",
-            subtitle = "Iguala el volumen entre canciones",
+            title = stringResource(R.string.audio_normalization),
+            subtitle = stringResource(R.string.audio_normalization_desc),
             checked = audioNorm,
             onCheckedChange = { audioNorm = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Tune,
-            title = "Omitir silencios",
-            subtitle = "Salta partes silenciosas automáticamente",
+            title = stringResource(R.string.skip_silence),
+            subtitle = stringResource(R.string.skip_silence_desc),
             checked = skipSilence,
             onCheckedChange = { skipSilence = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Settings,
-            title = "Audio offload",
-            subtitle = "Ahorra batería delegando la reproducción al hardware",
+            title = stringResource(R.string.audio_offload),
+            subtitle = stringResource(R.string.audio_offload_desc),
             checked = audioOffload,
             onCheckedChange = { audioOffload = it },
         )
@@ -391,27 +393,27 @@ private fun PrivacyStep() {
     Column(modifier = Modifier.fillMaxSize()) {
         StepTitle(
             icon = Icons.Rounded.Lock,
-            title = "Privacidad y contenido",
-            subtitle = "Todo bajo tu control.",
+            title = stringResource(R.string.onboarding_privacy_title),
+            subtitle = stringResource(R.string.onboarding_privacy_subtitle),
         )
         SetupToggle(
             icon = Icons.Rounded.History,
-            title = "Pausar historial de escucha",
-            subtitle = "No registra qué canciones reproducís",
+            title = stringResource(R.string.pause_listen_history),
+            subtitle = stringResource(R.string.pause_listen_history_desc),
             checked = pauseHistory,
             onCheckedChange = { pauseHistory = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Search,
-            title = "Pausar historial de búsqueda",
-            subtitle = "No guarda tus búsquedas",
+            title = stringResource(R.string.pause_search_history),
+            subtitle = stringResource(R.string.pause_search_history_desc),
             checked = pauseSearch,
             onCheckedChange = { pauseSearch = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Block,
-            title = "Ocultar contenido explícito",
-            subtitle = "Filtra canciones marcadas como explícitas",
+            title = stringResource(R.string.hide_explicit),
+            subtitle = stringResource(R.string.hide_explicit_desc),
             checked = hideExplicit,
             onCheckedChange = { hideExplicit = it },
         )
@@ -428,34 +430,34 @@ private fun ServicesStep() {
     Column(modifier = Modifier.fillMaxSize()) {
         StepTitle(
             icon = Icons.Rounded.Settings,
-            title = "Servicios externos",
-            subtitle = "Desactivados por defecto. Activá lo que quieras ahora o desde Ajustes.",
+            title = stringResource(R.string.onboarding_services_title),
+            subtitle = stringResource(R.string.onboarding_services_subtitle),
         )
         SetupToggle(
             icon = Icons.Rounded.MusicNote,
-            title = "Last.fm Scrobbling",
-            subtitle = "Registra tus escuchas en Last.fm",
+            title = stringResource(R.string.lastfm_scrobbling),
+            subtitle = stringResource(R.string.lastfm_scrobbling_desc),
             checked = lastFm,
             onCheckedChange = { lastFm = it },
         )
         SetupToggle(
             icon = Icons.Rounded.MusicNote,
-            title = "Discord Rich Presence",
-            subtitle = "Muestra la canción actual en tu perfil de Discord",
+            title = stringResource(R.string.discord_integration),
+            subtitle = stringResource(R.string.discord_rpc_desc),
             checked = discord,
             onCheckedChange = { discord = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Block,
-            title = "SponsorBlock",
-            subtitle = "Salta patrocinadores en videos de YouTube automáticamente",
+            title = stringResource(R.string.sponsorblock),
+            subtitle = stringResource(R.string.enable_sponsorblock_desc),
             checked = sponsorBlock,
             onCheckedChange = { sponsorBlock = it },
         )
         SetupToggle(
             icon = Icons.Rounded.GraphicEq,
-            title = "EchoBrain (IA)",
-            subtitle = "Habilita el asistente de IA para recomendaciones personalizadas",
+            title = stringResource(R.string.enable_echobrain),
+            subtitle = stringResource(R.string.enable_echobrain_desc),
             checked = echoBrain,
             onCheckedChange = { echoBrain = it },
         )
@@ -485,7 +487,7 @@ private fun DoneStep() {
         }
         Spacer(modifier = Modifier.height(36.dp))
         Text(
-            text = "¡Todo listo!",
+            text = stringResource(R.string.onboarding_done_title),
             style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -493,7 +495,7 @@ private fun DoneStep() {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "FridaMusic está configurado.\nPodés cambiar cualquier ajuste\nen cualquier momento.",
+            text = stringResource(R.string.onboarding_done_subtitle),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -598,12 +600,12 @@ private fun PermissionTile(
             if (granted) {
                 Icon(
                     imageVector = Icons.Rounded.CheckCircle,
-                    contentDescription = "Concedido",
+                    contentDescription = stringResource(R.string.granted),
                     tint = EchoLavender,
                     modifier = Modifier.size(24.dp),
                 )
             } else {
-                FilledTonalButton(onClick = onRequest) { Text("Conceder") }
+                FilledTonalButton(onClick = onRequest) { Text(stringResource(R.string.grant)) }
             }
         }
     }

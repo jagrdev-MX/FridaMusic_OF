@@ -41,7 +41,7 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
 
-    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings"
+    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login"
 
     Box(modifier = Modifier.fillMaxSize()) {
 

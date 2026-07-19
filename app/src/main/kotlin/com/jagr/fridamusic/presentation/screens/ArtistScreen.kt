@@ -28,6 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
@@ -111,7 +113,7 @@ fun ArtistScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Volver",
+                            contentDescription = stringResource(R.string.volver),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -158,7 +160,7 @@ fun ArtistScreen(
                                 onClick = { playerConnection?.playYTItem(remoteSongs.first()) },
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("Reproducir")
+                                Text(stringResource(R.string.reproducir))
                             }
                             OutlinedButton(
                                 onClick = {
@@ -173,7 +175,7 @@ fun ArtistScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Aleatorio")
+                                Text(stringResource(R.string.aleatorio))
                             }
                         }
                     }
@@ -247,7 +249,7 @@ fun ArtistScreen(
             if (description != null) {
                 item {
                     Text(
-                        text = "Acerca del artista",
+                        text = stringResource(R.string.about_artist),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -266,7 +268,7 @@ fun ArtistScreen(
             if (remoteSections.isEmpty() && libraryAlbums.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Álbumes",
+                        text = stringResource(R.string.albums),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -310,7 +312,7 @@ fun ArtistScreen(
             if (remoteSections.isEmpty() && librarySongs.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Canciones en biblioteca",
+                        text = stringResource(R.string.library_songs),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,

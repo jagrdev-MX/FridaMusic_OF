@@ -28,6 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.playYTItem
@@ -54,7 +57,7 @@ fun LocalPlaylistScreen(
 
     PlaylistScaffold(
         title = title,
-        artistLine = "${songs.size} canciones",
+        artistLine = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
         thumbnailUrl = thumbnailUrl,
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { onSongClick(it, songs) } },
@@ -141,7 +144,7 @@ fun OnlinePlaylistScreen(
         if (relatedItems.isNotEmpty()) {
             item {
                 Text(
-                    text = "Relacionado",
+                    text = stringResource(R.string.related),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -218,7 +221,7 @@ private fun PlaylistScaffold(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Volver",
+                            contentDescription = stringResource(R.string.volver),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -275,12 +278,12 @@ private fun PlaylistScaffold(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
-                            Text("Reproducir")
+                            Text(stringResource(R.string.reproducir))
                         }
                         OutlinedButton(onClick = onShuffle, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Aleatorio")
+                            Text(stringResource(R.string.aleatorio))
                         }
                     }
                 }
@@ -304,11 +307,11 @@ private fun PlaylistScaffold(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
-                            text = "No se pudo cargar la playlist",
+                            text = stringResource(R.string.error_loading_playlist),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        OutlinedButton(onClick = onRetry) { Text("Reintentar") }
+                        OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                     }
                 }
                 return@LazyColumn

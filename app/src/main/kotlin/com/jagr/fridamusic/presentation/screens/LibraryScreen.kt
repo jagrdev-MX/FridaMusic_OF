@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.SongFilter
 import com.jagr.fridamusic.constants.SongFilterKey
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -39,11 +41,11 @@ import com.jagr.fridamusic.viewmodels.LibraryPlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
 import kotlinx.coroutines.launch
 
-private enum class LibraryTab(val label: String) {
-    PLAYLISTS("Playlists"),
-    SONGS("Songs"),
-    ALBUMS("Albums"),
-    ARTISTS("Artists"),
+private enum class LibraryTab(val labelRes: Int) {
+    PLAYLISTS(R.string.playlists),
+    SONGS(R.string.songs),
+    ALBUMS(R.string.albums),
+    ARTISTS(R.string.artists),
 }
 
 @Composable
@@ -62,7 +64,7 @@ fun LibraryScreen(
             .statusBarsPadding(),
     ) {
         Text(
-            text = "Library",
+            text = stringResource(R.string.filter_library),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -101,7 +103,7 @@ fun LibraryScreen(
                 Tab(
                     selected = selectedTab == tab,
                     onClick = { selectedTab = tab },
-                    text = { Text(tab.label) },
+                    text = { Text(stringResource(tab.labelRes)) },
                 )
             }
         }
@@ -127,9 +129,9 @@ private fun QuickAccessRow(
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        QuickAccessChip(Icons.Rounded.Favorite, "Liked", Modifier.weight(1f), onLikedClick)
-        QuickAccessChip(Icons.Rounded.CloudDownload, "Downloaded", Modifier.weight(1f), onDownloadedClick)
-        QuickAccessChip(Icons.Rounded.TrendingUp, "Library", Modifier.weight(1f), onLibraryClick)
+        QuickAccessChip(Icons.Rounded.Favorite, stringResource(R.string.filter_liked), Modifier.weight(1f), onLikedClick)
+        QuickAccessChip(Icons.Rounded.CloudDownload, stringResource(R.string.filter_downloaded), Modifier.weight(1f), onDownloadedClick)
+        QuickAccessChip(Icons.Rounded.TrendingUp, stringResource(R.string.filter_library), Modifier.weight(1f), onLibraryClick)
     }
 }
 
@@ -171,7 +173,7 @@ private fun LibrarySongsTab(
     val songs by viewModel.allSongs.collectAsState()
 
     if (songs.isEmpty()) {
-        EmptyLibraryState("No hay canciones acá todavía")
+        EmptyLibraryState(stringResource(R.string.library_song_empty))
         return
     }
 
@@ -223,7 +225,7 @@ private fun LibraryPlaylistsTab(
 ) {
     val playlists by viewModel.allPlaylists.collectAsState()
     if (playlists.isEmpty()) {
-        EmptyLibraryState("No tenés playlists todavía")
+        EmptyLibraryState(stringResource(R.string.library_playlist_empty))
         return
     }
     LocalItemGrid(items = playlists, onItemClick = onItemClick, round = false)
@@ -236,7 +238,7 @@ private fun LibraryAlbumsTab(
 ) {
     val albums by viewModel.allAlbums.collectAsState()
     if (albums.isEmpty()) {
-        EmptyLibraryState("No tenés álbumes guardados")
+        EmptyLibraryState(stringResource(R.string.library_album_empty))
         return
     }
     LocalItemGrid(items = albums, onItemClick = onItemClick, round = false)
@@ -249,7 +251,7 @@ private fun LibraryArtistsTab(
 ) {
     val artists by viewModel.allArtists.collectAsState()
     if (artists.isEmpty()) {
-        EmptyLibraryState("No seguís artistas todavía")
+        EmptyLibraryState(stringResource(R.string.library_artist_empty))
         return
     }
     LocalItemGrid(items = artists, onItemClick = onItemClick, round = true)

@@ -24,7 +24,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import coil3.compose.AsyncImage
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.utils.resize
 
@@ -82,14 +84,14 @@ fun MiniPlayer(
         IconButton(onClick = { playerConnection.togglePlayPause() }) {
             Icon(
                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                contentDescription = if (isPlaying) stringResource(R.string.pause) else stringResource(R.string.play),
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }
         IconButton(onClick = { playerConnection.seekToNext() }) {
             Icon(
                 imageVector = Icons.Rounded.SkipNext,
-                contentDescription = "Siguiente",
+                contentDescription = stringResource(R.string.next),
                 tint = MaterialTheme.colorScheme.onSurface,
             )
         }

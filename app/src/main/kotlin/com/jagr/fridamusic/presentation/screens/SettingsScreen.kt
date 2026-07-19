@@ -8,11 +8,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.ManageSearch
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
@@ -23,8 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jagr.fridamusic.constants.*
@@ -32,17 +37,18 @@ import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
 import com.jagr.fridamusic.viewmodels.AccountSettingsViewModel
+import com.jagr.fridamusic.R
 import java.net.Proxy
 
-private enum class SettingsTab(val label: String, val icon: ImageVector) {
-    ACCOUNT   ("Cuenta",       Icons.Rounded.AccountCircle),
-    PLAYBACK  ("Reproducción", Icons.Rounded.PlayCircle),
-    APPEARANCE("Apariencia",   Icons.Rounded.Palette),
-    LYRICS    ("Letras",       Icons.Rounded.Lyrics),
-    CONTENT   ("Contenido",    Icons.Rounded.FilterList),
-    SERVICES  ("Servicios",    Icons.Rounded.Sync),
-    PRIVACY   ("Privacidad",   Icons.Rounded.Lock),
-    NETWORK   ("Red",          Icons.Rounded.Wifi),
+private enum class SettingsTab(val labelRes: Int, val icon: ImageVector) {
+    ACCOUNT   (R.string.account,       Icons.Rounded.AccountCircle),
+    PLAYBACK  (R.string.playback,      Icons.Rounded.PlayCircle),
+    APPEARANCE(R.string.appearance,    Icons.Rounded.Palette),
+    LYRICS    (R.string.lyrics,        Icons.Rounded.Lyrics),
+    CONTENT   (R.string.content,       Icons.Rounded.FilterList),
+    SERVICES  (R.string.services,      Icons.Rounded.Sync),
+    PRIVACY   (R.string.privacy,       Icons.Rounded.Lock),
+    NETWORK   (R.string.network,       Icons.Rounded.Wifi),
 }
 
 @Composable
@@ -50,7 +56,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit = {},
 ) {
-    var activeTab by remember { mutableStateOf(SettingsTab.PLAYBACK) }
+    var activeTab by remember { mutableStateOf(SettingsTab.ACCOUNT) }
 
     Column(
         modifier = Modifier
@@ -67,19 +73,19 @@ fun SettingsScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Volver",
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
             Text(
-                text = "Ajustes",
+                text = stringResource(R.string.settings),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
         }
 
-        ScrollableTabRow(
+        PrimaryScrollableTabRow(
             selectedTabIndex = activeTab.ordinal,
             edgePadding = 16.dp,
             containerColor = MaterialTheme.colorScheme.background,
@@ -92,7 +98,7 @@ fun SettingsScreen(
                     onClick = { activeTab = tab },
                     text = {
                         Text(
-                            text = tab.label,
+                            text = stringResource(tab.labelRes),
                             style = MaterialTheme.typography.labelLarge,
                         )
                     },
@@ -133,9 +139,7 @@ fun SettingsScreen(
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.accountItems(
-    onNavigateToLogin: () -> Unit,
-) {
+private fun LazyListScope.accountItems(onNavigateToLogin: () -> Unit) {
     item {
         AccountSection(onNavigateToLogin = onNavigateToLogin)
     }
@@ -146,6 +150,7 @@ private fun AccountSection(
     onNavigateToLogin: () -> Unit,
     viewModel: AccountSettingsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val accountName by rememberPreference(AccountNameKey, "")
     val accountEmail by rememberPreference(AccountEmailKey, "")
     val accountHandle by rememberPreference(AccountChannelHandleKey, "")
@@ -154,7 +159,7 @@ private fun AccountSection(
 
     var showLogoutDialog by remember { mutableStateOf(false) }
 
-    SettingGroup("YouTube Music") {
+    SettingGroup(stringResource(R.string.group_yt_music)) {
         if (isLoggedIn) {
             Row(
                 modifier = Modifier
@@ -179,7 +184,7 @@ private fun AccountSection(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = accountName.ifEmpty { "Cuenta de Google" },
+                        text = accountName.ifEmpty { stringResource(R.string.google_account) },
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -206,8 +211,8 @@ private fun AccountSection(
             )
             PrefSwitch(
                 icon = Icons.Rounded.Sync,
-                title = "Sincronizar biblioteca con YTM",
-                subtitle = "Importa tus likes, álbumes y playlists de YouTube Music",
+                title = stringResource(R.string.sync_ytm),
+                subtitle = stringResource(R.string.import_yt_info),
                 key = YtmSyncKey,
                 default = true,
             )
@@ -224,13 +229,13 @@ private fun AccountSection(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Logout,
+                    imageVector = Icons.AutoMirrored.Rounded.Logout,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(22.dp),
                 )
                 Text(
-                    text = "Cerrar sesión",
+                    text = stringResource(R.string.action_logout),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -243,7 +248,7 @@ private fun AccountSection(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "Iniciá sesión para acceder a tu biblioteca personal de YouTube Music, incluyendo likes, álbumes guardados y playlists.",
+                    text = stringResource(R.string.iniciar_sesion),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -258,7 +263,7 @@ private fun AccountSection(
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Iniciar sesión con Google")
+                    Text(stringResource(R.string.login_google))
                 }
             }
         }
@@ -267,77 +272,77 @@ private fun AccountSection(
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
-            title = { Text("Cerrar sesión") },
-            text = { Text("¿Qué querés hacer con la música sincronizada de tu biblioteca?") },
+            title = { Text(stringResource(R.string.action_logout)) },
+            text = { Text(stringResource(R.string.sync_action)) },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.logoutAndClearSyncedContent {}
+                    viewModel.logoutAndClearSyncedContent(context) {}
                     showLogoutDialog = false
                 }) {
-                    Text("Cerrar sesión y borrar datos", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.logout_clear_data), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    viewModel.logoutKeepData {}
+                    viewModel.logoutKeepData(context) {}
                     showLogoutDialog = false
                 }) {
-                    Text("Cerrar sesión, conservar datos")
+                    Text(stringResource(R.string.logout_keep_data))
                 }
             },
         )
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
+private fun LazyListScope.playbackItems() {
     item {
-        SettingGroup("General") {
-            PrefSwitch(Icons.AutoMirrored.Rounded.QueueMusic, "Cola persistente",
-                "Recuerda la cola al cerrar la app", PersistentQueueKey, true)
-            PrefSwitch(Icons.Rounded.SkipNext, "Saltar si hay error",
-                "Pasa a la siguiente canción si no puede reproducir", AutoSkipNextOnErrorKey, false)
-            PrefSwitch(Icons.Rounded.FastForward, "Precargar siguiente canción",
-                "Descarga en caché la siguiente canción antes de que empiece", PreloadNextSongEnabledKey, true)
-            PrefSwitch(Icons.Rounded.WbSunny, "Mantener pantalla activa",
-                "Evita que la pantalla se apague mientras suena música", KeepScreenOn, false)
-            PrefSwitch(Icons.Rounded.Stop, "Detener al cerrar la app",
-                "Para la música al limpiar la app del reciente", StopMusicOnTaskClearKey, false)
+        SettingGroup(stringResource(R.string.group_general)) {
+            PrefSwitch(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.persistent_queue),
+                stringResource(R.string.persistent_queue_desc), PersistentQueueKey, true)
+            PrefSwitch(Icons.Rounded.SkipNext, stringResource(R.string.auto_skip_next_on_error),
+                stringResource(R.string.auto_skip_next_on_error_desc), AutoSkipNextOnErrorKey, false)
+            PrefSwitch(Icons.Rounded.FastForward, stringResource(R.string.preload_next_song),
+                stringResource(R.string.preload_next_song_desc), PreloadNextSongEnabledKey, true)
+            PrefSwitch(Icons.Rounded.WbSunny, stringResource(R.string.keep_screen_on),
+                stringResource(R.string.keep_screen_on_desc), KeepScreenOn, false)
+            PrefSwitch(Icons.Rounded.Stop, stringResource(R.string.stop_music_on_task_clear),
+                stringResource(R.string.stop_music_on_task_clear_desc), StopMusicOnTaskClearKey, false)
         }
     }
     item {
-        SettingGroup("Audio") {
-            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, "Omitir silencios",
-                "Salta partes silenciosas automáticamente", SkipSilenceKey, false)
-            PrefSwitch(Icons.Rounded.Equalizer, "Normalización de volumen",
-                "Iguala el volumen entre canciones", AudioNormalizationKey, true)
-            PrefSwitch(Icons.Rounded.Tune, "Crossfade entre canciones",
-                "Transición suave al cambiar de canción", CrossfadeEnabledKey, false)
-            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, "Pausar al silenciar",
-                "Pausa la música cuando el volumen llega a 0", PauseOnMute, false)
-            PrefSwitch(Icons.Rounded.BatteryChargingFull, "Audio offload",
-                "Ahorra batería delegando la reproducción al hardware", AudioOffload, false)
+        SettingGroup(stringResource(R.string.group_audio)) {
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.skip_silence),
+                stringResource(R.string.skip_silence_desc), SkipSilenceKey, false)
+            PrefSwitch(Icons.Rounded.Equalizer, stringResource(R.string.audio_normalization),
+                stringResource(R.string.audio_normalization_desc), AudioNormalizationKey, true)
+            PrefSwitch(Icons.Rounded.Tune, stringResource(R.string.crossfade),
+                stringResource(R.string.crossfade_desc), CrossfadeEnabledKey, false)
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.pause_music_when_media_is_muted),
+                stringResource(R.string.pause_on_mute_desc), PauseOnMute, false)
+            PrefSwitch(Icons.Rounded.BatteryChargingFull, stringResource(R.string.audio_offload),
+                stringResource(R.string.audio_offload_desc), AudioOffload, false)
         }
     }
     item {
-        SettingGroup("Calidad") {
+        SettingGroup(stringResource(R.string.group_quality)) {
             PrefDropdownEnum<AudioQuality>(
                 icon = Icons.Rounded.GraphicEq,
-                title = "Calidad de streaming",
+                title = stringResource(R.string.streaming_quality),
                 options = listOf(
-                    AudioQuality.OPUS.name    to "Opus (recomendado)",
-                    AudioQuality.SAAVN.name   to "Saavn",
-                    AudioQuality.LOSSLESS.name to "Sin pérdida",
+                    AudioQuality.OPUS.name to stringResource(R.string.opus_recommended),
+                    AudioQuality.SAAVN.name to stringResource(R.string.saavn),
+                    AudioQuality.LOSSLESS.name to stringResource(R.string.lossless),
                 ),
                 prefKey = AudioQualityKey,
                 default = AudioQuality.OPUS,
             )
             PrefDropdownEnum<DownloadQuality>(
                 icon = Icons.Rounded.Download,
-                title = "Calidad de descarga",
+                title = stringResource(R.string.download_quality),
                 options = listOf(
-                    DownloadQuality.YOUTUBE.name  to "YouTube",
-                    DownloadQuality.SAAVN.name    to "Saavn",
-                    DownloadQuality.LOSSLESS.name to "Sin pérdida",
+                    DownloadQuality.YOUTUBE.name to stringResource(R.string.youtube),
+                    DownloadQuality.SAAVN.name to stringResource(R.string.saavn),
+                    DownloadQuality.LOSSLESS.name to stringResource(R.string.lossless),
                 ),
                 prefKey = DownloadQualityKey,
                 default = DownloadQuality.YOUTUBE,
@@ -346,115 +351,251 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.appearanceItems() {
+private fun LazyListScope.appearanceItems() {
     item {
-        SettingGroup("Tema") {
+        SettingGroup(stringResource(R.string.group_theme)) {
             PrefDropdownString(
                 icon = Icons.Rounded.DarkMode,
-                title = "Modo de color",
+                title = stringResource(R.string.color_mode),
                 options = listOf(
-                    "SYSTEM_DEFAULT" to "Según el sistema",
-                    "ON"             to "Oscuro",
-                    "OFF"            to "Claro",
+                    SYSTEM_DEFAULT to stringResource(R.string.system_default),
+                    "ON" to stringResource(R.string.dark),
+                    "OFF" to stringResource(R.string.light),
                 ),
                 prefKey = DarkModeKey,
-                default = "SYSTEM_DEFAULT",
+                default = SYSTEM_DEFAULT,
             )
-            PrefSwitch(Icons.Rounded.AutoAwesome, "Colores dinámicos",
-                "Adapta los colores al artwork de la canción (Material You)", DynamicThemeKey, true)
-            PrefSwitch(Icons.Rounded.Contrast, "Negro puro (AMOLED)",
-                "Usa negro absoluto en el fondo para pantallas AMOLED", PureBlackKey, false)
+            PrefSwitch(Icons.Rounded.AutoAwesome, stringResource(R.string.dynamic_colors),
+                stringResource(R.string.dynamic_colors_desc), DynamicThemeKey, true)
+            PrefSwitch(Icons.Rounded.Contrast, stringResource(R.string.pure_black),
+                stringResource(R.string.pure_black_desc), PureBlackKey, false)
+        }
+    }
+    item {
+        SettingGroup(stringResource(R.string.group_language_region)) {
+            LanguageSection()
         }
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.lyricsItems() {
+@Composable
+private fun LanguageSection() {
+    var appLanguage by rememberPreference(AppLanguageKey, SYSTEM_DEFAULT)
+    var contentLanguage by rememberPreference(ContentLanguageKey, SYSTEM_DEFAULT)
+    var contentCountry by rememberPreference(ContentCountryKey, SYSTEM_DEFAULT)
+
+    val languageOptions = listOf(SYSTEM_DEFAULT to stringResource(R.string.system_default)) +
+            LanguageCodeToName.entries.map { it.key to it.value }
+
+    val countryOptions = listOf(SYSTEM_DEFAULT to stringResource(R.string.system_default)) +
+            CountryCodeToName.entries.map { it.key to it.value }
+
+    SettingDropdown(
+        icon = Icons.Rounded.Translate,
+        title = stringResource(R.string.app_language),
+        options = languageOptions,
+        selectedKey = appLanguage,
+        onSelect = { appLanguage = it },
+    )
+    SettingDropdown(
+        icon = Icons.Rounded.Language,
+        title = stringResource(R.string.language_content),
+        options = languageOptions,
+        selectedKey = contentLanguage,
+        onSelect = { contentLanguage = it },
+    )
+    SettingDropdown(
+        icon = Icons.Rounded.Public,
+        title = stringResource(R.string.region_content),
+        options = countryOptions,
+        selectedKey = contentCountry,
+        onSelect = { contentCountry = it },
+    )
+    Text(
+        text = stringResource(R.string.restart_apply_changes),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+private fun LazyListScope.lyricsItems() {
     item {
-        SettingGroup("General") {
-            PrefSwitch(Icons.Rounded.Lyrics, "Buscar letras automáticamente",
-                "Descarga letras al reproducir una canción", ShowLyricsKey, false)
-            PrefSwitch(Icons.Rounded.Cached, "Precargar letras",
-                "Descarga las letras antes de que empiece la canción", PreloadLyricsEnabledKey, true)
+        SettingGroup(stringResource(R.string.group_general)) {
+            PrefSwitch(Icons.Rounded.Lyrics, stringResource(R.string.auto_lyrics),
+                stringResource(R.string.auto_lyrics_desc), ShowLyricsKey, false)
+            PrefSwitch(Icons.Rounded.Cached, stringResource(R.string.preload_lyrics),
+                stringResource(R.string.preload_lyrics_desc), PreloadLyricsEnabledKey, true)
         }
     }
     item {
-        SettingGroup("Proveedores") {
+        SettingGroup(stringResource(R.string.lyrics_providers_label)) {
             LyricsProviderOrderSection()
         }
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.contentItems() {
+private fun LazyListScope.contentItems() {
     item {
-        SettingGroup("Filtros") {
-            PrefSwitch(Icons.Rounded.Block, "Ocultar contenido explícito",
-                "Filtra canciones marcadas como explícitas", HideExplicitKey, false)
-            PrefSwitch(Icons.Rounded.VideocamOff, "Ocultar canciones de video",
-                "Filtra canciones provenientes de videos de YouTube", HideVideoSongsKey, false)
-            PrefSwitch(Icons.Rounded.VideoLibrary, "Ocultar YouTube Shorts",
-                "No incluye Shorts en los resultados", HideYoutubeShortsKey, false)
+        SettingGroup(stringResource(R.string.filters)) {
+            PrefSwitch(Icons.Rounded.Block, stringResource(R.string.hide_explicit),
+                stringResource(R.string.hide_explicit_desc), HideExplicitKey, false)
+            PrefSwitch(Icons.Rounded.VideocamOff, stringResource(R.string.hide_video_songs),
+                stringResource(R.string.hide_video_songs_desc), HideVideoSongsKey, false)
+            PrefSwitch(Icons.Rounded.VideoLibrary, stringResource(R.string.hide_youtube_shorts),
+                stringResource(R.string.hide_youtube_shorts_desc), HideYoutubeShortsKey, false)
         }
     }
     item {
-        SettingGroup("SponsorBlock") {
-            PrefSwitch(Icons.Rounded.Block, "Activar SponsorBlock",
-                "Salta segmentos de patrocinadores automáticamente", SponsorBlockEnabledKey, false)
+        SettingGroup(stringResource(R.string.sponsorblock)) {
+            PrefSwitch(Icons.Rounded.Block, stringResource(R.string.enable_sponsorblock),
+                stringResource(R.string.enable_sponsorblock_desc), SponsorBlockEnabledKey, false)
         }
     }
     item {
-        SettingGroup("Descargas") {
-            PrefSwitch(Icons.Rounded.FavoriteBorder, "Descargar al dar like",
-                "Descarga automáticamente la canción cuando la agregas a favoritos",
+        SettingGroup(stringResource(R.string.downloads)) {
+            PrefSwitch(Icons.Rounded.FavoriteBorder, stringResource(R.string.auto_download_on_like),
+                stringResource(R.string.download_on_like_desc),
                 AutoDownloadOnLikeKey, false)
+        }
+    }
+    item {
+        SettingGroup(stringResource(R.string.cache_storage)) {
+            CacheSection()
         }
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
+@Composable
+private fun CacheSection() {
+    var imageCacheSize by rememberPreference(MaxImageCacheSizeKey, 512)
+    var songCacheSize by rememberPreference(MaxSongCacheSizeKey, 1024)
+
+    val imageSizeLabel = "${imageCacheSize} MB"
+    val songSizeLabel = if (songCacheSize == -1) stringResource(R.string.unlimited) else "${songCacheSize} MB"
+
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = stringResource(R.string.cache_images),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = imageSizeLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Slider(
+            value = imageCacheSize.toFloat(),
+            onValueChange = { imageCacheSize = it.toInt() },
+            valueRange = 128f..2048f,
+            steps = 14,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("128 MB", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("2048 MB", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = stringResource(R.string.cache_songs),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Text(
+            text = songSizeLabel,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Slider(
+            value = if (songCacheSize == -1) 5120f else songCacheSize.toFloat(),
+            onValueChange = { value ->
+                songCacheSize = if (value >= 5120f) -1 else value.toInt()
+            },
+            valueRange = 256f..5120f,
+            steps = 18,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("256 MB", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.unlimited), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        PrefSwitch(
+            icon = Icons.Rounded.PlaylistAddCheck,
+            title = stringResource(R.string.show_cached_playlists),
+            subtitle = stringResource(R.string.show_cached_playlists_desc),
+            key = ShowCachedPlaylistKey,
+            default = true,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.cache_apply_changes),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+private fun LazyListScope.servicesItems() {
     item {
-        SettingGroup("Last.fm") {
+        SettingGroup(stringResource(R.string.group_lastfm)) {
             LastFmSection()
         }
     }
     item {
-        SettingGroup("ListenBrainz") {
+        SettingGroup(stringResource(R.string.group_listenbrainz)) {
             ListenBrainzSection()
         }
     }
     item {
-        SettingGroup("Discord") {
-            PrefSwitch(Icons.AutoMirrored.Rounded.Chat, "Discord Rich Presence",
-                "Muestra la canción actual en tu estado de Discord", EnableDiscordRPCKey, true)
+        SettingGroup(stringResource(R.string.group_discord)) {
+            PrefSwitch(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.discord_integration),
+                stringResource(R.string.discord_rpc_desc), EnableDiscordRPCKey, true)
         }
     }
     item {
-        SettingGroup("FridaMusic IA") {
-            PrefSwitch(Icons.Rounded.AutoAwesome, "Habilitar EchoBrain",
-                "Activa el asistente de IA para recomendaciones y análisis", EchoBrainEnabledKey, false)
-        }
-    }
-}
-
-private fun androidx.compose.foundation.lazy.LazyListScope.privacyItems() {
-    item {
-        SettingGroup("Historial") {
-            PrefSwitch(Icons.Rounded.History, "Pausar historial de escucha",
-                "No guarda canciones en el historial", PauseListenHistoryKey, false)
-            PrefSwitch(Icons.AutoMirrored.Rounded.ManageSearch, "Pausar historial de búsqueda",
-                "No guarda las búsquedas realizadas", PauseSearchHistoryKey, false)
-        }
-    }
-    item {
-        SettingGroup("Pantalla") {
-            PrefSwitch(Icons.Rounded.Monitor, "Bloquear capturas de pantalla",
-                "Impide hacer capturas dentro de la app", DisableScreenshotKey, false)
+        SettingGroup(stringResource(R.string.group_echobrain)) {
+            PrefSwitch(Icons.Rounded.AutoAwesome, stringResource(R.string.enable_echobrain),
+                stringResource(R.string.enable_echobrain_desc), EchoBrainEnabledKey, false)
         }
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.networkItems() {
+private fun LazyListScope.privacyItems() {
     item {
-        SettingGroup("Proxy") {
+        SettingGroup(stringResource(R.string.group_history)) {
+            PrefSwitch(Icons.Rounded.History, stringResource(R.string.pause_listen_history),
+                stringResource(R.string.pause_listen_history_desc), PauseListenHistoryKey, false)
+            PrefSwitch(Icons.AutoMirrored.Rounded.ManageSearch, stringResource(R.string.pause_search_history),
+                stringResource(R.string.pause_search_history_desc), PauseSearchHistoryKey, false)
+        }
+    }
+    item {
+        SettingGroup(stringResource(R.string.group_screen)) {
+            PrefSwitch(Icons.Rounded.Monitor, stringResource(R.string.block_screenshots),
+                stringResource(R.string.block_screenshots_desc), DisableScreenshotKey, false)
+        }
+    }
+}
+
+private fun LazyListScope.networkItems() {
+    item {
+        SettingGroup(stringResource(R.string.group_proxy)) {
             ProxySettings()
         }
     }
@@ -533,7 +674,7 @@ private fun LyricsProviderOrderSection() {
 
     Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
         Text(
-            text = "El primer proveedor que encuentre letra sincronizada gana. Toca ↑↓ para reordenar.",
+            text = stringResource(R.string.lyrics_order_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -571,26 +712,38 @@ private fun LyricsProviderOrderSection() {
                     IconButton(
                         onClick = {
                             val list = currentOrder.toMutableList()
-                            val tmp = list[index - 1]; list[index - 1] = list[index]; list[index] = tmp
+                            val tmp = list[index - 1]
+                            list[index - 1] = list[index]
+                            list[index] = tmp
                             orderString = list.joinToString(",")
                         },
                         modifier = Modifier.size(32.dp),
                     ) {
-                        Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Subir",
-                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Rounded.KeyboardArrowUp,
+                            contentDescription = stringResource(R.string.action_up),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 if (index < currentOrder.size - 1) {
                     IconButton(
                         onClick = {
                             val list = currentOrder.toMutableList()
-                            val tmp = list[index + 1]; list[index + 1] = list[index]; list[index] = tmp
+                            val tmp = list[index + 1]
+                            list[index + 1] = list[index]
+                            list[index] = tmp
                             orderString = list.joinToString(",")
                         },
                         modifier = Modifier.size(32.dp),
                     ) {
-                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Bajar",
-                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(
+                            Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.action_down),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -600,25 +753,25 @@ private fun LyricsProviderOrderSection() {
 
 @Composable
 private fun LastFmSection() {
-    var enabled  by rememberPreference(EnableLastFMScrobblingKey, false)
+    var enabled by rememberPreference(EnableLastFMScrobblingKey, false)
     var username by rememberPreference(LastFMUsernameKey, "")
     var nowPlaying by rememberPreference(LastFMUseNowPlaying, true)
-    var sendLikes  by rememberPreference(LastFMUseSendLikes, false)
+    var sendLikes by rememberPreference(LastFMUseSendLikes, false)
 
     SettingSwitch(
         icon = Icons.Rounded.Radio,
-        title = "Scrobbling en Last.fm",
-        subtitle = if (username.isNotEmpty()) "Conectado como $username" else "Registra las canciones que escuchas en Last.fm",
+        title = stringResource(R.string.lastfm_scrobbling),
+        subtitle = if (username.isNotEmpty()) stringResource(R.string.lastfm_connected_as, username) else stringResource(R.string.lastfm_scrobbling_desc),
         checked = enabled,
         onCheckedChange = { enabled = it },
     )
     if (enabled) {
         Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
-            SettingTextField("Usuario", "Tu nombre de usuario en Last.fm", username) { username = it }
-            SettingSwitch(Icons.Rounded.Podcasts, "Now Playing",
-                "Muestra la canción actual como 'escuchando ahora'", nowPlaying) { nowPlaying = it }
-            SettingSwitch(Icons.Rounded.Favorite, "Sincronizar likes",
-                "Manda un ♥ en Last.fm cuando das like en FridaMusic", sendLikes) { sendLikes = it }
+            SettingTextField(stringResource(R.string.username), stringResource(R.string.lastfm_user_hint), username) { username = it }
+            SettingSwitch(Icons.Rounded.Podcasts, stringResource(R.string.now_playing),
+                stringResource(R.string.now_playing_desc), nowPlaying) { nowPlaying = it }
+            SettingSwitch(Icons.Rounded.Favorite, stringResource(R.string.sync_likes),
+                stringResource(R.string.sync_likes_desc), sendLikes) { sendLikes = it }
         }
     }
 }
@@ -626,20 +779,20 @@ private fun LastFmSection() {
 @Composable
 private fun ListenBrainzSection() {
     var enabled by rememberPreference(ListenBrainzEnabledKey, false)
-    var token   by rememberPreference(ListenBrainzTokenKey, "")
+    var token by rememberPreference(ListenBrainzTokenKey, "")
 
     SettingSwitch(
         icon = Icons.Rounded.MusicNote,
-        title = "ListenBrainz",
-        subtitle = if (token.isNotEmpty()) "Token configurado" else "Envía scrobbles a ListenBrainz",
+        title = stringResource(R.string.group_listenbrainz),
+        subtitle = if (token.isNotEmpty()) stringResource(R.string.token_configured) else stringResource(R.string.listenbrainz_desc),
         checked = enabled,
         onCheckedChange = { enabled = it },
     )
     if (enabled) {
         Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
-            SettingTextField("Token", "Pega tu token de ListenBrainz", token, isPassword = true) { token = it }
+            SettingTextField(stringResource(R.string.token), stringResource(R.string.token_hint), token, isPassword = true) { token = it }
             Text(
-                text = "Obtén tu token en listenbrainz.org/profile",
+                text = stringResource(R.string.get_token_at),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -648,36 +801,35 @@ private fun ListenBrainzSection() {
     }
 }
 
-
 @Composable
 private fun ProxySettings() {
-    var enabled  by rememberPreference(ProxyEnabledKey, false)
-    var url      by rememberPreference(ProxyUrlKey, "")
-    var type     by rememberEnumPreference<Proxy.Type>(ProxyTypeKey, Proxy.Type.HTTP)
+    var enabled by rememberPreference(ProxyEnabledKey, false)
+    var url by rememberPreference(ProxyUrlKey, "")
+    var type by rememberEnumPreference<Proxy.Type>(ProxyTypeKey, Proxy.Type.HTTP)
     var username by rememberPreference(ProxyUsernameKey, "")
     var password by rememberPreference(ProxyPasswordKey, "")
 
-    SettingSwitch(Icons.Rounded.Key, "Usar proxy",
-        "Enruta el tráfico a través de un servidor proxy", enabled) { enabled = it }
+    SettingSwitch(Icons.Rounded.Key, stringResource(R.string.use_proxy),
+        stringResource(R.string.use_proxy_desc), enabled) { enabled = it }
 
     if (enabled) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
             Text(
-                text = "Los cambios se aplican al reiniciar la app.",
+                text = stringResource(R.string.proxy_restart_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
             SettingDropdown(
                 icon = Icons.Rounded.SettingsEthernet,
-                title = "Tipo",
+                title = stringResource(R.string.proxy_type),
                 options = listOf("HTTP" to "HTTP", "SOCKS" to "SOCKS"),
                 selectedKey = type.name,
                 onSelect = { type = Proxy.Type.valueOf(it) },
             )
-            SettingTextField("Servidor", "host:puerto", url) { url = it }
-            SettingTextField("Usuario (opcional)", "Usuario", username) { username = it }
-            SettingTextField("Contraseña (opcional)", "Contraseña", password, isPassword = true) { password = it }
+            SettingTextField(stringResource(R.string.server), stringResource(R.string.server_hint), url) { url = it }
+            SettingTextField(stringResource(R.string.user_optional), stringResource(R.string.username), username) { username = it }
+            SettingTextField(stringResource(R.string.password_optional), stringResource(R.string.password), password, isPassword = true) { password = it }
         }
     }
 }
@@ -768,8 +920,7 @@ private fun SettingTextField(
         label = { Text(label) },
         placeholder = { Text(placeholder) },
         singleLine = true,
-        visualTransformation = if (isPassword) PasswordVisualTransformation()
-        else androidx.compose.ui.text.input.VisualTransformation.None,
+        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),

@@ -258,7 +258,7 @@ fun AlbumScreen(
             if (otherVersions.isNotEmpty()) {
                 item {
                     Text(
-                        text = "Otras versiones",
+                        text = stringResource(R.string.other_versions),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
@@ -283,7 +283,7 @@ fun AlbumScreen(
             if (releasesForYou.isNotEmpty()) {
                 item {
                     Text(
-                        text = "También te puede gustar",
+                        text = stringResource(R.string.releases_for_you),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,

@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
 import com.music.innertube.models.AlbumItem
@@ -83,7 +85,7 @@ fun SearchScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Volver",
+                        contentDescription = stringResource(R.string.volver),
                         tint = MaterialTheme.colorScheme.onBackground,
                     )
                 }
@@ -97,7 +99,7 @@ fun SearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester),
-                placeholder = { Text("Canciones, artistas, álbumes…") },
+                placeholder = { Text(stringResource(R.string.search_hint)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Rounded.Search,
@@ -118,7 +120,7 @@ fun SearchScreen(
                         }) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,
-                                contentDescription = "Limpiar búsqueda",
+                                contentDescription = stringResource(R.string.clear_search),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -145,7 +147,7 @@ fun SearchScreen(
                 if (viewState.history.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Búsquedas recientes",
+                            text = stringResource(R.string.recent_searches),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
@@ -177,7 +179,7 @@ fun SearchScreen(
                 if (viewState.items.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Resultados directos",
+                            text = stringResource(R.string.direct_results),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -230,7 +232,7 @@ private fun SuggestionRow(
         ) {
             Icon(
                 imageVector = Icons.Rounded.NorthWest,
-                contentDescription = "Completar búsqueda",
+                contentDescription = stringResource(R.string.complete_search),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
@@ -242,9 +244,9 @@ private fun SuggestionRow(
 fun YTItemRow(item: YTItem, onClick: () -> Unit) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
-        is AlbumItem -> item.artists?.joinToString(", ") { it.name } ?: "Álbum"
-        is PlaylistItem -> item.author?.name ?: "Playlist"
-        is ArtistItem -> "Artista"
+        is AlbumItem -> item.artists?.joinToString(", ") { it.name } ?: stringResource(R.string.albums)
+        is PlaylistItem -> item.author?.name ?: stringResource(R.string.playlists)
+        is ArtistItem -> stringResource(R.string.artists)
         else -> null
     }
     val isRound = item is ArtistItem

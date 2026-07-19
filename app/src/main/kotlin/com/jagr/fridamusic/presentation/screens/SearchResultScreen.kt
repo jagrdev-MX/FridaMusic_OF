@@ -18,21 +18,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.viewmodels.OnlineSearchViewModel
 import com.music.innertube.YouTube
 import com.music.innertube.models.YTItem
 
 private data class SearchTab(val label: String, val filter: YouTube.SearchFilter?)
 
-private val SEARCH_TABS = listOf(
-    SearchTab("Todo", null),
-    SearchTab("Canciones", YouTube.SearchFilter.FILTER_SONG),
-    SearchTab("Videos", YouTube.SearchFilter.FILTER_VIDEO),
-    SearchTab("Álbumes", YouTube.SearchFilter.FILTER_ALBUM),
-    SearchTab("Artistas", YouTube.SearchFilter.FILTER_ARTIST),
-    SearchTab("Playlists destacadas", YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST),
-    SearchTab("Playlists de la comunidad", YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST),
-)
+private val SEARCH_TABS = @Composable {
+    listOf(
+        SearchTab(stringResource(R.string.filter_all), null),
+        SearchTab(stringResource(R.string.filter_songs), YouTube.SearchFilter.FILTER_SONG),
+        SearchTab(stringResource(R.string.filter_videos), YouTube.SearchFilter.FILTER_VIDEO),
+        SearchTab(stringResource(R.string.filter_albums), YouTube.SearchFilter.FILTER_ALBUM),
+        SearchTab(stringResource(R.string.filter_artists), YouTube.SearchFilter.FILTER_ARTIST),
+        SearchTab(stringResource(R.string.filter_featured_playlists), YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST),
+        SearchTab(stringResource(R.string.filter_community_playlists), YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST),
+    )
+}
 
 @Composable
 fun SearchResultScreen(
@@ -41,7 +45,8 @@ fun SearchResultScreen(
     viewModel: OnlineSearchViewModel = hiltViewModel(),
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val selectedFilter = SEARCH_TABS[selectedTabIndex].filter
+    val tabs = SEARCH_TABS()
+    val selectedFilter = tabs[selectedTabIndex].filter
 
     Column(
         modifier = Modifier
@@ -60,7 +65,7 @@ fun SearchResultScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Volver",
+                    contentDescription = stringResource(R.string.volver),
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
@@ -93,7 +98,7 @@ fun SearchResultScreen(
                 }
             }
         ) {
-            SEARCH_TABS.forEachIndexed { index, tab ->
+            tabs.forEachIndexed { index, tab ->
                 val isSelected = selectedTabIndex == index
                 Tab(
                     selected = isSelected,
@@ -234,13 +239,13 @@ private fun EmptyResults() {
             modifier = Modifier.size(64.dp).padding(bottom = 16.dp)
         )
         Text(
-            text = "No encontramos resultados",
+            text = stringResource(R.string.no_results_found),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "Intenta buscar con otras palabras clave",
+            text = stringResource(R.string.no_results_found_desc),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp)

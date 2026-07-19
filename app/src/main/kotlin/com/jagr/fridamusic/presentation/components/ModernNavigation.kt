@@ -28,6 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
+
 @Composable
 fun ModernBottomNav(
     currentRoute: String,
@@ -53,19 +56,19 @@ fun ModernBottomNav(
         ) {
             FloatingNavItem(
                 icon = Icons.Default.Home,
-                label = "Home",
+                label = stringResource(R.string.home),
                 isSelected = currentRoute == "home",
                 onClick = { onNavigate("home") }
             )
             FloatingNavItem(
                 icon = Icons.Default.Search,
-                label = "Search",
+                label = stringResource(R.string.search),
                 isSelected = currentRoute == "search",
                 onClick = { onNavigate("search") }
             )
             FloatingNavItem(
                 icon = Icons.Default.LibraryMusic,
-                label = "Library",
+                label = stringResource(R.string.filter_library),
                 isSelected = currentRoute == "library",
                 onClick = { onNavigate("library") }
             )

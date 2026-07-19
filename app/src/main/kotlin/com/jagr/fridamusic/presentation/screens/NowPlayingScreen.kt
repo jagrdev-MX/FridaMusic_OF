@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.rounded.AllInclusive
@@ -58,6 +59,8 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
@@ -93,9 +96,10 @@ fun NowPlayingScreen(
     val sleepTimer = playerConnection.service.sleepTimer
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val errorMessageTemplate = stringResource(R.string.error_playing_snackbar)
     LaunchedEffect(playbackError) {
         playbackError?.let {
-            snackbarHostState.showSnackbar("No se pudo reproducir: ${it.errorCodeName}")
+            snackbarHostState.showSnackbar(errorMessageTemplate.format(it.errorCodeName))
         }
     }
 
@@ -118,10 +122,10 @@ fun NowPlayingScreen(
         }
     }
 
-    var positionMs by remember { mutableStateOf(playerConnection.player.currentPosition) }
-    var durationMs by remember { mutableStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
+    var positionMs by remember { mutableLongStateOf(playerConnection.player.currentPosition) }
+    var durationMs by remember { mutableLongStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
     var isDragging by remember { mutableStateOf(false) }
-    var dragPosition by remember { mutableStateOf(0f) }
+    var dragPosition by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(song.id) {
         while (isActive) {
@@ -190,7 +194,7 @@ fun NowPlayingScreen(
                         IconButton(onClick = onBack) {
                             Icon(
                                 imageVector = Icons.Rounded.KeyboardArrowDown,
-                                contentDescription = "Cerrar",
+                                contentDescription = stringResource(R.string.close_content_desc),
                                 tint = Color.White,
                                 modifier = Modifier.size(32.dp),
                             )
@@ -198,7 +202,7 @@ fun NowPlayingScreen(
                     }
                     Box(modifier = Modifier.weight(2f), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "Reproduciendo ahora",
+                            text = stringResource(R.string.now_playing),
                             style = MaterialTheme.typography.labelMedium,
                             color = Color.White.copy(alpha = 0.6f),
                             textAlign = TextAlign.Center
@@ -208,13 +212,13 @@ fun NowPlayingScreen(
                         IconButton(onClick = { showOverflowMenu = true }) {
                             Icon(
                                 imageVector = Icons.Rounded.MoreVert,
-                                contentDescription = "Más opciones",
+                                contentDescription = stringResource(R.string.more_options),
                                 tint = Color.White,
                             )
                         }
                         DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
                             DropdownMenuItem(
-                                text = { Text(if (currentSong?.song?.inLibrary != null) "Quitar de biblioteca" else "Agregar a biblioteca") },
+                                text = { Text(if (currentSong?.song?.inLibrary != null) stringResource(R.string.remove_from_library_label) else stringResource(R.string.add_to_library_label)) },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = if (currentSong?.song?.inLibrary != null) Icons.Rounded.LibraryAddCheck else Icons.Rounded.LibraryAdd,
@@ -271,7 +275,7 @@ fun NowPlayingScreen(
                         IconButton(onClick = { playerConnection.toggleLike() }) {
                             Icon(
                                 imageVector = if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Me gusta",
+                                contentDescription = stringResource(R.string.action_like),
                                 tint = Color.White,
                             )
                         }
@@ -370,7 +374,7 @@ fun NowPlayingScreen(
                             IconButton(onClick = { playerConnection.toggleLike() }) {
                                 Icon(
                                     imageVector = if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Me gusta",
+                                    contentDescription = stringResource(R.string.action_like),
                                     tint = Color.White,
                                 )
                             }
@@ -429,7 +433,7 @@ fun NowPlayingScreen(
                         ) {
                             Icon(
                                 Icons.Rounded.SkipPrevious,
-                                contentDescription = "Anterior",
+                                contentDescription = stringResource(R.string.previous),
                                 tint = Color.White,
                                 modifier = Modifier.size(32.dp),
                             )
@@ -448,7 +452,7 @@ fun NowPlayingScreen(
                         ) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                                contentDescription = if (isPlaying) stringResource(R.string.pause) else stringResource(R.string.play),
                                 tint = animatedBackground,
                                 modifier = Modifier.size(42.dp),
                             )
@@ -461,7 +465,7 @@ fun NowPlayingScreen(
                         ) {
                             Icon(
                                 Icons.Rounded.SkipNext,
-                                contentDescription = "Siguiente",
+                                contentDescription = stringResource(R.string.next),
                                 tint = Color.White,
                                 modifier = Modifier.size(32.dp),
                             )
@@ -483,7 +487,7 @@ fun NowPlayingScreen(
                             IconButton(onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }) {
                                 Icon(
                                     imageVector = Icons.Rounded.Shuffle,
-                                    contentDescription = "Aleatorio",
+                                    contentDescription = stringResource(R.string.shuffle),
                                     tint = if (shuffleEnabled) Color.White else Color.White.copy(alpha = 0.45f),
                                 )
                             }
@@ -493,14 +497,14 @@ fun NowPlayingScreen(
                             }) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.Notes,
-                                    contentDescription = "Letra",
+                                    contentDescription = stringResource(R.string.lyrics),
                                     tint = if (showLyricsView) Color.White else if (hasLyrics) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.35f),
                                 )
                             }
                             IconButton(onClick = { showSleepTimerDialog = true }) {
                                 Icon(
                                     imageVector = Icons.Rounded.Bedtime,
-                                    contentDescription = "Temporizador",
+                                    contentDescription = stringResource(R.string.sleep_timer),
                                     tint = if (sleepTimer.isActive) Color.White else Color.White.copy(alpha = 0.45f),
                                 )
                             }
@@ -509,8 +513,8 @@ fun NowPlayingScreen(
                                 if (showLyricsView) showLyricsView = false
                             }) {
                                 Icon(
-                                    imageVector = Icons.Rounded.QueueMusic,
-                                    contentDescription = "Cola",
+                                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                    contentDescription = stringResource(R.string.queue),
                                     tint = Color.White.copy(alpha = 0.45f),
                                 )
                             }
@@ -523,7 +527,7 @@ fun NowPlayingScreen(
                             }) {
                                 Icon(
                                     imageVector = if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                                    contentDescription = "Repetir",
+                                    contentDescription = stringResource(R.string.repeat),
                                     tint = if (repeatMode == Player.REPEAT_MODE_OFF) Color.White.copy(alpha = 0.45f) else Color.White,
                                 )
                             }
@@ -541,8 +545,8 @@ fun NowPlayingScreen(
                         ) {
                             IconButton(onClick = { showQueuePanel = false }) {
                                 Icon(
-                                    imageVector = Icons.Rounded.QueueMusic,
-                                    contentDescription = "Cerrar cola",
+                                    imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                                    contentDescription = stringResource(R.string.close_content_desc),
                                     tint = Color.White,
                                 )
                             }
@@ -624,7 +628,7 @@ private fun AppleMusicQueueView(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = currentSong?.title ?: "Desconocido",
+                        text = currentSong?.title ?: stringResource(R.string.unknown),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
@@ -640,7 +644,7 @@ private fun AppleMusicQueueView(
                     )
                 }
                 IconButton(onClick = { }) {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = "Más", tint = Color.White)
+                    Icon(Icons.Rounded.MoreHoriz, contentDescription = stringResource(R.string.more_label), tint = Color.White)
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -667,8 +671,8 @@ private fun AppleMusicQueueView(
         if (upcoming.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text("A continuación", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Reproducción automática", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
+                    Text(stringResource(R.string.upcoming), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(stringResource(R.string.auto_play), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.7f))
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
@@ -694,12 +698,12 @@ private fun AppleMusicQueueView(
                         Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Icon(imageVector = Icons.Rounded.Menu, contentDescription = "Reordenar", tint = Color.White.copy(alpha = 0.5f))
+                    Icon(imageVector = Icons.Rounded.Menu, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
                 }
             }
         } else {
             item {
-                Text("No hay más canciones en la cola", color = Color.White.copy(alpha = 0.5f), modifier = Modifier.padding(top = 24.dp))
+                Text(stringResource(R.string.no_more_songs_in_queue), color = Color.White.copy(alpha = 0.5f), modifier = Modifier.padding(top = 24.dp))
             }
         }
     }
@@ -723,18 +727,18 @@ private fun QueueActionButton(icon: ImageVector, isActive: Boolean, onClick: () 
 private fun SleepTimerDialog(isActive: Boolean, onDismiss: () -> Unit, onSelectMinutes: (Int) -> Unit, onCancel: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Temporizador para dormir") },
+        title = { Text(stringResource(R.string.sleep_timer_title)) },
         text = {
             Column {
                 listOf(15, 30, 45, 60).forEach { minutes ->
-                    TextButton(onClick = { onSelectMinutes(minutes) }) { Text("$minutes minutos") }
+                    TextButton(onClick = { onSelectMinutes(minutes) }) { Text(stringResource(R.string.minutes_suffix, minutes)) }
                 }
-                TextButton(onClick = { onSelectMinutes(-1) }) { Text("Al terminar la canción") }
+                TextButton(onClick = { onSelectMinutes(-1) }) { Text(stringResource(R.string.at_end_of_song)) }
             }
         },
         confirmButton = {
-            if (isActive) TextButton(onClick = onCancel) { Text("Cancelar temporizador") }
-            else TextButton(onClick = onDismiss) { Text("Cerrar") }
+            if (isActive) TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel_timer)) }
+            else TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
         },
     )
 }

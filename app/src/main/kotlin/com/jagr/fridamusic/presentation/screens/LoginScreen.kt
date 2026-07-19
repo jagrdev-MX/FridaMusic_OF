@@ -140,7 +140,7 @@ fun LoginScreen(
                         .padding(16.dp),
                     action = {
                         TextButton(onClick = { viewModel.clearError() }) {
-                            Text("OK")
+                            Text(stringResource(R.string.done))
                         }
                     },
                 ) {
