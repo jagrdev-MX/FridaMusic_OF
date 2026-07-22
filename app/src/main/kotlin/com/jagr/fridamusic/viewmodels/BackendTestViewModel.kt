@@ -25,7 +25,7 @@ class BackendTestViewModel @Inject constructor(
     private val database: MusicDatabase,
 ) : ViewModel() {
 
-    private val _log = MutableStateFlow("Listo para probar. Toca un botón.")
+    private val _log = MutableStateFlow("Ready to test. Tap a button.")
     val log: StateFlow<String> = _log.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
@@ -48,22 +48,22 @@ class BackendTestViewModel @Inject constructor(
                 val totalSongs = database.allSongs().first().size
 
                 _log.value = buildString {
-                    appendLine("✅ HILT: ViewModel inyectado correctamente.")
-                    appendLine("✅ ROOM (escritura): se insertó '$testQuery' en search_history.")
-                    appendLine("✅ ROOM (lectura): ${matches.size} coincidencia(s) para esa búsqueda.")
-                    appendLine("ℹ️ Canciones totales en la biblioteca local: $totalSongs")
+                    appendLine("✅ HILT: ViewModel injected correctly.")
+                    appendLine("✅ ROOM (write): inserted '$testQuery' into search_history.")
+                    appendLine("✅ ROOM (read): ${matches.size} match(es) for that search.")
+                    appendLine("ℹ️ Total songs in local library: $totalSongs")
                     appendLine()
-                    appendLine("La base de datos está funcionando.")
+                    appendLine("The database is working.")
                 }
             } catch (e: Exception) {
-                _log.value = "❌ Error probando la base de datos:\n${e.stackTraceToString()}"
+                _log.value = "❌ Error testing database:\n${e.stackTraceToString()}"
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    /** Prueba 2: Red real contra YouTube Music vía el módulo innertube. */
+    /** Test 2: Real network against YouTube Music via the innertube module. */
     fun testNetwork(query: String = "Bohemian Rhapsody") {
         _isLoading.value = true
         viewModelScope.launch {
@@ -71,20 +71,20 @@ class BackendTestViewModel @Inject constructor(
                 val result = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
                 result.onSuccess { searchResult ->
                     _log.value = buildString {
-                        appendLine("✅ RED (innertube/YouTube Music): respuesta recibida.")
-                        appendLine("Resultados para \"$query\": ${searchResult.items.size}")
+                        appendLine("✅ NETWORK (innertube/YouTube Music): response received.")
+                        appendLine("Results for \"$query\": ${searchResult.items.size}")
                         appendLine()
                         searchResult.items.take(5).forEach { item ->
                             appendLine("• $item")
                         }
                         appendLine()
-                        appendLine("La conexión con YouTube Music está funcionando.")
+                        appendLine("The connection to YouTube Music is working.")
                     }
                 }.onFailure { e ->
-                    _log.value = "❌ Error en la búsqueda de red:\n${e.stackTraceToString()}"
+                    _log.value = "❌ Error in network search:\n${e.stackTraceToString()}"
                 }
             } catch (e: Exception) {
-                _log.value = "❌ Excepción probando la red:\n${e.stackTraceToString()}"
+                _log.value = "❌ Exception testing network:\n${e.stackTraceToString()}"
             } finally {
                 _isLoading.value = false
             }

@@ -209,7 +209,6 @@
 
     <!-- General -->
     <string name="general">General</string>
-    <string name="proxy">Proxy</string>
     <string name="default_lib_chips">Change default library chip</string>
     <string name="set_quick_picks">Set quick picks</string>
     <string name="last_song_listened">Based on last song listened</string>
@@ -257,8 +256,6 @@
     <string name="clear_downloads_dialog">  Are you sure you want to clear all downloads?</string>
     <string name="logout_dialog_title">Logout</string>
     <string name="logout_dialog_message">Do you wish to keep every library and other thing?</string>
-    <string name="logout_keep_data">Keep Data</string>
-    <string name="logout_clear_data">Clear Data</string>
 
     <string name="disable">Disable</string>
 
@@ -1001,4 +998,19 @@
     <string name="lossless_audio_warning">Lossless audio requires a fast connection. It may consume more data and battery. Continue?</string>
     <string name="legacy_icon">Legacy Icon</string>
     <string name="legacy_icon_desc">Revert the app icon back to the original legacy design</string>
+    <string name="account_and_stats">Account &amp; Stats</string>
+    <string name="login_sync_desc">Log in and manage synchronization</string>
+    <string name="playback_desc_short">Audio behavior, quality and queue</string>
+    <string name="appearance_desc_short">Themes, colors and language</string>
+    <string name="lyrics_desc_short">Lyrics providers, preloading and karaoke</string>
+    <string name="services_desc_short">Last.fm, ListenBrainz, Discord and EchoBrain</string>
+    <string name="privacy_desc_short">Listening history, search and screenshots</string>
+    <string name="network_desc_short">Proxy and connection settings</string>
+    <string name="podcasts">Podcasts</string>
+    <string name="energy">Energy</string>
+    <string name="crash_unexpected_error">The app encountered an unexpected error</string>
+    <string name="login_failed_retry">Could not obtain session. Try again.</string>
+    <string name="calendar">Calendar</string>
+    <string name="notifications">Notifications</string>
+    <string name="error_verifying_account">Error verifying account: %s</string>
 </resources>

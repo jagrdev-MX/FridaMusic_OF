@@ -9,7 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.view.Window // <-- Importación necesaria para el warning del qualifier
+import android.view.Window // <-- Required import for qualifier warning
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -51,7 +51,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
-import kotlin.time.Duration.Companion.milliseconds // <-- Importación para el delay()
+import kotlin.time.Duration.Companion.milliseconds // <-- Importation for delay()
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -72,16 +72,16 @@ class MainActivity : ComponentActivity() {
             if (service is MusicBinder) {
                 try {
                     playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
-                    Timber.tag("MainActivity").d("PlayerConnection creado correctamente")
+                    Timber.tag("MainActivity").d("PlayerConnection created successfully")
                 } catch (e: Exception) {
-                    Timber.tag("MainActivity").e(e, "Falló la creación de PlayerConnection, reintentando en 500ms")
+                    Timber.tag("MainActivity").e(e, "Failed to create PlayerConnection, retrying in 500ms")
                     lifecycleScope.launch {
                         delay(500.milliseconds)
                         try {
                             playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
-                            Timber.tag("MainActivity").d("PlayerConnection creado en el reintento")
+                            Timber.tag("MainActivity").d("PlayerConnection created on retry")
                         } catch (e2: Exception) {
-                            Timber.tag("MainActivity").e(e2, "Falló también el reintento de PlayerConnection")
+                            Timber.tag("MainActivity").e(e2, "Failed retry of PlayerConnection")
                         }
                     }
                 }

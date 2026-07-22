@@ -45,6 +45,7 @@ fun MainScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
+        // ── Contenido principal (ocupa toda la pantalla) ──────────────────
         NavHost(
             navController = navController,
             startDestination = "home",
@@ -130,6 +131,7 @@ fun MainScreen(
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
             ) { backStackEntry ->
                 val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
+                // Local playlist IDs are UUIDs (contain hyphens); YouTube IDs never do
                 if (playlistId.contains('-')) {
                     LocalPlaylistScreen(
                         onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
@@ -149,8 +151,7 @@ fun MainScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
+                    .navigationBarsPadding(),
             ) {
                 if (playerConnection != null) {
                     MiniPlayer(
@@ -158,8 +159,8 @@ fun MainScreen(
                         onClick = { navController.navigate("now_playing") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .padding(bottom = 8.dp),
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 4.dp),
                     )
                 }
                 ModernBottomNav(
@@ -173,7 +174,6 @@ fun MainScreen(
                             }
                         }
                     },
-                    onFabClick = { navController.navigate("settings") },
                 )
             }
         }
@@ -186,7 +186,7 @@ private fun NavHostController.navigateToDetail(item: LocalItem) {
         is Album -> navigate("album/$encodedId")
         is Artist -> navigate("artist/$encodedId")
         is Playlist -> navigate("playlist/$encodedId")
-        else -> { /* tipo no soportado todavía */ }
+        else -> { /* type not supported yet */ }
     }
 }
 

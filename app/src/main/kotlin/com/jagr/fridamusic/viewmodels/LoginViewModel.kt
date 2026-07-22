@@ -10,10 +10,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.app.Application
+import com.jagr.fridamusic.R
 import javax.inject.Inject
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(
+    private val application: Application,
     private val accountRepository: AccountRepository,
 ) : ViewModel() {
 
@@ -28,7 +31,7 @@ class LoginViewModel @Inject constructor(
         onDone: () -> Unit,
     ) {
         if (cookieString.isBlank() || "SAPISID" !in cookieString) {
-            _error.value = "No se pudo obtener la sesión. Intentá de nuevo."
+            _error.value = application.getString(R.string.login_failed_retry)
             return
         }
 
@@ -55,7 +58,7 @@ class LoginViewModel @Inject constructor(
                 YouTube.cookie = null
                 withContext(Dispatchers.Main) {
                     _isLoading.value = false
-                    _error.value = "Error al verificar la cuenta: ${e.message}"
+                    _error.value = application.getString(R.string.error_verifying_account, e.message)
                 }
             }
         }

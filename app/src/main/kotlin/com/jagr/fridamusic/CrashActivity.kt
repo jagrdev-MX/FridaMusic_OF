@@ -16,6 +16,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.jagr.fridamusic.utils.CrashHandler
 import kotlin.system.exitProcess
@@ -24,7 +25,7 @@ class CrashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val crashLog = intent.getStringExtra(CrashHandler.EXTRA_CRASH_LOG)
-            ?: "No se encontró información del error."
+            ?: getString(R.string.crash_no_log)
 
         setContent {
             MaterialTheme {
@@ -50,7 +51,7 @@ private fun CrashScreen(crashLog: String, onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = "La app encontró un error inesperado",
+                text = stringResource(R.string.crash_unexpected_error),
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
@@ -62,7 +63,7 @@ private fun CrashScreen(crashLog: String, onClose: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
             )
             Button(onClick = onClose) {
-                Text("Cerrar")
+                Text(stringResource(R.string.close))
             }
         }
     }
