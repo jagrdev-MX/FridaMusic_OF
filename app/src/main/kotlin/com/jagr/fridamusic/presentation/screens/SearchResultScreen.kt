@@ -65,7 +65,7 @@ fun SearchResultScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = stringResource(R.string.volver),
+                    contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }

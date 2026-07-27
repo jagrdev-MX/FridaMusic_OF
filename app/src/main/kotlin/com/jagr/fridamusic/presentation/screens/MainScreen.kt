@@ -41,7 +41,7 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
 
-    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login"
+    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login" && currentRoute != "spotify_import" && currentRoute != "stats"
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -89,6 +89,25 @@ fun MainScreen(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToLogin = { navController.navigate("login") },
+                    onNavigateToSpotifyImport = { navController.navigate("spotify_import") },
+                    onNavigateToStats = { navController.navigate("stats") },
+                )
+            }
+            composable("spotify_import") {
+                SpotifyImportScreen(onBack = { navController.popBackStack() })
+            }
+            composable("stats") {
+                StatsScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToArtist = { id -> navController.navigate("artist/${java.net.URLEncoder.encode(id, "UTF-8")}") },
+                    onNavigateToAlbum = { id -> navController.navigate("album/${java.net.URLEncoder.encode(id, "UTF-8")}") },
+                    onSongClick = { song ->
+                        playerConnection?.playQueue(
+                            com.jagr.fridamusic.playback.queues.YouTubeQueue(
+                                endpoint = com.music.innertube.models.WatchEndpoint(videoId = song.id),
+                            )
+                        )
+                    },
                 )
             }
             composable("login") {

@@ -137,7 +137,7 @@ fun OnboardingScreen(
                     IconButton(onClick = viewModel::back) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.onboarding_back),
+                            contentDescription = stringResource(R.string.back),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -211,7 +211,7 @@ fun OnboardingScreen(
                     modifier = Modifier.height(52.dp),
                 ) {
                     Text(
-                        text = if (isLast) stringResource(R.string.onboarding_start) else stringResource(R.string.onboarding_continue),
+                        text = if (isLast) stringResource(R.string.get_started) else stringResource(R.string.onboarding_continue),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                     )

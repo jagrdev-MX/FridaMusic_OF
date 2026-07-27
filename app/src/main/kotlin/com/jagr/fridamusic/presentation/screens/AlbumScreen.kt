@@ -102,7 +102,7 @@ fun AlbumScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.volver),
+                            contentDescription = stringResource(R.string.back),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -156,7 +156,7 @@ fun AlbumScreen(
                                 onClick = { songs.firstOrNull()?.let { onSongClick(it, songs) } },
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text(stringResource(R.string.reproducir))
+                                Text(stringResource(R.string.play))
                             }
                             OutlinedButton(
                                 onClick = {
@@ -170,7 +170,7 @@ fun AlbumScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.aleatorio))
+                                Text(stringResource(R.string.shuffle))
                             }
                         }
                     }
@@ -238,7 +238,7 @@ fun AlbumScreen(
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
                     Text(
-                        text = stringResource(R.string.acerca_album),
+                        text = stringResource(R.string.about_album),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,

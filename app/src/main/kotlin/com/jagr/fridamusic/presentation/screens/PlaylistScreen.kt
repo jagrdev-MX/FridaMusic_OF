@@ -221,7 +221,7 @@ private fun PlaylistScaffold(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.volver),
+                            contentDescription = stringResource(R.string.back),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -278,12 +278,12 @@ private fun PlaylistScaffold(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = onPlay, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(R.string.reproducir))
+                            Text(stringResource(R.string.play))
                         }
                         OutlinedButton(onClick = onShuffle, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(stringResource(R.string.aleatorio))
+                            Text(stringResource(R.string.shuffle))
                         }
                     }
                 }

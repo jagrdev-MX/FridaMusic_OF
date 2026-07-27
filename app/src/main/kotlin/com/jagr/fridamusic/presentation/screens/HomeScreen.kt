@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,6 +56,9 @@ fun HomeScreen(
     val selectedChip by viewModel.selectedChip.collectAsState()
     val isLowEnd = rememberIsLowEndDevice()
 
+    // Estado para controlar la visibilidad del popup de apoyo
+    var showSupportDialog by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -65,6 +69,7 @@ fun HomeScreen(
             HomeHeader(
                 onHistoryClick = onHistoryClick,
                 onSettingsClick = onSettingsClick,
+                onSupportClick = { showSupportDialog = true } // Abrimos el diálogo
             )
         }
 
@@ -113,7 +118,7 @@ fun HomeScreen(
                             is SongItem -> ytItem.artists.joinToString(", ") { it.name }
                             is AlbumItem -> ytItem.artists?.joinToString(", ") { it.name } ?: stringResource(R.string.album_text)
                             is PlaylistItem -> ytItem.author?.name ?: stringResource(R.string.playlists)
-                            is ArtistItem -> stringResource(R.string.artist)
+                            is ArtistItem -> stringResource(R.string.artists)
                             else -> null
                         }
                         if (ytItem is ArtistItem) {
@@ -143,12 +148,24 @@ fun HomeScreen(
             item(key = "empty") { HomeEmptyState() }
         }
     }
+
+    // Instancia del Diálogo de Apoyo
+    if (showSupportDialog) {
+        SupportProjectDialog(
+            onDismiss = { showSupportDialog = false },
+            onWatchAdClick = {
+                showSupportDialog = false
+                // TODO: Aquí va la lógica para llamar a tu SDK de anuncios (AdMob, AppLovin, etc.)
+            }
+        )
+    }
 }
 
 @Composable
 private fun HomeHeader(
     onHistoryClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onSupportClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -165,6 +182,13 @@ private fun HomeHeader(
             color = MaterialTheme.colorScheme.onBackground,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // Nuevo ícono agregado al principio para mayor visibilidad
+            HeaderIconButton(
+                icon = Icons.Rounded.VolunteerActivism,
+                description = "Apoyar proyecto",
+                onClick = onSupportClick,
+                tint = MaterialTheme.colorScheme.primary // Le damos un toque de color para que resalte sutilmente
+            )
             HeaderIconButton(Icons.Rounded.History, stringResource(R.string.history), onHistoryClick)
             HeaderIconButton(Icons.Rounded.CalendarMonth, stringResource(R.string.calendar), {})
             HeaderIconButton(Icons.Rounded.NotificationsNone, stringResource(R.string.notifications), {})
@@ -178,23 +202,74 @@ private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
     Box(
         modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = description,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = tint,
             modifier = Modifier.size(18.dp),
         )
     }
 }
+
+// --- NUEVO COMPONENTE: DIÁLOGO DE APOYO ---
+@Composable
+private fun SupportProjectDialog(
+    onDismiss: () -> Unit,
+    onWatchAdClick: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.VolunteerActivism,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(36.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Apoyar FridaMusic",
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = "FridaMusic es un proyecto independiente desarrollado con mucho esfuerzo. Si disfrutas de la app, puedes apoyarme viendo un pequeño anuncio. ¡Esto me ayuda a cubrir los costos y seguir mejorándola para ti!",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onWatchAdClick,
+                shape = RoundedCornerShape(50)
+            ) {
+                Text("Ver anuncio y apoyar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Quizás luego", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+// ------------------------------------------
 
 @Composable
 private fun MoodChipsRow(

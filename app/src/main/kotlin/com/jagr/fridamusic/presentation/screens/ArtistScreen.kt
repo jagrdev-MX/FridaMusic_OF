@@ -113,7 +113,7 @@ fun ArtistScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = stringResource(R.string.volver),
+                            contentDescription = stringResource(R.string.back),
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
@@ -160,7 +160,7 @@ fun ArtistScreen(
                                 onClick = { playerConnection?.playYTItem(remoteSongs.first()) },
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text(stringResource(R.string.reproducir))
+                                Text(stringResource(R.string.play))
                             }
                             OutlinedButton(
                                 onClick = {
@@ -175,7 +175,7 @@ fun ArtistScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.aleatorio))
+                                Text(stringResource(R.string.shuffle))
                             }
                         }
                     }

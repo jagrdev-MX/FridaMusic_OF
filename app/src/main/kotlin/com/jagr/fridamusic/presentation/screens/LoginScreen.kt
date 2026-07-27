@@ -66,7 +66,7 @@ fun LoginScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.volver))
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.back))
             }
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -124,7 +124,7 @@ fun LoginScreen(
                     ) {
                         CircularProgressIndicator()
                         Text(
-                            text = stringResource(R.string.verificando_cuenta),
+                            text = stringResource(R.string.verifying_account),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

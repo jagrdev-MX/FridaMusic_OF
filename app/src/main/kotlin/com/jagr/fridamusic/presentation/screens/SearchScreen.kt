@@ -85,7 +85,7 @@ fun SearchScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = stringResource(R.string.volver),
+                        contentDescription = stringResource(R.string.back),
                         tint = MaterialTheme.colorScheme.onBackground,
                     )
                 }
@@ -99,7 +99,7 @@ fun SearchScreen(
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester),
-                placeholder = { Text(stringResource(R.string.search_hint)) },
+                placeholder = { Text(stringResource(R.string.search)) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Rounded.Search,

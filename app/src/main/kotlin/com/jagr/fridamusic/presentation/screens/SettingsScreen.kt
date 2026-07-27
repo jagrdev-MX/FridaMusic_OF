@@ -13,9 +13,55 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.ManageSearch
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Cached
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Contrast
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.Monitor
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Podcasts
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.SettingsEthernet
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VideocamOff
+import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -57,7 +103,9 @@ private data class SettingsGroup(
 private sealed class SettingsPage {
     object None : SettingsPage()
     object Account : SettingsPage()
+    object Stats : SettingsPage()
     object Playback : SettingsPage()
+    object Equalizer : SettingsPage()
     object Appearance : SettingsPage()
     object Lyrics : SettingsPage()
     object Content : SettingsPage()
@@ -71,6 +119,8 @@ private sealed class SettingsPage {
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit = {},
+    onNavigateToSpotifyImport: () -> Unit = {},
+    onNavigateToStats: () -> Unit = {},
 ) {
     var currentPage: SettingsPage by remember { mutableStateOf(SettingsPage.None) }
 
@@ -78,11 +128,23 @@ fun SettingsScreen(
         currentPage = SettingsPage.None
     }
 
+    if (currentPage == SettingsPage.Equalizer) {
+        EQScreen(onBack = { currentPage = SettingsPage.None })
+        return
+    }
+
+    if (currentPage == SettingsPage.Stats) {
+        onNavigateToStats()
+        currentPage = SettingsPage.None
+        return
+    }
+
     if (currentPage != SettingsPage.None) {
         SettingsDetailPage(
             page = currentPage,
             onBack = { currentPage = SettingsPage.None },
             onNavigateToLogin = onNavigateToLogin,
+            onNavigateToSpotifyImport = onNavigateToSpotifyImport,
         )
         return
     }
@@ -99,6 +161,10 @@ fun SettingsScreen(
                     stringResource(R.string.login_sync_desc), primaryColor) {
                     currentPage = SettingsPage.Account
                 },
+                SettingsItem(Icons.Rounded.BarChart, stringResource(R.string.stats),
+                    stringResource(R.string.stats_desc_short), primaryColor) {
+                    currentPage = SettingsPage.Stats
+                },
             ),
         ),
         SettingsGroup(
@@ -107,6 +173,10 @@ fun SettingsScreen(
                 SettingsItem(Icons.Rounded.PlayCircle, stringResource(R.string.playback),
                     stringResource(R.string.playback_desc_short), tertiaryColor) {
                     currentPage = SettingsPage.Playback
+                },
+                SettingsItem(Icons.Rounded.GraphicEq, stringResource(R.string.equalizer),
+                    stringResource(R.string.eq_desc_short), tertiaryColor) {
+                    currentPage = SettingsPage.Equalizer
                 },
                 SettingsItem(Icons.Rounded.Palette, stringResource(R.string.appearance),
                     stringResource(R.string.appearance_desc_short), secondaryColor) {
@@ -141,19 +211,17 @@ fun SettingsScreen(
         ),
     )
 
-    // Use pinnedScrollBehavior for a standard TopAppBar
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            // Reemplazamos LargeTopAppBar por TopAppBar
             TopAppBar(
                 title = {
                     Text(
                         text = stringResource(R.string.settings),
-                        style = MaterialTheme.typography.titleLarge, // Appropriate size for the same line
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
                 },
@@ -171,14 +239,8 @@ fun SettingsScreen(
         },
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                bottom = 160.dp,
-            ),
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 160.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             groups.forEach { group ->
@@ -205,11 +267,7 @@ private fun SettingsGroupSection(group: SettingsGroup) {
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
         )
         group.items.forEachIndexed { index, item ->
-            SettingsSegmentItem(
-                item = item,
-                index = index,
-                count = group.items.size,
-            )
+            SettingsSegmentItem(item = item, index = index, count = group.items.size)
         }
     }
 }
@@ -221,10 +279,8 @@ private fun SettingsSegmentItem(
     count: Int,
     modifier: Modifier = Modifier,
 ) {
-    val accentColor = if (item.accentColor != Color.Unspecified)
-        item.accentColor
-    else
-        MaterialTheme.colorScheme.primary
+    val accentColor = if (item.accentColor != Color.Unspecified) item.accentColor
+    else MaterialTheme.colorScheme.primary
 
     val shape = segmentShape(index, count)
     val interactionSource = remember { MutableInteractionSource() }
@@ -240,69 +296,35 @@ private fun SettingsSegmentItem(
             .fillMaxWidth()
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = item.onClick,
-            ),
+            .clickable(interactionSource = interactionSource, indication = null, onClick = item.onClick),
         shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 72.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(accentColor),
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(accentColor),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = item.icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp),
-                )
+                Icon(imageVector = item.icon, contentDescription = null,
+                    tint = Color.White, modifier = Modifier.size(24.dp))
             }
-
             Spacer(modifier = Modifier.width(16.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text(text = item.title, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = item.subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                Text(text = item.subtitle, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-
-            Icon(
-                imageVector = Icons.Rounded.ChevronRight,
-                contentDescription = null,
+            Icon(imageVector = Icons.Rounded.ChevronRight, contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(24.dp),
-            )
+                modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -323,28 +345,20 @@ private fun SettingsDetailPage(
     page: SettingsPage,
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
+    onNavigateToSpotifyImport: () -> Unit = {},
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.back))
             }
-            Text(
-                text = pageTitle(page),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
+            Text(text = pageTitle(page), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         androidx.compose.foundation.lazy.LazyColumn(
@@ -353,11 +367,13 @@ private fun SettingsDetailPage(
         ) {
             when (page) {
                 SettingsPage.Account    -> accountItems(onNavigateToLogin)
+                SettingsPage.Stats      -> {}
                 SettingsPage.Playback   -> playbackItems()
+                SettingsPage.Equalizer  -> {}
                 SettingsPage.Appearance -> appearanceItems()
                 SettingsPage.Lyrics     -> lyricsItems()
                 SettingsPage.Content    -> contentItems()
-                SettingsPage.Services   -> servicesItems()
+                SettingsPage.Services   -> servicesItems(onNavigateToSpotifyImport)
                 SettingsPage.Privacy    -> privacyItems()
                 SettingsPage.Network    -> networkItems()
                 SettingsPage.None       -> {}
@@ -369,7 +385,9 @@ private fun SettingsDetailPage(
 @Composable
 private fun pageTitle(page: SettingsPage) = when (page) {
     SettingsPage.Account    -> stringResource(R.string.account)
+    SettingsPage.Stats      -> stringResource(R.string.stats)
     SettingsPage.Playback   -> stringResource(R.string.playback)
+    SettingsPage.Equalizer  -> stringResource(R.string.equalizer)
     SettingsPage.Appearance -> stringResource(R.string.appearance)
     SettingsPage.Lyrics     -> stringResource(R.string.lyrics)
     SettingsPage.Content    -> stringResource(R.string.content)
@@ -399,41 +417,28 @@ private fun AccountSection(
     SettingGroup(stringResource(R.string.group_yt_music)) {
         if (isLoggedIn) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(44.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AccountCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp),
-                    )
+                    Icon(imageVector = Icons.Rounded.AccountCircle, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = accountName.ifEmpty { stringResource(R.string.google_account) },
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                    )
-                    if (accountEmail.isNotEmpty()) {
-                        Text(text = accountEmail, style = MaterialTheme.typography.bodySmall,
+                    Text(text = accountName.ifEmpty { stringResource(R.string.google_account) },
+                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground)
+                    if (accountEmail.isNotEmpty())
+                        Text(accountEmail, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (accountHandle.isNotEmpty()) {
-                        Text(text = accountHandle, style = MaterialTheme.typography.bodySmall,
+                    if (accountHandle.isNotEmpty())
+                        Text(accountHandle, style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp),
@@ -443,28 +448,21 @@ private fun AccountSection(
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showLogoutDialog = true }
+                modifier = Modifier.fillMaxWidth().clickable { showLogoutDialog = true }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Icon(imageVector = Icons.AutoMirrored.Rounded.Logout, contentDescription = null,
                     tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(22.dp))
-                Text(text = stringResource(R.string.action_logout), style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error)
+                Text(text = stringResource(R.string.action_logout),
+                    style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
             }
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.iniciar_sesion),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.iniciar_sesion), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(modifier = Modifier.height(4.dp))
                 Button(onClick = onNavigateToLogin, modifier = Modifier.fillMaxWidth()) {
                     Icon(imageVector = Icons.Rounded.AccountCircle, contentDescription = null,
@@ -485,17 +483,13 @@ private fun AccountSection(
                 TextButton(onClick = {
                     viewModel.logoutAndClearSyncedContent(context) {}
                     showLogoutDialog = false
-                }) {
-                    Text(stringResource(R.string.logout_clear_data), color = MaterialTheme.colorScheme.error)
-                }
+                }) { Text(stringResource(R.string.logout_clear_data), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     viewModel.logoutKeepData(context) {}
                     showLogoutDialog = false
-                }) {
-                    Text(stringResource(R.string.logout_keep_data))
-                }
+                }) { Text(stringResource(R.string.logout_keep_data)) }
             },
         )
     }
@@ -504,7 +498,7 @@ private fun AccountSection(
 private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
     item {
         SettingGroup(stringResource(R.string.group_general)) {
-            PrefSwitch(Icons.Rounded.QueueMusic, stringResource(R.string.persistent_queue),
+            PrefSwitch(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.persistent_queue),
                 stringResource(R.string.persistent_queue_desc), PersistentQueueKey, true)
             PrefSwitch(Icons.Rounded.SkipNext, stringResource(R.string.auto_skip_next_on_error),
                 stringResource(R.string.auto_skip_next_on_error_desc), AutoSkipNextOnErrorKey, false)
@@ -518,13 +512,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
     }
     item {
         SettingGroup(stringResource(R.string.group_audio)) {
-            PrefSwitch(Icons.Rounded.VolumeOff, stringResource(R.string.skip_silence),
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.skip_silence),
                 stringResource(R.string.skip_silence_desc), SkipSilenceKey, false)
             PrefSwitch(Icons.Rounded.Equalizer, stringResource(R.string.audio_normalization),
                 stringResource(R.string.audio_normalization_desc), AudioNormalizationKey, true)
             PrefSwitch(Icons.Rounded.Tune, stringResource(R.string.crossfade),
                 stringResource(R.string.crossfade_desc), CrossfadeEnabledKey, false)
-            PrefSwitch(Icons.Rounded.VolumeOff, stringResource(R.string.pause_on_mute),
+            PrefSwitch(Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.pause_on_mute),
                 stringResource(R.string.pause_on_mute_desc), PauseOnMute, false)
             PrefSwitch(Icons.Rounded.BatteryChargingFull, stringResource(R.string.audio_offload),
                 stringResource(R.string.audio_offload_desc), AudioOffload, false)
@@ -664,7 +658,7 @@ private fun CacheSection() {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(stringResource(R.string.cache_images), style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground)
-        Text("${imageCacheSize} MB", style = MaterialTheme.typography.bodySmall,
+        Text("$imageCacheSize MB", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary)
         Slider(value = imageCacheSize.toFloat(), onValueChange = { imageCacheSize = it.toInt() },
             valueRange = 128f..2048f, steps = 14, modifier = Modifier.fillMaxWidth())
@@ -677,7 +671,7 @@ private fun CacheSection() {
         Spacer(modifier = Modifier.height(16.dp))
         Text(stringResource(R.string.cache_songs), style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground)
-        Text(if (songCacheSize == -1) stringResource(R.string.unlimited) else "${songCacheSize} MB",
+        Text(if (songCacheSize == -1) stringResource(R.string.unlimited) else "$songCacheSize MB",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         Slider(
             value = if (songCacheSize == -1) 5120f else songCacheSize.toFloat(),
@@ -691,13 +685,14 @@ private fun CacheSection() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(modifier = Modifier.height(4.dp))
-        Text(stringResource(R.string.cache_apply_changes),
-            style = MaterialTheme.typography.bodySmall,
+        Text(stringResource(R.string.cache_apply_changes), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
+private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
+    onNavigateToSpotifyImport: () -> Unit = {},
+) {
     item {
         SettingGroup(stringResource(R.string.group_lastfm)) { LastFmSection() }
     }
@@ -706,8 +701,33 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
     }
     item {
         SettingGroup(stringResource(R.string.group_discord)) {
-            PrefSwitch(Icons.Rounded.Chat, stringResource(R.string.discord_integration),
+            PrefSwitch(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.discord_integration),
                 stringResource(R.string.discord_rpc_desc), EnableDiscordRPCKey, true)
+        }
+    }
+    item {
+        SettingGroup(stringResource(R.string.spotify_import_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToSpotifyImport)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(imageVector = Icons.Rounded.LibraryMusic, contentDescription = null,
+                    tint = Color(0xFF1DB954), modifier = Modifier.size(22.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.spotify_import_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground)
+                    Text(text = stringResource(R.string.spotify_import_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Icon(imageVector = Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null,
+                    modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = 180f },
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+            }
         }
     }
     item {
@@ -726,8 +746,8 @@ private fun LastFmSection() {
     var sendLikes by rememberPreference(LastFMUseSendLikes, false)
 
     SettingSwitch(Icons.Rounded.Radio, stringResource(R.string.lastfm_scrobbling),
-        if (username.isNotEmpty()) stringResource(R.string.lastfm_connected_as, username) else stringResource(R.string.lastfm_scrobbling_desc),
-        enabled) { enabled = it }
+        if (username.isNotEmpty()) stringResource(R.string.lastfm_connected_as, username)
+        else stringResource(R.string.lastfm_scrobbling_desc), enabled) { enabled = it }
     if (enabled) {
         Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
             SettingTextField(stringResource(R.string.username), stringResource(R.string.lastfm_user_hint), username) { username = it }
@@ -745,11 +765,12 @@ private fun ListenBrainzSection() {
     var token by rememberPreference(ListenBrainzTokenKey, "")
 
     SettingSwitch(Icons.Rounded.MusicNote, stringResource(R.string.group_listenbrainz),
-        if (token.isNotEmpty()) stringResource(R.string.token_configured) else stringResource(R.string.listenbrainz_desc),
-        enabled) { enabled = it }
+        if (token.isNotEmpty()) stringResource(R.string.token_configured)
+        else stringResource(R.string.listenbrainz_desc), enabled) { enabled = it }
     if (enabled) {
         Column(modifier = Modifier.padding(start = 56.dp, end = 12.dp, bottom = 8.dp)) {
-            SettingTextField(stringResource(R.string.token), stringResource(R.string.token_hint), token, isPassword = true) { token = it }
+            SettingTextField(stringResource(R.string.token), stringResource(R.string.token_hint),
+                token, isPassword = true) { token = it }
         }
     }
 }
@@ -772,9 +793,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.privacyItems() {
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.networkItems() {
-    item {
-        SettingGroup(stringResource(R.string.group_proxy)) { ProxySettings() }
-    }
+    item { SettingGroup(stringResource(R.string.group_proxy)) { ProxySettings() } }
 }
 
 @Composable
@@ -789,15 +808,14 @@ private fun ProxySettings() {
         stringResource(R.string.use_proxy_desc), enabled) { enabled = it }
     if (enabled) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Text(stringResource(R.string.proxy_restart_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp))
+            Text(stringResource(R.string.proxy_restart_note), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
             SettingDropdown(Icons.Rounded.SettingsEthernet, stringResource(R.string.proxy_type),
                 listOf("HTTP" to "HTTP", "SOCKS" to "SOCKS"), type.name) { type = Proxy.Type.valueOf(it) }
             SettingTextField(stringResource(R.string.server), stringResource(R.string.server_hint), url) { url = it }
             SettingTextField(stringResource(R.string.user_optional), stringResource(R.string.username), username) { username = it }
-            SettingTextField(stringResource(R.string.password_optional), stringResource(R.string.password), password, isPassword = true) { password = it }
+            SettingTextField(stringResource(R.string.password_optional), stringResource(R.string.password),
+                password, isPassword = true) { password = it }
         }
     }
 }
@@ -813,61 +831,44 @@ private fun LyricsProviderOrderSection() {
     }
 
     Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-        Text(
-            text = stringResource(R.string.lyrics_order_desc),
-            style = MaterialTheme.typography.bodySmall,
+        Text(text = stringResource(R.string.lyrics_order_desc), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-        )
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         Spacer(modifier = Modifier.height(4.dp))
         currentOrder.forEachIndexed { index, name ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
+                    modifier = Modifier.size(26.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("${index + 1}", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
-                Text(LyricsProviderRegistry.getDisplayName(name),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.weight(1f))
+                Text(LyricsProviderRegistry.getDisplayName(name), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
                 if (index > 0) {
-                    IconButton(
-                        onClick = {
-                            val list = currentOrder.toMutableList()
-                            val tmp = list[index - 1]; list[index - 1] = list[index]; list[index] = tmp
-                            orderString = list.joinToString(",")
-                        },
-                        modifier = Modifier.size(32.dp),
-                    ) {
+                    IconButton(onClick = {
+                        val list = currentOrder.toMutableList()
+                        val tmp = list[index - 1]; list[index - 1] = list[index]; list[index] = tmp
+                        orderString = list.joinToString(",")
+                    }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = stringResource(R.string.action_up),
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if (index < currentOrder.size - 1) {
-                    IconButton(
-                        onClick = {
-                            val list = currentOrder.toMutableList()
-                            val tmp = list[index + 1]; list[index + 1] = list[index]; list[index] = tmp
-                            orderString = list.joinToString(",")
-                        },
-                        modifier = Modifier.size(32.dp),
-                    ) {
+                    IconButton(onClick = {
+                        val list = currentOrder.toMutableList()
+                        val tmp = list[index + 1]; list[index + 1] = list[index]; list[index] = tmp
+                        orderString = list.joinToString(",")
+                    }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.action_down),
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -878,19 +879,12 @@ private fun LyricsProviderOrderSection() {
 @Composable
 private fun SettingGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
+        Text(text = title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-        )
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         content()
     }
@@ -941,9 +935,7 @@ private fun SettingSwitch(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+        modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -951,10 +943,8 @@ private fun SettingSwitch(
         Icon(imageVector = icon, contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -972,9 +962,7 @@ private fun SettingDropdown(
     val label = options.find { it.first == selectedKey }?.second ?: selectedKey
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { expanded = true }
+        modifier = Modifier.fillMaxWidth().clickable { expanded = true }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -982,10 +970,8 @@ private fun SettingDropdown(
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground)
-            Text(label, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
         }
         Box {
             Icon(Icons.Rounded.ExpandMore, contentDescription = null,
@@ -996,8 +982,7 @@ private fun SettingDropdown(
                         text = { Text(lbl) },
                         onClick = { onSelect(key); expanded = false },
                         trailingIcon = {
-                            if (key == selectedKey)
-                                Icon(Icons.Rounded.Check, contentDescription = null)
+                            if (key == selectedKey) Icon(Icons.Rounded.Check, contentDescription = null)
                         },
                     )
                 }

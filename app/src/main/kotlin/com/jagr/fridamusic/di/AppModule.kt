@@ -1,5 +1,3 @@
-
-
 package com.jagr.fridamusic.di
 
 import android.content.Context
@@ -12,8 +10,6 @@ import androidx.room.Room
 import com.jagr.fridamusic.constants.MaxSongCacheSizeKey
 import com.jagr.fridamusic.db.InternalDatabase
 import com.jagr.fridamusic.db.MusicDatabase
-import com.jagr.fridamusic.listentogether.ListenTogetherClient
-import com.jagr.fridamusic.listentogether.ListenTogetherManager
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
 import dagger.Module
@@ -129,17 +125,4 @@ object AppModule {
             databaseProvider
         )
     }
-
-    @Singleton
-    @Provides
-    fun provideListenTogetherClient(
-        @ApplicationContext context: Context,
-    ): ListenTogetherClient = ListenTogetherClient(context)
-
-    @Singleton
-    @Provides
-    fun provideListenTogetherManager(
-        @ApplicationContext context: Context,
-        client: ListenTogetherClient,
-    ): ListenTogetherManager = ListenTogetherManager(client, context)
 }
