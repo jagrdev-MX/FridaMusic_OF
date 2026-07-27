@@ -1,10 +1,7 @@
 package com.jagr.fridamusic.presentation.screens
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.media.AudioManager
 import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
@@ -13,7 +10,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -41,7 +37,6 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,7 +60,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.media3.common.Format
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
@@ -73,13 +71,14 @@ import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
+import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.utils.resize
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-@OptIn(ExperimentalFoundationApi::class)
+@UnstableApi
 @Composable
 fun NowPlayingScreen(
     playerConnection: PlayerConnection,
@@ -116,9 +115,11 @@ fun NowPlayingScreen(
     var durationMs by remember { mutableLongStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
     var isDragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
+    var liveAudioFormat by remember(song.id) { mutableStateOf<Format?>(null) }
 
     LaunchedEffect(song.id) {
         while (isActive) {
+            liveAudioFormat = playerConnection.player.audioFormat
             if (!isDragging) {
                 positionMs = playerConnection.player.currentPosition
                 durationMs = playerConnection.player.duration.coerceAtLeast(0L)
@@ -133,29 +134,62 @@ fun NowPlayingScreen(
     var showOverflowMenu by remember { mutableStateOf(false) }
 
     val hasLyrics = currentLyrics != null
+    val audioQualityLabel = remember(currentFormat, liveAudioFormat) {
+        val codec = sequenceOf(liveAudioFormat?.codecs, currentFormat?.codecs)
+            .mapNotNull { value ->
+                value
+                    ?.substringBefore(',')
+                    ?.trim()
+                    ?.removeSurrounding("\"")
+                    ?.lowercase()
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .firstOrNull()
+        val mimeSubtype = sequenceOf(
+            liveAudioFormat?.sampleMimeType,
+            liveAudioFormat?.containerMimeType,
+            currentFormat?.mimeType,
+        ).mapNotNull { value ->
+            value
+                ?.substringBefore(';')
+                ?.substringAfter('/', missingDelimiterValue = "")
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() && it != "*" }
+        }.firstOrNull()
+        val formatName = codec ?: mimeSubtype
+
+        when {
+            formatName?.contains("opus") == true -> "OPUS"
+            formatName?.contains("flac") == true -> "FLAC"
+            formatName?.contains("mp4a") == true || formatName?.contains("aac") == true -> "AAC"
+            formatName?.contains("mpeg") == true || formatName?.contains("mp3") == true -> "MP3"
+            formatName?.contains("vorbis") == true -> "VORBIS"
+            formatName?.contains("alac") == true -> "ALAC"
+            formatName?.contains("wav") == true || formatName?.contains("pcm") == true -> "WAV"
+            formatName != null -> formatName.uppercase()
+            else -> "DESCONOCIDA"
+        }
+    }
+    val audioDetails = remember(currentFormat, liveAudioFormat, audioQualityLabel) {
+        val bitrateValue = sequenceOf(
+            liveAudioFormat?.averageBitrate,
+            liveAudioFormat?.bitrate,
+            currentFormat?.bitrate,
+        ).filterNotNull().firstOrNull { it > 0 }
+        val bitrate = bitrateValue?.let { "${(it / 1000f).roundToInt()} kbps" }
+        val fileSize = currentFormat?.contentLength
+            ?.takeIf { it > 0L }
+            ?.let { "${(it / 1_000_000f).roundToInt()} MB" }
+
+        listOfNotNull(audioQualityLabel, bitrate, fileSize).joinToString("  •  ")
+    }
 
     val artworkScale by animateFloatAsState(
         targetValue = if (showLyricsView) 0f else 1f,
         animationSpec = tween(350),
         label = "artwork_scale"
     )
-
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat() }
-    var volumeLevel by remember { mutableFloatStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / maxVolume) }
-
-    DisposableEffect(context) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context?, intent: Intent?) {
-                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
-                    val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-                    volumeLevel = currentVol / maxVolume
-                }
-            }
-        }
-        context.registerReceiver(receiver, IntentFilter("android.media.VOLUME_CHANGED_ACTION"))
-        onDispose { context.unregisterReceiver(receiver) }
-    }
 
     // --- LÓGICA DE GESTO SWIPE-TO-DISMISS ---
     var swipeOffsetY by remember { mutableFloatStateOf(0f) }
@@ -261,7 +295,7 @@ fun NowPlayingScreen(
             } else {
                 Column(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
 
-                    Box(modifier = Modifier.weight(1.08f).fillMaxWidth()) {
+                    Box(modifier = Modifier.weight(1.14f).fillMaxWidth()) {
 
                         Box(
                             modifier = Modifier
@@ -311,12 +345,25 @@ fun NowPlayingScreen(
                         // --------------------------------------------------------------
 
                         Row(
-                            modifier = Modifier.fillMaxWidth().align(Alignment.BottomStart).padding(horizontal = 40.dp, vertical = 22.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomStart)
+                                .padding(horizontal = 40.dp)
+                                .offset(y = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(song.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(song.artists.joinToString(", ") { it.name }, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.88f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                MarqueeText(
+                                    text = song.title,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                )
+                                MarqueeText(
+                                    text = song.artists.joinToString(", ") { it.name },
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White.copy(alpha = 0.88f),
+                                )
                             }
                             Box {
                                 NowPlayingRoundButton({ showOverflowMenu = true }, Icons.Rounded.MoreVert, stringResource(R.string.more_options))
@@ -355,51 +402,48 @@ fun NowPlayingScreen(
                         }
                     }
 
-                    Column(modifier = Modifier.weight(0.92f).fillMaxWidth().padding(horizontal = 36.dp).navigationBarsPadding()) {
+                    Column(modifier = Modifier.weight(0.86f).fillMaxWidth().padding(horizontal = 36.dp).navigationBarsPadding()) {
                         Slider(
                             value = if (isDragging) dragPosition else positionMs.toFloat() / durationMs.toFloat().coerceAtLeast(1f),
                             onValueChange = { isDragging = true; dragPosition = it },
                             onValueChangeFinished = { playerConnection.seekTo((dragPosition * durationMs).toLong()); isDragging = false },
                             colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.32f)),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 40.dp)
+                                .graphicsLayer { scaleY = 0.84f },
                         )
                         Row(Modifier.fillMaxWidth().offset(y = (-6).dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text(formatMs(if (isDragging) (dragPosition * durationMs).toLong() else positionMs), color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))) {
-                                Text(currentFormat?.codecs?.uppercase() ?: "OPUS", color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+                            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(7.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))) {
+                                Text(audioQualityLabel, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
                             }
                             Text(formatMs(durationMs), color = Color.White, style = MaterialTheme.typography.bodyLarge)
                         }
-                        Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.weight(1f).heightIn(min = 16.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             IconButton(onClick = playerConnection::seekToPrevious, enabled = canSkipPrevious, modifier = Modifier.size(68.dp)) { Icon(Icons.Rounded.SkipPrevious, stringResource(R.string.previous), tint = Color.White, modifier = Modifier.size(48.dp)) }
                             IconButton(onClick = { if (isPlaying) playerConnection.player.pause() else playerConnection.player.play() }, modifier = Modifier.size(78.dp)) { Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (isPlaying) stringResource(R.string.pause) else stringResource(R.string.play), tint = Color.White, modifier = Modifier.size(58.dp)) }
                             IconButton(onClick = playerConnection::seekToNext, enabled = canSkipNext, modifier = Modifier.size(68.dp)) { Icon(Icons.Rounded.SkipNext, stringResource(R.string.next), tint = Color.White, modifier = Modifier.size(48.dp)) }
                         }
 
-                        Row(Modifier.fillMaxWidth().padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = {
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
-                                volumeLevel = 0f
-                            }) { Icon(Icons.Rounded.VolumeOff, null, tint = Color.White.copy(alpha = 0.8f)) }
-
-                            Slider(
-                                value = volumeLevel,
-                                onValueChange = {
-                                    volumeLevel = it
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (it * maxVolume).roundToInt(), 0)
-                                },
-                                colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.32f)),
-                                modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(32.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = audioDetails,
+                                color = Color.White.copy(alpha = 0.62f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-
-                            IconButton(onClick = {
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
-                                volumeLevel = 1f
-                            }) { Icon(Icons.Rounded.VolumeUp, null, tint = Color.White.copy(alpha = 0.8f)) }
                         }
+                        Spacer(Modifier.weight(0.45f).heightIn(min = 8.dp))
 
                         Row(
-                            Modifier.fillMaxWidth().padding(top = 18.dp),
+                            Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {

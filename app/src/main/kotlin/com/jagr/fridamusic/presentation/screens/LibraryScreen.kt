@@ -1,6 +1,11 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -34,14 +39,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -53,12 +62,14 @@ import com.jagr.fridamusic.viewmodels.LibraryArtistsViewModel
 import com.jagr.fridamusic.viewmodels.LibraryMixViewModel
 import com.jagr.fridamusic.viewmodels.LibraryPlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
+import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
 import kotlinx.coroutines.launch
 
 private enum class LibraryFilter(val label: String, val icon: ImageVector) {
     LIBRARY("Biblioteca", Icons.Rounded.LibraryMusic),
     PLAYLISTS("Listas", Icons.AutoMirrored.Rounded.QueueMusic),
     SONGS("Canciones", Icons.Rounded.MusicNote),
+    LOCAL("Local", Icons.Rounded.Folder),
     ARTISTS("Artistas", Icons.Rounded.Person),
     ALBUMS("Álbumes", Icons.Rounded.Album),
 }
@@ -146,6 +157,7 @@ fun LibraryScreen(
                         )
                         LibraryFilter.PLAYLISTS -> PlaylistsTab(onLocalItemClick = onLocalItemClick)
                         LibraryFilter.SONGS -> SongsTab(onSongClick = onSongClick)
+                        LibraryFilter.LOCAL -> LocalSongsTab(onSongClick = onSongClick)
                         LibraryFilter.ARTISTS -> ArtistsTab(onLocalItemClick = onLocalItemClick)
                         LibraryFilter.ALBUMS -> AlbumsTab(onLocalItemClick = onLocalItemClick)
                     }
@@ -303,7 +315,7 @@ private fun LibraryMixTab(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.weight(1f),
-                        onClick = { },
+                        onClick = { onTabSelected(LibraryFilter.LOCAL) },
                     )
                 }
                 Row(
@@ -674,6 +686,201 @@ private fun SongsTab(
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalSongsTab(
+    onSongClick: (Song, List<Song>) -> Unit,
+    viewModel: LocalSongsViewModel = hiltViewModel(),
+) {
+    val context = LocalContext.current
+    val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, requiredPermission) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val songs by viewModel.songs.collectAsState()
+    val scanState by viewModel.scanState.collectAsState()
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasPermission = granted
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (
+            hasPermission &&
+            songs.isEmpty() &&
+            scanState.lastSummary == null &&
+            !scanState.isScanning
+        ) {
+            viewModel.scanDevice()
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 60.dp,
+            bottom = 140.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "local_scan") {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.local_songs_scan_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = if (hasPermission) {
+                            stringResource(R.string.local_songs_scan_subtitle)
+                        } else {
+                            stringResource(R.string.local_songs_permission_body)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FilledTonalButton(
+                        enabled = !scanState.isScanning,
+                        onClick = {
+                            if (hasPermission) {
+                                viewModel.scanDevice()
+                            } else {
+                                permissionLauncher.launch(requiredPermission)
+                            }
+                        },
+                    ) {
+                        if (scanState.isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = when {
+                                scanState.isScanning -> stringResource(R.string.scanning_device)
+                                hasPermission -> stringResource(R.string.scan_device)
+                                else -> stringResource(R.string.allow)
+                            },
+                        )
+                    }
+                    scanState.lastSummary?.let { summary ->
+                        Text(
+                            text = stringResource(
+                                R.string.local_songs_scan_summary,
+                                summary.scannedSongs,
+                                summary.removedSongs,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (scanState.errorMessage != null) {
+                        Text(
+                            text = stringResource(R.string.local_songs_scan_failed),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (!hasPermission) {
+            item(key = "local_permission") {
+                Text(
+                    text = stringResource(R.string.permission_storage_desc),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else if (songs.isEmpty() && !scanState.isScanning) {
+            item(key = "local_empty") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.local_songs_empty_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = stringResource(R.string.local_songs_ready_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+
+        items(songs, key = { "local_${it.song.id}" }) { song ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onSongClick(song, songs) }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AsyncImage(
+                    model = song.thumbnailUrl?.resize(width = 96),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.song.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    Text(
+                        text = song.artists.joinToString(", ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
