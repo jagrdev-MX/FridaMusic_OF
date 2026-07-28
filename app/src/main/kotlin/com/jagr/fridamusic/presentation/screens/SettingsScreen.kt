@@ -1,6 +1,11 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -9,6 +14,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,6 +41,8 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOff
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.History
@@ -47,15 +55,19 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Podcasts
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VideocamOff
@@ -72,6 +84,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -79,12 +92,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.*
+import com.jagr.fridamusic.localmedia.LocalAudioFolder
+import com.jagr.fridamusic.localmedia.LocalSongScanConfig
 import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
 import com.jagr.fridamusic.viewmodels.AccountSettingsViewModel
+import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
 import java.net.Proxy
 
 private data class SettingsItem(
@@ -109,6 +126,7 @@ private sealed class SettingsPage {
     object Appearance : SettingsPage()
     object Lyrics : SettingsPage()
     object Content : SettingsPage()
+    object LocalFiles : SettingsPage()
     object Services : SettingsPage()
     object Privacy : SettingsPage()
     object Network : SettingsPage()
@@ -124,8 +142,16 @@ fun SettingsScreen(
 ) {
     var currentPage: SettingsPage by remember { mutableStateOf(SettingsPage.None) }
 
+    fun navigateBackFromDetail() {
+        currentPage = if (currentPage == SettingsPage.LocalFiles) {
+            SettingsPage.Content
+        } else {
+            SettingsPage.None
+        }
+    }
+
     BackHandler(enabled = currentPage != SettingsPage.None) {
-        currentPage = SettingsPage.None
+        navigateBackFromDetail()
     }
 
     if (currentPage == SettingsPage.Equalizer) {
@@ -142,9 +168,10 @@ fun SettingsScreen(
     if (currentPage != SettingsPage.None) {
         SettingsDetailPage(
             page = currentPage,
-            onBack = { currentPage = SettingsPage.None },
+            onBack = ::navigateBackFromDetail,
             onNavigateToLogin = onNavigateToLogin,
             onNavigateToSpotifyImport = onNavigateToSpotifyImport,
+            onNavigateToLocalFiles = { currentPage = SettingsPage.LocalFiles },
         )
         return
     }
@@ -346,6 +373,7 @@ private fun SettingsDetailPage(
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateToSpotifyImport: () -> Unit = {},
+    onNavigateToLocalFiles: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
@@ -372,7 +400,8 @@ private fun SettingsDetailPage(
                 SettingsPage.Equalizer  -> {}
                 SettingsPage.Appearance -> appearanceItems()
                 SettingsPage.Lyrics     -> lyricsItems()
-                SettingsPage.Content    -> contentItems()
+                SettingsPage.Content    -> contentItems(onNavigateToLocalFiles)
+                SettingsPage.LocalFiles -> localFilesItems()
                 SettingsPage.Services   -> servicesItems(onNavigateToSpotifyImport)
                 SettingsPage.Privacy    -> privacyItems()
                 SettingsPage.Network    -> networkItems()
@@ -391,6 +420,7 @@ private fun pageTitle(page: SettingsPage) = when (page) {
     SettingsPage.Appearance -> stringResource(R.string.appearance)
     SettingsPage.Lyrics     -> stringResource(R.string.lyrics)
     SettingsPage.Content    -> stringResource(R.string.content)
+    SettingsPage.LocalFiles -> stringResource(R.string.local_files_title)
     SettingsPage.Services   -> stringResource(R.string.services)
     SettingsPage.Privacy    -> stringResource(R.string.privacy)
     SettingsPage.Network    -> stringResource(R.string.network)
@@ -620,7 +650,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.lyricsItems() {
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.contentItems() {
+private fun androidx.compose.foundation.lazy.LazyListScope.contentItems(
+    onNavigateToLocalFiles: () -> Unit,
+) {
+    item {
+        SettingGroup(stringResource(R.string.local_content_group)) {
+            SettingNavigationRow(
+                icon = Icons.Rounded.Folder,
+                title = stringResource(R.string.local_files_title),
+                subtitle = stringResource(R.string.local_files_desc),
+                onClick = onNavigateToLocalFiles,
+            )
+        }
+    }
     item {
         SettingGroup(stringResource(R.string.filters)) {
             PrefSwitch(Icons.Rounded.Block, stringResource(R.string.hide_explicit),
@@ -648,6 +690,335 @@ private fun androidx.compose.foundation.lazy.LazyListScope.contentItems() {
             CacheSection()
         }
     }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.localFilesItems() {
+    item {
+        LocalFilesSettingsSection()
+    }
+}
+
+@Composable
+private fun LocalFilesSettingsSection(
+    viewModel: LocalSongsViewModel = hiltViewModel(),
+) {
+    val context = LocalContext.current
+    val scanConfig by viewModel.scanConfig.collectAsState()
+    val foldersState by viewModel.foldersState.collectAsState()
+    val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, requiredPermission) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var showFoldersDialog by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasPermission = granted
+        if (granted) {
+            viewModel.refreshLibrary()
+            viewModel.loadAudioFolders()
+        }
+    }
+
+    LaunchedEffect(hasPermission) {
+        if (hasPermission) {
+            viewModel.refreshLibrary()
+            viewModel.loadAudioFolders()
+        }
+    }
+
+    val durationOptions = buildList {
+        LocalSongScanConfig.DurationOptionsSeconds.forEach { seconds ->
+            val label = if (seconds == 120) {
+                pluralStringResource(R.plurals.minute, 2, 2)
+            } else {
+                pluralStringResource(R.plurals.seconds, seconds, seconds)
+            }
+            add(seconds.toString() to label)
+        }
+        if (scanConfig.minimumDurationSeconds !in LocalSongScanConfig.DurationOptionsSeconds) {
+            val seconds = scanConfig.minimumDurationSeconds
+            add(
+                seconds.toString() to
+                    pluralStringResource(R.plurals.seconds, seconds, seconds),
+            )
+        }
+    }
+    val sizeOptions = buildList {
+        LocalSongScanConfig.SizeOptionsKb.forEach { sizeKb ->
+            add(sizeKb.toString() to localAudioSizeLabel(sizeKb))
+        }
+        if (scanConfig.minimumSizeKb !in LocalSongScanConfig.SizeOptionsKb) {
+            add(
+                scanConfig.minimumSizeKb.toString() to
+                    localAudioSizeLabel(scanConfig.minimumSizeKb),
+            )
+        }
+    }
+
+    Column {
+        SettingGroup(stringResource(R.string.local_audio_filters_group)) {
+            SettingSwitch(
+                icon = Icons.Rounded.Timer,
+                title = stringResource(R.string.local_audio_hide_short_title),
+                subtitle = stringResource(R.string.local_audio_hide_short_desc),
+                checked = scanConfig.hideShortAudio,
+                onCheckedChange = viewModel::setHideShortAudio,
+            )
+            if (scanConfig.hideShortAudio) {
+                SettingDropdown(
+                    icon = Icons.Rounded.Timer,
+                    title = stringResource(R.string.local_audio_minimum_duration_title),
+                    options = durationOptions,
+                    selectedKey = scanConfig.minimumDurationSeconds.toString(),
+                    onSelect = { selected ->
+                        selected.toIntOrNull()?.let(viewModel::setMinimumDurationSeconds)
+                    },
+                )
+            }
+            SettingSwitch(
+                icon = Icons.Rounded.SdStorage,
+                title = stringResource(R.string.local_audio_hide_small_title),
+                subtitle = stringResource(R.string.local_audio_hide_small_desc),
+                checked = scanConfig.hideSmallFiles,
+                onCheckedChange = viewModel::setHideSmallFiles,
+            )
+            if (scanConfig.hideSmallFiles) {
+                SettingDropdown(
+                    icon = Icons.Rounded.SdStorage,
+                    title = stringResource(R.string.local_audio_minimum_size_title),
+                    options = sizeOptions,
+                    selectedKey = scanConfig.minimumSizeKb.toString(),
+                    onSelect = { selected ->
+                        selected.toIntOrNull()?.let(viewModel::setMinimumSizeKb)
+                    },
+                )
+            }
+            SettingSwitch(
+                icon = Icons.Rounded.RecordVoiceOver,
+                title = stringResource(R.string.local_audio_hide_recordings_title),
+                subtitle = stringResource(R.string.local_audio_hide_recordings_desc),
+                checked = scanConfig.hideRecordings,
+                onCheckedChange = viewModel::setHideRecordings,
+            )
+            SettingSwitch(
+                icon = Icons.Rounded.NotificationsOff,
+                title = stringResource(R.string.local_audio_hide_system_sounds_title),
+                subtitle = stringResource(R.string.local_audio_hide_system_sounds_desc),
+                checked = scanConfig.hideSystemSounds,
+                onCheckedChange = viewModel::setHideSystemSounds,
+            )
+            SettingSwitch(
+                icon = Icons.Rounded.MusicNote,
+                title = stringResource(R.string.local_audio_show_without_metadata_title),
+                subtitle = stringResource(R.string.local_audio_show_without_metadata_desc),
+                checked = scanConfig.showFilesWithoutMetadata,
+                onCheckedChange = viewModel::setShowFilesWithoutMetadata,
+            )
+        }
+
+        SettingGroup(stringResource(R.string.local_audio_folders_group)) {
+            val excludedCount = scanConfig.sanitizedExcludedFolders.size
+            val excludedCountText = pluralStringResource(
+                R.plurals.local_audio_excluded_folders_count,
+                excludedCount,
+                excludedCount,
+            )
+            SettingNavigationRow(
+                icon = Icons.Rounded.FolderOff,
+                title = stringResource(R.string.local_songs_scan_folders_title),
+                subtitle = stringResource(
+                    R.string.local_audio_excluded_folders_summary,
+                    stringResource(R.string.local_songs_scan_folders_desc),
+                    excludedCountText,
+                ),
+                onClick = {
+                    if (hasPermission) {
+                        showFoldersDialog = true
+                        viewModel.loadAudioFolders()
+                    } else {
+                        permissionLauncher.launch(requiredPermission)
+                    }
+                },
+            )
+            if (!hasPermission) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.local_audio_folder_permission_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FilledTonalButton(
+                        onClick = { permissionLauncher.launch(requiredPermission) },
+                    ) {
+                        Text(stringResource(R.string.allow))
+                    }
+                }
+            }
+            if (foldersState.errorMessage != null) {
+                Text(
+                    text = stringResource(R.string.local_audio_folders_load_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
+        }
+    }
+
+    if (showFoldersDialog) {
+        ExcludedFoldersDialog(
+            availableFolders = foldersState.folders,
+            initialExcludedFolders = scanConfig.sanitizedExcludedFolders,
+            isLoading = foldersState.isLoading,
+            onDismiss = { showFoldersDialog = false },
+            onSave = { selectedFolders ->
+                viewModel.setExcludedFolders(selectedFolders)
+                showFoldersDialog = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun localAudioSizeLabel(sizeKb: Int): String {
+    return if (sizeKb >= 1024 && sizeKb % 1024 == 0) {
+        stringResource(R.string.local_audio_size_mb, sizeKb / 1024)
+    } else {
+        stringResource(R.string.local_audio_size_kb, sizeKb)
+    }
+}
+
+@Composable
+private fun ExcludedFoldersDialog(
+    availableFolders: List<LocalAudioFolder>,
+    initialExcludedFolders: Set<String>,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>) -> Unit,
+) {
+    var selectedFolders by remember(initialExcludedFolders) {
+        mutableStateOf(LocalSongScanConfig.deduplicateFolderEntries(initialExcludedFolders))
+    }
+    val folderChoices = remember(availableFolders, initialExcludedFolders) {
+        val choices = linkedMapOf<String, LocalAudioFolder>()
+        availableFolders.forEach { folder ->
+            val canonical = LocalSongScanConfig.canonicalFolderEntry(folder.path)
+            if (canonical.isNotEmpty()) {
+                choices[canonical] = folder
+            }
+        }
+        initialExcludedFolders.forEach { path ->
+            val canonical = LocalSongScanConfig.canonicalFolderEntry(path)
+            if (canonical.isNotEmpty() && canonical !in choices) {
+                choices[canonical] = LocalAudioFolder(path = path, audioCount = 0)
+            }
+        }
+        choices.values.sortedBy { LocalSongScanConfig.canonicalFolderEntry(it.path) }
+    }
+
+    fun isSelected(path: String): Boolean {
+        val canonical = LocalSongScanConfig.canonicalFolderEntry(path)
+        return selectedFolders.any {
+            LocalSongScanConfig.canonicalFolderEntry(it) == canonical
+        }
+    }
+
+    fun setSelected(path: String, selected: Boolean) {
+        val canonical = LocalSongScanConfig.canonicalFolderEntry(path)
+        selectedFolders = LocalSongScanConfig.deduplicateFolderEntries(
+            if (selected) {
+                selectedFolders + path
+            } else {
+                selectedFolders.filterNot {
+                    LocalSongScanConfig.canonicalFolderEntry(it) == canonical
+                }
+            },
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.local_songs_scan_folders_title)) },
+        text = {
+            when {
+                isLoading && folderChoices.isEmpty() -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    }
+                }
+                folderChoices.isEmpty() -> {
+                    Text(
+                        text = stringResource(R.string.local_audio_folders_empty),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                        items(
+                            items = folderChoices,
+                            key = { LocalSongScanConfig.canonicalFolderEntry(it.path) },
+                        ) { folder ->
+                            val selected = isSelected(folder.path)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { setSelected(folder.path, !selected) }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Checkbox(
+                                    checked = selected,
+                                    onCheckedChange = { setSelected(folder.path, it) },
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = folder.path,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = pluralStringResource(
+                                            R.plurals.local_audio_folder_files_count,
+                                            folder.audioCount,
+                                            folder.audioCount,
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(selectedFolders) }) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -924,6 +1295,50 @@ private inline fun <reified E : Enum<E>> PrefDropdownEnum(
 ) {
     var value by rememberEnumPreference<E>(prefKey, default)
     SettingDropdown(icon, title, options, value.name) { value = enumValueOf(it) }
+}
+
+@Composable
+private fun SettingNavigationRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(20.dp),
+        )
+    }
 }
 
 @Composable

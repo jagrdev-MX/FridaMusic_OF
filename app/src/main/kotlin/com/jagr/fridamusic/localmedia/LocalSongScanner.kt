@@ -9,6 +9,8 @@ import android.os.Build
 import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.MusicDatabase
@@ -24,220 +26,205 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
-
-data class LocalSongScanConfig(
-    val minimumDurationSeconds: Int = 0,
-    val excludedFolders: Set<String> = emptySet(),
-) {
-    val sanitizedMinimumDurationSeconds: Int
-        get() = minimumDurationSeconds.coerceAtLeast(0)
-
-    val sanitizedExcludedFolders: Set<String>
-        get() = deduplicateFolderEntries(excludedFolders)
-
-    companion object {
-        private val DuplicateSlashRegex = Regex("/+")
-
-        fun normalizeFolderEntry(raw: String): String {
-            return raw
-                .trim()
-                .replace('\\', '/')
-                .replace(DuplicateSlashRegex, "/")
-                .trim('/')
-        }
-
-        fun deduplicateFolderEntries(entries: Iterable<String>): Set<String> {
-            val deduplicated = linkedMapOf<String, String>()
-            entries.forEach { entry ->
-                val normalized = normalizeFolderEntry(entry)
-                if (normalized.isNotEmpty()) {
-                    deduplicated.putIfAbsent(normalized.lowercase(Locale.ROOT), normalized)
-                }
-            }
-            return deduplicated.values.toSet()
-        }
-    }
-}
+import javax.inject.Singleton
 
 data class LocalSongScanSummary(
     val scannedSongs: Int,
     val removedSongs: Int,
 )
 
+@Singleton
 class LocalSongScanner
 @Inject
 constructor(
     @ApplicationContext private val context: Context,
     private val database: MusicDatabase,
+    private val audioFilter: LocalAudioFilter,
 ) {
-    suspend fun scanDevice(scanConfig: LocalSongScanConfig = LocalSongScanConfig()): LocalSongScanSummary = withContext(Dispatchers.IO) {
-        val snapshot = queryTracks(scanConfig)
-        var summary = LocalSongScanSummary(0, 0)
-        database.withTransaction {
-            val existingLocalIds = localSongIds()
-            val scannedIds = snapshot.tracks.map(LocalTrackRecord::id)
-            val scannedIdSet = scannedIds.toSet()
-            val removedIds = existingLocalIds.filterNot(scannedIdSet::contains)
+    private val scanMutex = Mutex()
+    private var lastAppliedConfig: LocalSongScanConfig? = null
+    private var lastScanSummary: LocalSongScanSummary? = null
 
-            if (scannedIds.isEmpty()) {
-                clearLocalSongs()
-            } else {
-                removedIds.chunked(SqlBatchSize).forEach(::deleteSongsByIds)
+    suspend fun scanDevice(
+        scanConfig: LocalSongScanConfig = LocalSongScanConfig(),
+        force: Boolean = true,
+    ): LocalSongScanSummary = withContext(Dispatchers.IO) {
+        scanMutex.withLock {
+            val sanitizedConfig = scanConfig.sanitized()
+            if (!force && sanitizedConfig == lastAppliedConfig) {
+                return@withLock lastScanSummary ?: LocalSongScanSummary(0, 0)
             }
 
-            val existingSongs = loadSongs(scannedIds)
-            val existingArtists = loadArtists(snapshot.artists.map(LocalArtistRecord::id))
-            val existingAlbums = loadAlbums(snapshot.albums.map(LocalAlbumRecord::id))
+            val snapshot = queryTracks(sanitizedConfig)
+            var summary = LocalSongScanSummary(0, 0)
+            database.withTransaction {
+                val existingLocalIds = localSongIds()
+                val scannedIds = snapshot.tracks.map(LocalTrackRecord::id)
+                val scannedIdSet = scannedIds.toSet()
+                val removedIds = existingLocalIds.filterNot(scannedIdSet::contains)
 
-            snapshot.artists.forEach { artist ->
-                val existingArtist = existingArtists[artist.id]
-                insert(
-                    ArtistEntity(
-                        id = artist.id,
-                        name = artist.name,
-                        thumbnailUrl = existingArtist?.thumbnailUrl,
-                        channelId = null,
-                        lastUpdateTime = existingArtist?.lastUpdateTime ?: LocalDateTime.now(),
-                        bookmarkedAt = existingArtist?.bookmarkedAt,
-                        isLocal = true,
-                    ),
-                )
-            }
+                if (scannedIds.isEmpty()) {
+                    clearLocalSongs()
+                } else {
+                    removedIds.chunked(SqlBatchSize).forEach(::deleteSongsByIds)
+                }
 
-            snapshot.albums.forEach { album ->
-                val existingAlbum = existingAlbums[album.id]
-                insert(
-                    AlbumEntity(
-                        id = album.id,
-                        playlistId = null,
-                        title = album.title,
-                        year = album.year ?: existingAlbum?.year,
-                        thumbnailUrl = album.thumbnailUrl ?: existingAlbum?.thumbnailUrl?.takeIf {
-                            !it.startsWith("content://media/external/audio/media/")
-                        },
-                        themeColor = existingAlbum?.themeColor,
-                        songCount = album.songCount,
-                        duration = album.duration,
-                        explicit = false,
-                        lastUpdateTime = LocalDateTime.now(),
-                        bookmarkedAt = existingAlbum?.bookmarkedAt,
-                        likedDate = existingAlbum?.likedDate,
-                        inLibrary = existingAlbum?.inLibrary,
-                        isLocal = true,
-                    ),
-                )
-            }
+                val existingSongs = loadSongs(scannedIds)
+                val existingArtists = loadArtists(snapshot.artists.map(LocalArtistRecord::id))
+                val existingAlbums = loadAlbums(snapshot.albums.map(LocalAlbumRecord::id))
 
-            snapshot.albums.map(LocalAlbumRecord::id).distinct().chunked(SqlBatchSize).forEach(::deleteAlbumArtistMapsByAlbumIds)
-            snapshot.albums.forEach { album ->
-                album.artistIds.forEachIndexed { index, artistId ->
+                snapshot.artists.forEach { artist ->
+                    val existingArtist = existingArtists[artist.id]
                     insert(
-                        AlbumArtistMap(
-                            albumId = album.id,
-                            artistId = artistId,
-                            order = index,
+                        ArtistEntity(
+                            id = artist.id,
+                            name = artist.name,
+                            thumbnailUrl = existingArtist?.thumbnailUrl,
+                            channelId = null,
+                            lastUpdateTime = existingArtist?.lastUpdateTime ?: LocalDateTime.now(),
+                            bookmarkedAt = existingArtist?.bookmarkedAt,
+                            isLocal = true,
                         ),
                     )
                 }
-            }
 
-            snapshot.tracks.forEach { track ->
-                val existingSong = existingSongs[track.id]?.song
-                insert(
-                    SongEntity(
-                        id = track.id,
-                        title = track.title,
-                        duration = track.durationSeconds,
-                        thumbnailUrl = track.thumbnailUrl ?: existingSong?.thumbnailUrl?.takeIf {
-                            !it.startsWith("content://media/external/audio/media/")
-                        },
-                        albumId = track.albumId,
-                        albumName = track.albumName,
-                        explicit = existingSong?.explicit ?: false,
-                        year = track.year ?: existingSong?.year,
-                        date = existingSong?.date,
-                        dateModified = track.dateModified ?: existingSong?.dateModified,
-                        liked = existingSong?.liked ?: false,
-                        likedDate = existingSong?.likedDate,
-                        totalPlayTime = existingSong?.totalPlayTime ?: 0L,
-                        inLibrary = null,
-                        dateDownload = existingSong?.dateDownload,
-                        isLocal = true,
-                    ),
-                )
-                upsert(
-                    FormatEntity(
-                        id = track.id,
-                        itag = -1,
-                        mimeType = track.mimeType,
-                        codecs = "",
-                        bitrate = 0,
-                        sampleRate = null,
-                        contentLength = track.sizeBytes,
-                        loudnessDb = null,
-                        perceptualLoudnessDb = null,
-                        playbackUrl = null,
-                    ),
-                )
-                deleteSongArtistMaps(track.id)
-                track.artists.forEachIndexed { index, artist ->
+                snapshot.albums.forEach { album ->
+                    val existingAlbum = existingAlbums[album.id]
                     insert(
-                        SongArtistMap(
-                            songId = track.id,
-                            artistId = artist.id,
-                            position = index,
+                        AlbumEntity(
+                            id = album.id,
+                            playlistId = null,
+                            title = album.title,
+                            year = album.year ?: existingAlbum?.year,
+                            thumbnailUrl = album.thumbnailUrl ?: existingAlbum?.thumbnailUrl?.takeIf {
+                                !it.startsWith("content://media/external/audio/media/")
+                            },
+                            themeColor = existingAlbum?.themeColor,
+                            songCount = album.songCount,
+                            duration = album.duration,
+                            explicit = false,
+                            lastUpdateTime = LocalDateTime.now(),
+                            bookmarkedAt = existingAlbum?.bookmarkedAt,
+                            likedDate = existingAlbum?.likedDate,
+                            inLibrary = existingAlbum?.inLibrary,
+                            isLocal = true,
                         ),
                     )
                 }
-                deleteSongAlbumMaps(track.id)
-                track.albumId?.let { albumId ->
+
+                snapshot.albums
+                    .map(LocalAlbumRecord::id)
+                    .distinct()
+                    .chunked(SqlBatchSize)
+                    .forEach(::deleteAlbumArtistMapsByAlbumIds)
+                snapshot.albums.forEach { album ->
+                    album.artistIds.forEachIndexed { index, artistId ->
+                        insert(
+                            AlbumArtistMap(
+                                albumId = album.id,
+                                artistId = artistId,
+                                order = index,
+                            ),
+                        )
+                    }
+                }
+
+                snapshot.tracks.forEach { track ->
+                    val existingSong = existingSongs[track.id]?.song
                     insert(
-                        SongAlbumMap(
-                            songId = track.id,
-                            albumId = albumId,
-                            index = 0,
+                        SongEntity(
+                            id = track.id,
+                            title = track.title,
+                            duration = track.durationSeconds,
+                            thumbnailUrl = track.thumbnailUrl ?: existingSong?.thumbnailUrl?.takeIf {
+                                !it.startsWith("content://media/external/audio/media/")
+                            },
+                            albumId = track.albumId,
+                            albumName = track.albumName,
+                            explicit = existingSong?.explicit ?: false,
+                            year = track.year ?: existingSong?.year,
+                            date = existingSong?.date,
+                            dateModified = track.dateModified ?: existingSong?.dateModified,
+                            liked = existingSong?.liked ?: false,
+                            likedDate = existingSong?.likedDate,
+                            totalPlayTime = existingSong?.totalPlayTime ?: 0L,
+                            inLibrary = null,
+                            dateDownload = existingSong?.dateDownload,
+                            isLocal = true,
                         ),
                     )
+                    upsert(
+                        FormatEntity(
+                            id = track.id,
+                            itag = -1,
+                            mimeType = track.mimeType,
+                            codecs = "",
+                            bitrate = 0,
+                            sampleRate = null,
+                            contentLength = track.sizeBytes,
+                            loudnessDb = null,
+                            perceptualLoudnessDb = null,
+                            playbackUrl = null,
+                        ),
+                    )
+                    deleteSongArtistMaps(track.id)
+                    track.artists.forEachIndexed { index, artist ->
+                        insert(
+                            SongArtistMap(
+                                songId = track.id,
+                                artistId = artist.id,
+                                position = index,
+                            ),
+                        )
+                    }
+                    deleteSongAlbumMaps(track.id)
+                    track.albumId?.let { albumId ->
+                        insert(
+                            SongAlbumMap(
+                                songId = track.id,
+                                albumId = albumId,
+                                index = 0,
+                            ),
+                        )
+                    }
                 }
+
+                pruneLocalAlbums()
+                pruneLocalArtists()
+                pruneFormats()
+                prunePlayCounts()
+
+                summary = LocalSongScanSummary(
+                    scannedSongs = snapshot.tracks.size,
+                    removedSongs = removedIds.size,
+                )
             }
 
-            pruneLocalAlbums()
-            pruneLocalArtists()
-            pruneFormats()
-            prunePlayCounts()
-
-            summary = LocalSongScanSummary(
-                scannedSongs = snapshot.tracks.size,
-                removedSongs = removedIds.size,
-            )
+            lastAppliedConfig = sanitizedConfig
+            lastScanSummary = summary
+            summary
         }
-        return@withContext summary
     }
 
-        private suspend fun loadSongs(ids: List<String>): Map<String, Song> =
+    private suspend fun loadSongs(ids: List<String>): Map<String, Song> =
         ids.chunked(SqlBatchSize)
             .flatMap { chunk -> database.getSongsByIds(chunk) }
             .associateBy { item -> item.song.id }
 
-        private suspend fun loadArtists(ids: List<String>): Map<String, ArtistEntity> =
+    private suspend fun loadArtists(ids: List<String>): Map<String, ArtistEntity> =
         ids.distinct().chunked(SqlBatchSize)
             .flatMap { chunk -> database.getArtistEntitiesByIds(chunk) }
             .associateBy { item -> item.id }
 
-        private suspend fun loadAlbums(ids: List<String>): Map<String, AlbumEntity> =
+    private suspend fun loadAlbums(ids: List<String>): Map<String, AlbumEntity> =
         ids.distinct().chunked(SqlBatchSize)
             .flatMap { chunk -> database.getAlbumEntitiesByIds(chunk) }
             .associateBy { item -> item.id }
 
     @Suppress("DEPRECATION")
     private fun queryTracks(scanConfig: LocalSongScanConfig): LocalScanSnapshot {
-        val sanitizedMinimumDurationMs = scanConfig.sanitizedMinimumDurationSeconds.toLong() * 1000L
-        val sanitizedExcludedFolders = scanConfig.sanitizedExcludedFolders
-            .map { it.lowercase(Locale.ROOT) }
-            .toSet()
         val projection = buildList {
             add(MediaStore.Audio.Media._ID)
             add(MediaStore.Audio.Media.TITLE)
@@ -251,26 +238,21 @@ constructor(
             add(MediaStore.Audio.Media.DATE_MODIFIED)
             add(MediaStore.Audio.Media.SIZE)
             add(MediaStore.Audio.Media.MIME_TYPE)
+            add(MediaStore.Audio.Media.IS_MUSIC)
+            add(MediaStore.Audio.Media.IS_RINGTONE)
+            add(MediaStore.Audio.Media.IS_ALARM)
+            add(MediaStore.Audio.Media.IS_NOTIFICATION)
+            add(MediaStore.Audio.Media.IS_PODCAST)
+            add(MediaStore.MediaColumns.DATA)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 add(MediaStore.MediaColumns.RELATIVE_PATH)
-            } else {
-                add(MediaStore.MediaColumns.DATA)
+                add(MediaStore.Audio.Media.IS_AUDIOBOOK)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(MediaStore.Audio.Media.IS_RECORDING)
             }
         }.toTypedArray()
-        val selection = buildList {
-            add("${MediaStore.Audio.Media.SIZE} > 0")
-            if (sanitizedMinimumDurationMs > 0L) {
-                add("${MediaStore.Audio.Media.DURATION} >= $sanitizedMinimumDurationMs")
-            } else {
-                add("${MediaStore.Audio.Media.DURATION} > 0")
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                add("${MediaStore.MediaColumns.IS_PENDING} = 0")
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                add("is_trashed = 0")
-            }
-        }.joinToString(" AND ")
+        val selection = buildAvailableMediaSelection()
 
         val unknownArtist = context.getString(R.string.unknown_artist)
         val unknownTitle = context.getString(R.string.unknown)
@@ -296,6 +278,13 @@ constructor(
             val mimeTypeIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
             val dataPathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            val isMusicIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_MUSIC)
+            val isRingtoneIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_RINGTONE)
+            val isAlarmIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_ALARM)
+            val isNotificationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_NOTIFICATION)
+            val isPodcastIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_PODCAST)
+            val isAudiobookIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_AUDIOBOOK)
+            val isRecordingIndex = cursor.getColumnIndex(MediaStore.Audio.Media.IS_RECORDING)
 
             while (cursor.moveToNext()) {
                 val mediaId = cursor.getLong(idIndex)
@@ -304,15 +293,40 @@ constructor(
                     relativePath = cursor.getStringOrNull(relativePathIndex),
                     absolutePath = cursor.getStringOrNull(dataPathIndex),
                 )
-                if (shouldExcludeFolder(normalizedFolderPath, sanitizedExcludedFolders)) {
-                    continue
-                }
-                val displayName = cursor.getString(displayNameIndex)
-                val mimeType = cursor.getString(mimeTypeIndex)?.takeIf(String::isNotBlank) ?: "audio/*"
+                val displayName = cursor.getStringOrNull(displayNameIndex)
+                val mimeType = cursor.getStringOrNull(mimeTypeIndex)
+                    ?.takeIf(String::isNotBlank)
+                    ?: "audio/*"
                 if (!SupportedLocalAudio.isSupported(displayName, mimeType)) {
                     continue
                 }
-                val artistValue = normalizeArtistName(cursor.getString(artistIndex), unknownArtist)
+                val rawTitle = cursor.getStringOrNull(titleIndex)
+                val rawArtist = cursor.getStringOrNull(artistIndex)
+                val rawAlbum = cursor.getStringOrNull(albumIndex)
+                val durationMs = cursor.getLongOrNull(durationIndex)
+                val sizeBytes = cursor.getLongOrNull(sizeIndex)
+                val filterResult = audioFilter.evaluate(
+                    audio = LocalAudioFile(
+                        directoryPath = normalizedFolderPath,
+                        displayName = displayName,
+                        title = rawTitle,
+                        artist = rawArtist,
+                        album = rawAlbum,
+                        durationMs = durationMs,
+                        sizeBytes = sizeBytes,
+                        isMusic = cursor.getBooleanOrNull(isMusicIndex),
+                        isRingtone = cursor.getBooleanOrNull(isRingtoneIndex),
+                        isAlarm = cursor.getBooleanOrNull(isAlarmIndex),
+                        isNotification = cursor.getBooleanOrNull(isNotificationIndex),
+                        isPodcast = cursor.getBooleanOrNull(isPodcastIndex),
+                        isAudiobook = cursor.getBooleanOrNull(isAudiobookIndex),
+                        isRecording = cursor.getBooleanOrNull(isRecordingIndex),
+                    ),
+                    config = scanConfig,
+                )
+                if (filterResult is AudioFilterResult.Excluded) continue
+
+                val artistValue = normalizeArtistName(rawArtist, unknownArtist)
                 val splitArtists = splitArtistNames(artistValue).ifEmpty { listOf(unknownArtist) }
                 val mediaStoreArtistId = cursor.getLongOrNull(artistIdIndex)
                 val artists = splitArtists.mapIndexed { index, name ->
@@ -322,9 +336,9 @@ constructor(
                     )
                 }
                 val mediaStoreAlbumId = cursor.getLongOrNull(albumIdIndex)
-                val albumName = normalizeAlbumName(cursor.getString(albumIndex))
+                val albumName = normalizeAlbumName(rawAlbum)
                 val title = normalizeTitle(
-                    title = cursor.getString(titleIndex),
+                    title = rawTitle,
                     displayName = displayName,
                     fallback = unknownTitle,
                 )
@@ -340,14 +354,14 @@ constructor(
                         )
                     },
                     albumName = albumName,
-                    durationSeconds = (cursor.getLong(durationIndex).coerceAtLeast(0L) / 1000L)
+                    durationSeconds = ((durationMs ?: 0L).coerceAtLeast(0L) / 1000L)
                         .coerceAtMost(Int.MAX_VALUE.toLong())
                         .toInt(),
                     year = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 },
-                    dateModified = cursor.getLong(dateModifiedIndex)
-                        .takeIf { it > 0L }
+                    dateModified = cursor.getLongOrNull(dateModifiedIndex)
+                        ?.takeIf { it > 0L }
                         ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
-                    sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L),
+                    sizeBytes = (sizeBytes ?: 0L).coerceAtLeast(0L),
                     mimeType = mimeType,
                     thumbnailUrl = mediaStoreAlbumId?.takeIf { it > 0 }?.let {
                         ContentUris.withAppendedId(AlbumArtUri, it).toString()
@@ -376,6 +390,64 @@ constructor(
             artists = tracks.flatMap(LocalTrackRecord::artists).distinctBy(LocalArtistRecord::id),
             albums = albums,
         )
+    }
+
+    @Suppress("DEPRECATION")
+    suspend fun queryAudioFolders(): List<LocalAudioFolder> = withContext(Dispatchers.IO) {
+        val projection = buildList {
+            add(MediaStore.Audio.Media.DISPLAY_NAME)
+            add(MediaStore.Audio.Media.MIME_TYPE)
+            add(MediaStore.MediaColumns.DATA)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.RELATIVE_PATH)
+            }
+        }.toTypedArray()
+        val folderCounts = linkedMapOf<String, Pair<String, Int>>()
+
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            buildAvailableMediaSelection(),
+            null,
+            null,
+        )?.use { cursor ->
+            val displayNameIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+            val mimeTypeIndex = cursor.getColumnIndex(MediaStore.Audio.Media.MIME_TYPE)
+            val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val dataPathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+
+            while (cursor.moveToNext()) {
+                val displayName = cursor.getStringOrNull(displayNameIndex)
+                val mimeType = cursor.getStringOrNull(mimeTypeIndex)
+                if (!SupportedLocalAudio.isSupported(displayName, mimeType)) continue
+
+                val folderPath = resolveNormalizedFolderPath(
+                    relativePath = cursor.getStringOrNull(relativePathIndex),
+                    absolutePath = cursor.getStringOrNull(dataPathIndex),
+                ) ?: continue
+                val canonicalPath = LocalSongScanConfig.canonicalFolderEntry(folderPath)
+                if (canonicalPath.isEmpty()) continue
+
+                val current = folderCounts[canonicalPath]
+                folderCounts[canonicalPath] = (current?.first ?: folderPath) to
+                    ((current?.second ?: 0) + 1)
+            }
+        }
+
+        folderCounts.values
+            .map { (path, count) -> LocalAudioFolder(path = path, audioCount = count) }
+            .sortedBy { LocalSongScanConfig.canonicalFolderEntry(it.path) }
+    }
+
+    private fun buildAvailableMediaSelection(): String? {
+        return buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add("${MediaStore.MediaColumns.IS_PENDING} = 0")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                add("${MediaStore.MediaColumns.IS_TRASHED} = 0")
+            }
+        }.joinToString(" AND ").takeIf(String::isNotEmpty)
     }
 
     private fun normalizeTitle(title: String?, displayName: String?, fallback: String): String {
@@ -437,7 +509,7 @@ constructor(
     private fun resolveNormalizedFolderPath(relativePath: String?, absolutePath: String?): String? {
         val relativeFolder = LocalSongScanConfig.normalizeFolderEntry(relativePath.orEmpty())
         if (relativeFolder.isNotEmpty()) {
-            return relativeFolder.lowercase(Locale.ROOT)
+            return relativeFolder
         }
 
         val absoluteFolder = absolutePath
@@ -445,17 +517,7 @@ constructor(
             ?.substringBeforeLast('/', missingDelimiterValue = "")
             .orEmpty()
         val normalizedAbsoluteFolder = LocalSongScanConfig.normalizeFolderEntry(absoluteFolder)
-        return normalizedAbsoluteFolder.takeIf(String::isNotEmpty)?.lowercase(Locale.ROOT)
-    }
-
-    private fun shouldExcludeFolder(folderPath: String?, excludedFolders: Set<String>): Boolean {
-        if (folderPath.isNullOrEmpty() || excludedFolders.isEmpty()) return false
-        return excludedFolders.any { excludedFolder ->
-            folderPath == excludedFolder ||
-                folderPath.startsWith("$excludedFolder/") ||
-                folderPath.endsWith("/$excludedFolder") ||
-                folderPath.contains("/$excludedFolder/")
-        }
+        return normalizedAbsoluteFolder.takeIf(String::isNotEmpty)
     }
 
     private fun android.database.Cursor.getLongOrNull(columnIndex: Int): Long? {
@@ -468,6 +530,10 @@ constructor(
 
     private fun android.database.Cursor.getStringOrNull(columnIndex: Int): String? {
         return if (columnIndex >= 0 && !isNull(columnIndex)) getString(columnIndex) else null
+    }
+
+    private fun android.database.Cursor.getBooleanOrNull(columnIndex: Int): Boolean? {
+        return if (columnIndex >= 0 && !isNull(columnIndex)) getInt(columnIndex) != 0 else null
     }
 
     private data class LocalScanSnapshot(

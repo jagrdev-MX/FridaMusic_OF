@@ -189,7 +189,14 @@ val ArtistSongSortDescendingKey = booleanPreferencesKey("artistSongSortDescendin
 val MixSortTypeKey = stringPreferencesKey("mixSortType")
 val MixSortDescendingKey = booleanPreferencesKey("albumSortDescending")
 
+val LocalSongsHideShortAudioKey = booleanPreferencesKey("local_songs_hide_short_audio")
 val LocalSongsMinDurationSecondsKey = intPreferencesKey("local_songs_min_duration_seconds")
+val LocalSongsHideSmallFilesKey = booleanPreferencesKey("local_songs_hide_small_files")
+val LocalSongsMinSizeKbKey = intPreferencesKey("local_songs_min_size_kb")
+val LocalSongsHideRecordingsKey = booleanPreferencesKey("local_songs_hide_recordings")
+val LocalSongsHideSystemSoundsKey = booleanPreferencesKey("local_songs_hide_system_sounds")
+val LocalSongsShowFilesWithoutMetadataKey =
+    booleanPreferencesKey("local_songs_show_files_without_metadata")
 val LocalSongsExcludedFoldersKey = stringSetPreferencesKey("local_songs_excluded_folders")
 val LocalStorageDirsKey = stringSetPreferencesKey("local_storage_dirs")
 val DiscordTokenKey = stringPreferencesKey("discord_token")

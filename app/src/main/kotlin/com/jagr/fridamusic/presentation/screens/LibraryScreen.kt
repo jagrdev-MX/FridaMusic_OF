@@ -718,13 +718,8 @@ private fun LocalSongsTab(
     }
 
     LaunchedEffect(hasPermission) {
-        if (
-            hasPermission &&
-            songs.isEmpty() &&
-            scanState.lastSummary == null &&
-            !scanState.isScanning
-        ) {
-            viewModel.scanDevice()
+        if (hasPermission) {
+            viewModel.refreshLibrary()
         }
     }
 
