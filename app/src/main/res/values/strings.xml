@@ -1612,4 +1612,8 @@
     <string name="stat_period_1y">1 year</string>
     <string name="stat_period_all">All time</string>
     <string name="stats_desc_short">Most played songs, artists and albums</string>
+    <string name="library_refresh">Refresh YouTube Music library</string>
+    <string name="library_sync_offline">You are offline. Your cached library is still available.</string>
+    <string name="library_sync_session_expired">Your YouTube Music session expired. Sign in again to resume syncing.</string>
+    <string name="library_sync_failed">The library could not be updated. Your cached data is still available.</string>
 </resources>

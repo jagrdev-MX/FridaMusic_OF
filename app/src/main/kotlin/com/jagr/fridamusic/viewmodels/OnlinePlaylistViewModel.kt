@@ -18,6 +18,7 @@ import com.jagr.fridamusic.utils.get
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import javax.inject.Inject
 
 @HiltViewModel
@@ -56,6 +60,9 @@ class OnlinePlaylistViewModel @Inject constructor(
         private set
 
     private var proactiveLoadJob: Job? = null
+    private val continuationMutex = Mutex()
+    private val seenContinuations = mutableSetOf<String>()
+    private var continuationRequestCount = 0
 
     init {
         fetchInitialPlaylistData()
@@ -67,6 +74,13 @@ class OnlinePlaylistViewModel @Inject constructor(
             _error.value = null
             continuation = null
             proactiveLoadJob?.cancel() 
+            seenContinuations.clear()
+            continuationRequestCount = 0
+
+            val normalizedId = runCatching {
+                YouTube.normalizePlaylistBrowseId(playlistId)
+            }.getOrDefault(playlistId)
+            Timber.d("Loading playlist detail: id=%s endpoint=browse", normalizedId)
 
             YouTube.playlist(playlistId)
                 .onSuccess { playlistPage ->
@@ -75,14 +89,25 @@ class OnlinePlaylistViewModel @Inject constructor(
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
                     _isLoading.value = false
+                    Timber.d(
+                        "Playlist detail parsed: id=%s source=%s songs=%d continuation=%s",
+                        normalizedId,
+                        playlistPage.songSource,
+                        playlistPage.songs.size,
+                        playlistPage.songsContinuation != null,
+                    )
                     if (continuation != null) {
                         startProactiveBackgroundLoading()
                     }
                 }.onFailure { throwable ->
-                    _error.value = throwable.message?.takeIf { it.isNotBlank() }
-                        ?: throwable::class.java.simpleName
-                        ?: "Failed to load playlist"
+                    _error.value = throwable.safeErrorMessage()
                     _isLoading.value = false
+                    Timber.w(
+                        throwable,
+                        "Playlist detail failed: id=%s endpoint=browse status=%s stage=initial",
+                        normalizedId,
+                        throwable.safeHttpStatus(),
+                    )
                     reportException(throwable)
                 }
         }
@@ -100,7 +125,8 @@ class OnlinePlaylistViewModel @Inject constructor(
                     break 
                 }
 
-                YouTube.playlistContinuation(currentProactiveToken)
+                val continuationResult = requestContinuation(currentProactiveToken) ?: break
+                continuationResult
                     .onSuccess { playlistContinuationPage ->
                         val currentSongs = playlistSongs.value.toMutableList()
                         currentSongs.addAll(playlistContinuationPage.songs)
@@ -109,8 +135,18 @@ class OnlinePlaylistViewModel @Inject constructor(
                         
                         this@OnlinePlaylistViewModel.continuation = currentProactiveToken 
                     }.onFailure { throwable ->
+                        if (playlistSongs.value.isEmpty()) {
+                            _error.value = throwable.safeErrorMessage()
+                        }
+                        Timber.w(
+                            throwable,
+                            "Playlist continuation failed: id=%s endpoint=browse status=%s stage=continuation",
+                            playlistId,
+                            throwable.safeHttpStatus(),
+                        )
                         reportException(throwable)
                         currentProactiveToken = null 
+                        this@OnlinePlaylistViewModel.continuation = null
                     }
             }
             
@@ -126,13 +162,28 @@ class OnlinePlaylistViewModel @Inject constructor(
         _isLoadingMore.value = true
 
         viewModelScope.launch(Dispatchers.IO) {
-            YouTube.playlistContinuation(tokenForManualLoad)
+            val continuationResult = requestContinuation(tokenForManualLoad)
+            if (continuationResult == null) {
+                _isLoadingMore.value = false
+                return@launch
+            }
+
+            continuationResult
                 .onSuccess { playlistContinuationPage ->
                     val currentSongs = playlistSongs.value.toMutableList()
                     currentSongs.addAll(playlistContinuationPage.songs)
                     playlistSongs.value = applySongFilters(currentSongs)
                     continuation = playlistContinuationPage.continuation
                 }.onFailure { throwable ->
+                    if (playlistSongs.value.isEmpty()) {
+                        _error.value = throwable.safeErrorMessage()
+                    }
+                    Timber.w(
+                        throwable,
+                        "Playlist continuation failed: id=%s endpoint=browse status=%s stage=continuation",
+                        playlistId,
+                        throwable.safeHttpStatus(),
+                    )
                     reportException(throwable)
                 }.also {
                     _isLoadingMore.value = false
@@ -149,6 +200,29 @@ class OnlinePlaylistViewModel @Inject constructor(
         fetchInitialPlaylistData() 
     }
 
+    private suspend fun requestContinuation(token: String) = continuationMutex.withLock {
+        if (continuationRequestCount >= MAX_CONTINUATION_REQUESTS) {
+            Timber.w("Playlist continuation stopped at the safe page limit")
+            continuation = null
+            return@withLock null
+        }
+        if (!seenContinuations.add(token)) {
+            Timber.w("Playlist continuation stopped after a repeated token")
+            continuation = null
+            return@withLock null
+        }
+        continuationRequestCount++
+        YouTube.playlistContinuation(token)
+    }
+
+    private fun Throwable.safeErrorMessage(): String =
+        message?.takeIf { it.isNotBlank() }
+            ?: javaClass.simpleName.takeIf { it.isNotBlank() }
+            ?: "Failed to load playlist"
+
+    private fun Throwable.safeHttpStatus(): String =
+        (this as? ResponseException)?.response?.status?.value?.toString() ?: "n/a"
+
     private fun applySongFilters(songs: List<SongItem>): List<SongItem> {
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
         val uniqueSongs = songs.distinctBy { it.id }
@@ -162,5 +236,9 @@ class OnlinePlaylistViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         proactiveLoadJob?.cancel()
+    }
+
+    private companion object {
+        const val MAX_CONTINUATION_REQUESTS = 50
     }
 }

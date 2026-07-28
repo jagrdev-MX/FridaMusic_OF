@@ -56,6 +56,8 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.utils.SyncErrorKind
+import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LibraryAlbumsViewModel
 import com.jagr.fridamusic.viewmodels.LibraryArtistsViewModel
@@ -80,6 +82,7 @@ private enum class LibraryFilter(val label: String, val icon: ImageVector) {
 fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    mixViewModel: LibraryMixViewModel = hiltViewModel(),
 ) {
     val filters = LibraryFilter.entries
     val pagerState = rememberPagerState(initialPage = 0) { filters.size }
@@ -91,6 +94,29 @@ fun LibraryScreen(
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
+    val syncState by mixViewModel.syncState.collectAsState()
+    val isRefreshing by mixViewModel.isRefreshing.collectAsState()
+    val syncError = syncState.overallStatus as? SyncStatus.Error
+    val snackbarHostState = remember { SnackbarHostState() }
+    val syncErrorMessage = when (syncError?.kind) {
+        SyncErrorKind.OFFLINE -> stringResource(R.string.library_sync_offline)
+        SyncErrorKind.SESSION_EXPIRED -> stringResource(R.string.library_sync_session_expired)
+        SyncErrorKind.TEMPORARY -> stringResource(R.string.library_sync_failed)
+        null -> null
+    }
+
+    LaunchedEffect(Unit) {
+        mixViewModel.syncIfStale()
+    }
+
+    LaunchedEffect(syncError) {
+        syncErrorMessage?.let {
+            snackbarHostState.showSnackbar(
+                message = it,
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
 
     LaunchedEffect(pagerState.currentPage) {
         val targetPage = pagerState.currentPage
@@ -138,6 +164,22 @@ fun LibraryScreen(
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
+                IconButton(
+                    enabled = !isRefreshing,
+                    onClick = mixViewModel::refresh,
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(R.string.library_refresh),
+                        )
+                    }
+                }
             }
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -149,6 +191,7 @@ fun LibraryScreen(
                         LibraryFilter.LIBRARY -> LibraryMixTab(
                             onSongClick = onSongClick,
                             onLocalItemClick = onLocalItemClick,
+                            mixViewModel = mixViewModel,
                             onTabSelected = { filter ->
                                 scope.launch {
                                     pagerState.animateScrollToPage(filters.indexOf(filter))
@@ -187,6 +230,14 @@ fun LibraryScreen(
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 96.dp),
+        )
     }
 }
 
@@ -879,6 +930,7 @@ private fun LocalSongsTab(
                 }
             }
         }
+
     }
 }
 

@@ -16,11 +16,20 @@ data class PlaylistPage(
     val songsContinuation: String?,
     val continuation: String?,
     val related: List<YTItem>? = null,
+    val songSource: String = "unknown",
 ) {
     companion object {
         fun fromMusicResponsiveListItemRenderer(renderer: MusicResponsiveListItemRenderer): SongItem? {
             // Extract library tokens using the new method that properly handles multiple toggle items
             val libraryTokens = PageHelper.extractLibraryTokensFromMenuItems(renderer.menu?.menuRenderer?.items)
+            val watchEndpoint = renderer.navigationEndpoint?.anyWatchEndpoint
+                ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
+                    ?.content?.musicPlayButtonRenderer
+                    ?.playNavigationEndpoint?.anyWatchEndpoint
+                ?: renderer.flexColumns.firstOrNull()
+                    ?.musicResponsiveListItemFlexColumnRenderer
+                    ?.text?.runs?.firstOrNull()
+                    ?.navigationEndpoint?.anyWatchEndpoint
 
             // Split the secondary line by bullet separator to separate artists from other metadata (like views)
             val secondaryLineRuns = renderer.flexColumns
@@ -31,15 +40,7 @@ data class PlaylistPage(
                 ?.splitBySeparator()
 
             return SongItem(
-                id = renderer.playlistItemData?.videoId ?: renderer.navigationEndpoint?.watchEndpoint?.videoId
-                ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
-                    ?.content?.musicPlayButtonRenderer
-                    ?.playNavigationEndpoint?.watchEndpoint?.videoId
-                ?: renderer.flexColumns.firstOrNull()
-                    ?.musicResponsiveListItemFlexColumnRenderer
-                    ?.text?.runs?.firstOrNull()
-                    ?.navigationEndpoint?.watchEndpoint?.videoId
-                ?: return null,
+                id = renderer.playlistItemData?.videoId ?: watchEndpoint?.videoId ?: return null,
                 title = renderer.flexColumns.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer?.text
                     ?.runs?.firstOrNull()?.text ?: return null,
@@ -57,20 +58,19 @@ data class PlaylistPage(
                 },
                 duration = renderer.fixedColumns?.firstOrNull()?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text?.parseTime(),
                 musicVideoType = renderer.musicVideoType,
-                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
-                endpoint = renderer.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchEndpoint,
-                setVideoId = renderer.playlistItemData?.playlistSetVideoId ?: renderer.navigationEndpoint?.watchEndpoint?.playlistSetVideoId
+                endpoint = watchEndpoint,
+                setVideoId = renderer.playlistItemData?.playlistSetVideoId ?: watchEndpoint?.playlistSetVideoId
                 ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
                     ?.content?.musicPlayButtonRenderer
                     ?.playNavigationEndpoint?.watchEndpoint?.playlistSetVideoId
                 ?: renderer.flexColumns.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer
                     ?.text?.runs?.firstOrNull()
-                    ?.navigationEndpoint?.watchEndpoint?.playlistSetVideoId
-                ?: return null,
+                    ?.navigationEndpoint?.watchEndpoint?.playlistSetVideoId,
                 libraryAddToken = libraryTokens.addToken,
                 libraryRemoveToken = libraryTokens.removeToken
             )

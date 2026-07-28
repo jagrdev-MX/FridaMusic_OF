@@ -45,6 +45,7 @@ import com.jagr.fridamusic.extensions.filterVideoSongs
 import com.jagr.fridamusic.extensions.filterYoutubeShorts
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.playback.DownloadUtil
+import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
@@ -52,9 +53,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -293,21 +292,17 @@ constructor(
     database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing = _isRefreshing.asStateFlow()
+    val syncState = syncUtils.syncState
+    val isRefreshing = syncState
+        .map { it.overallStatus is SyncStatus.Syncing }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    val syncAllLibrary = {
-         viewModelScope.launch(Dispatchers.IO) {
-             syncUtils.tryAutoSync()
-         }
+    fun syncIfStale() {
+        syncUtils.tryAutoSync()
     }
 
     fun refresh() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _isRefreshing.value = true
-            syncUtils.performFullSyncSuspend()
-            _isRefreshing.value = false
-        }
+        syncUtils.performFullSync()
     }
 
     val topValue =

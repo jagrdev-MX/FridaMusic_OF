@@ -1620,4 +1620,8 @@
     <string name="stat_period_1y">1 año</string>
     <string name="stat_period_all">Todo el tiempo</string>
     <string name="stats_desc_short">Canciones, artistas y álbumes más escuchados</string>
+    <string name="library_refresh">Actualizar biblioteca de YouTube Music</string>
+    <string name="library_sync_offline">No hay conexión. Tu biblioteca guardada sigue disponible.</string>
+    <string name="library_sync_session_expired">Tu sesión de YouTube Music expiró. Inicia sesión de nuevo para continuar la sincronización.</string>
+    <string name="library_sync_failed">No se pudo actualizar la biblioteca. Tus datos guardados siguen disponibles.</string>
 </resources>

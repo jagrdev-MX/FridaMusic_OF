@@ -1001,6 +1001,10 @@ interface DatabaseDao {
     fun playlistByBrowseId(browseId: String): Flow<Playlist?>
 
     @Transaction
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE browseId IS NOT NULL")
+    fun allRemotePlaylists(): Flow<List<Playlist>>
+
+    @Transaction
     @Query("SELECT COUNT(*) from playlist_song_map WHERE playlistId = :playlistId AND songId = :songId LIMIT 1")
     fun checkInPlaylist(
         playlistId: String,

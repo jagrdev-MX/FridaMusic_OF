@@ -92,6 +92,7 @@ fun OnlinePlaylistScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val error by viewModel.error.collectAsState()
+    val cachedPlaylist by viewModel.dbPlaylist.collectAsState()
 
     val hasContinuation = viewModel.continuation != null
     val listState = rememberLazyListState()
@@ -108,9 +109,10 @@ fun OnlinePlaylistScreen(
     }
 
     PlaylistScaffold(
-        title = playlist?.title ?: "",
+        title = playlist?.title ?: cachedPlaylist?.playlist?.name.orEmpty(),
         artistLine = playlist?.author?.name ?: "",
-        thumbnailUrl = playlist?.thumbnail,
+        thumbnailUrl = playlist?.thumbnail ?: cachedPlaylist?.thumbnails?.firstOrNull(),
+        description = playlist?.description,
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playerConnection?.playYTItem(it) } },
         onShuffle = { songs.shuffled().firstOrNull()?.let { playerConnection?.playYTItem(it) } },
@@ -119,6 +121,18 @@ fun OnlinePlaylistScreen(
         onRetry = { viewModel.retry() },
         listState = listState,
     ) {
+        if (songs.isEmpty()) {
+            item {
+                Text(
+                    text = stringResource(R.string.playlist_is_empty),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                )
+            }
+        }
+
         itemsIndexed(songs, key = { _, it -> it.id }) { index, song ->
             SongRow(
                 index = index + 1,
@@ -171,6 +185,7 @@ private fun PlaylistScaffold(
     title: String,
     artistLine: String,
     thumbnailUrl: String?,
+    description: String? = null,
     onBack: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
@@ -268,6 +283,15 @@ private fun PlaylistScaffold(
                     if (artistLine.isNotEmpty()) {
                         Text(
                             text = artistLine,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    if (!description.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = description,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,

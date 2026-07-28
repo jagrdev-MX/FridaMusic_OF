@@ -17,16 +17,18 @@ suspend fun Result<PlaylistPage>.completed(): Result<PlaylistPage> = runCatching
     
     while (continuation != null && requestCount < maxRequests) {
         if (continuation in seenContinuations) {
-            break
+            error("Playlist pagination repeated a continuation token")
         }
         seenContinuations.add(continuation)
         requestCount++
         
-        val continuationPage = YouTube.playlistContinuation(continuation).getOrNull() ?: break
+        val continuationPage = YouTube.playlistContinuation(continuation).getOrThrow()
         
         if (continuationPage.songs.isEmpty()) {
             consecutiveEmptyResponses++
-            if (consecutiveEmptyResponses >= 2) break
+            if (consecutiveEmptyResponses >= 2 && continuationPage.continuation != null) {
+                error("Playlist pagination returned repeated empty pages")
+            }
         } else {
             consecutiveEmptyResponses = 0
             songs += continuationPage.songs
@@ -34,11 +36,16 @@ suspend fun Result<PlaylistPage>.completed(): Result<PlaylistPage> = runCatching
         
         continuation = continuationPage.continuation
     }
+    check(continuation == null || requestCount < maxRequests) {
+        "Playlist pagination exceeded the safe page limit"
+    }
     PlaylistPage(
         playlist = page.playlist,
-        songs = songs,
+        songs = songs.distinctBy { it.id },
         songsContinuation = null,
-        continuation = page.continuation
+        continuation = page.continuation,
+        related = page.related,
+        songSource = page.songSource,
     )
 }
 

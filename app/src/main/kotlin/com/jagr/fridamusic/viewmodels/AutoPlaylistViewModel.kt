@@ -95,12 +95,15 @@ constructor(
 
     fun refresh() {
         viewModelScope.launch(Dispatchers.IO) {
-            _isRefreshing.value = true
-            when (playlist) {
-                "liked" -> syncUtils.syncLikedSongsSuspend()
-                "uploaded" -> syncUtils.syncUploadedSongsSuspend()
+            try {
+                _isRefreshing.value = true
+                when (playlist) {
+                    "liked" -> syncUtils.syncLikedSongsSuspend()
+                    "uploaded" -> syncUtils.syncUploadedSongsSuspend()
+                }
+            } finally {
+                _isRefreshing.value = false
             }
-            _isRefreshing.value = false
         }
     }
 }

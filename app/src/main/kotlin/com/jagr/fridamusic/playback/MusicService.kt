@@ -1612,17 +1612,20 @@ class MusicService :
             songToToggle?.let {
                 val isInLibrary = it.song.inLibrary != null
                 val token = if (isInLibrary) it.song.libraryRemoveToken else it.song.libraryAddToken
-
-
-                token?.let { feedbackToken ->
-                    YouTube.feedback(listOf(feedbackToken))
-                }
-
+                val updatedSong = it.song.toggleLibrary(syncToYouTube = false)
 
                 database.query {
-                    update(it.song.toggleLibrary())
+                    update(updatedSong)
                 }
                 currentMediaMetadata.value = player.currentMetadata
+
+                val remoteResult = token?.let { feedbackToken ->
+                    YouTube.feedback(listOf(feedbackToken))
+                } ?: YouTube.toggleSongLibrary(it.id, addToLibrary = !isInLibrary)
+
+                if (remoteResult.getOrDefault(false)) {
+                    syncUtils.syncLibrarySongs()
+                }
             }
         }
     }
@@ -1631,7 +1634,7 @@ class MusicService :
         scope.launch {
             val songToToggle = currentSong.first()
             songToToggle?.let {
-                val song = it.song.toggleLike()
+                val song = it.song.toggleLike(syncToYouTube = false)
                 database.query {
                     update(song)
                     syncUtils.likeSong(song)
