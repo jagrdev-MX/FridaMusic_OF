@@ -1616,4 +1616,11 @@
     <string name="library_sync_offline">You are offline. Your cached library is still available.</string>
     <string name="library_sync_session_expired">Your YouTube Music session expired. Sign in again to resume syncing.</string>
     <string name="library_sync_failed">The library could not be updated. Your cached data is still available.</string>
+    <string name="about_desc_short">Team, version and open source licenses</string>
+    <string name="about_team">Team</string>
+    <string name="about_licenses">Licenses</string>
+    <string name="about_tagline">A music streaming experience built with passion</string>
+    <string name="about_made_with_love">Made with ❤️ by</string>
+    <string name="about_fork_credit">FridaMusic is based on EchoMusic and ViMusic, open source projects licensed under GPL-3.0.</string>
+    <string name="about_licenses_desc">FridaMusic uses the following open source libraries. Tap any to visit their repository.</string>
 </resources>

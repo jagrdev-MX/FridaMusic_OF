@@ -387,7 +387,7 @@
     <string name="restore_failed">Error al restaurar respaldo</string>
 
     <string name="discord_integration">Integración con Discord</string>
-    <string name="discord_information">echomusic usa KizzyRPC para el estado de Discord. Esto usa la conexión Gateway de Discord, lo cual podría violar sus TOS. Úsalo bajo tu propio riesgo.\n\nechomusic solo extraerá tu token, todo lo demás se guarda localmente.</string>
+    <string name="discord_information">FridaMusic usa KizzyRPC para el estado de Discord. Esto usa la conexión Gateway de Discord, lo cual podría violar sus TOS. Úsalo bajo tu propio riesgo.\n\nechomusic solo extraerá tu token, todo lo demás se guarda localmente.</string>
     <string name="dismiss">Descartar</string>
     <string name="options">Opciones</string>
     <string name="preview">Previsualizar</string>
@@ -1624,4 +1624,11 @@
     <string name="library_sync_offline">No hay conexión. Tu biblioteca guardada sigue disponible.</string>
     <string name="library_sync_session_expired">Tu sesión de YouTube Music expiró. Inicia sesión de nuevo para continuar la sincronización.</string>
     <string name="library_sync_failed">No se pudo actualizar la biblioteca. Tus datos guardados siguen disponibles.</string>
+    <string name="about_desc_short">Equipo, versión y licencias de código abierto</string>
+    <string name="about_team">Equipo</string>
+    <string name="about_licenses">Licencias</string>
+    <string name="about_tagline">Una experiencia musical construida con pasión</string>
+    <string name="about_made_with_love">Hecho con ❤️ por</string>
+    <string name="about_fork_credit">FridaMusic está basado en EchoMusic y ViMusic, proyectos de código abierto bajo licencia GPL-3.0.</string>
+    <string name="about_licenses_desc">FridaMusic utiliza las siguientes librerías de código abierto. Toca alguna para ver su repositorio.</string>
 </resources>

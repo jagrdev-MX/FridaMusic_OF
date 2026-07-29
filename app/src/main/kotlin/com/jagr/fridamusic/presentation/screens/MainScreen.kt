@@ -41,7 +41,7 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
 
-    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login" && currentRoute != "spotify_import" && currentRoute != "stats"
+    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login" && currentRoute != "spotify_import" && currentRoute != "stats" && currentRoute != "about"
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -91,6 +91,7 @@ fun MainScreen(
                     onNavigateToLogin = { navController.navigate("login") },
                     onNavigateToSpotifyImport = { navController.navigate("spotify_import") },
                     onNavigateToStats = { navController.navigate("stats") },
+                    onNavigateToAbout = { navController.navigate("about") },
                 )
             }
             composable("spotify_import") {
@@ -109,6 +110,9 @@ fun MainScreen(
                         )
                     },
                 )
+            }
+            composable("about") {
+                AboutScreen(onBack = { navController.popBackStack() })
             }
             composable("login") {
                 LoginScreen(
@@ -148,19 +152,19 @@ fun MainScreen(
             composable(
                 route = "playlist/{playlistId}",
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
-            ) {
-                OnlinePlaylistScreen(
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable(
-                route = "local_playlist/{playlistId}",
-                arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
-            ) {
-                LocalPlaylistScreen(
-                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                    onBack = { navController.popBackStack() },
-                )
+            ) { backStackEntry ->
+                val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
+                // Local playlist IDs are UUIDs (contain hyphens); YouTube IDs never do
+                if (playlistId.contains('-')) {
+                    LocalPlaylistScreen(
+                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                        onBack = { navController.popBackStack() },
+                    )
+                } else {
+                    OnlinePlaylistScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
 
         }
@@ -200,17 +204,11 @@ fun MainScreen(
 }
 
 private fun NavHostController.navigateToDetail(item: LocalItem) {
+    val encodedId = Uri.encode(item.id)
     when (item) {
-        is Album -> navigate("album/${Uri.encode(item.id)}")
-        is Artist -> navigate("artist/${Uri.encode(item.id)}")
-        is Playlist -> {
-            val browseId = item.playlist.browseId
-            if (browseId != null && !item.playlist.isLocal) {
-                navigate("playlist/${Uri.encode(browseId)}")
-            } else {
-                navigate("local_playlist/${Uri.encode(item.id)}")
-            }
-        }
+        is Album -> navigate("album/$encodedId")
+        is Artist -> navigate("artist/$encodedId")
+        is Playlist -> navigate("playlist/$encodedId")
         else -> { /* type not supported yet */ }
     }
 }
