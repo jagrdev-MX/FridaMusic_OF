@@ -4,6 +4,7 @@ package com.jagr.fridamusic.utils
 
 import android.net.ConnectivityManager
 import android.util.Log
+import androidx.datastore.preferences.core.edit
 import androidx.media3.common.PlaybackException
 import com.music.innertube.NewPipeExtractor
 import com.music.innertube.YouTube
@@ -23,6 +24,7 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import com.jagr.fridamusic.constants.AudioQuality
+import com.jagr.fridamusic.constants.VisitorDataKey
 import com.jagr.fridamusic.utils.cipher.CipherDeobfuscator
 import com.jagr.fridamusic.utils.YTPlayerUtils.MAIN_CLIENT
 import com.jagr.fridamusic.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
@@ -45,6 +47,8 @@ import java.net.SocketAddress
 import java.net.URI
 import java.io.IOException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
@@ -79,6 +83,7 @@ object YTPlayerUtils {
         .build()
 
     private val poTokenGenerator = PoTokenGenerator()
+    private val visitorRefreshMutex = Mutex()
 
     
     private val MAIN_CLIENT: YouTubeClient = ANDROID_VR_1_43_32
@@ -129,12 +134,12 @@ object YTPlayerUtils {
         var hasShownOpusToast = false
 
         suspend fun tryOpus(): Result<PlaybackData> {
-            val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+            val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, context)
             if (firstAttempt.isFailure && YouTube.cookie == null) {
                 Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
                 PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
                 BotDetectionMitigator.rotateGuestSession()
-                val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+                val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, context)
                 retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
                 return retryResult
             }
@@ -439,6 +444,7 @@ object YTPlayerUtils {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
+        context: android.content.Context?,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
@@ -455,7 +461,26 @@ object YTPlayerUtils {
 
         
         var poToken: PoTokenResult? = null
-        val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
+        if (YouTube.visitorData == null) {
+            visitorRefreshMutex.withLock {
+                if (YouTube.visitorData == null) {
+                    YouTube.refreshVisitorData()
+                        .onSuccess { visitorData ->
+                            context?.dataStore?.edit { settings ->
+                                settings[VisitorDataKey] = visitorData
+                            }
+                            Timber.tag(TAG).i("Refreshed missing YouTube visitor session for playback")
+                        }
+                        .onFailure { error ->
+                            Timber.tag(TAG).w(
+                                error,
+                                "Could not refresh missing YouTube visitor session",
+                            )
+                        }
+                }
+            }
+        }
+        val sessionId = YouTube.dataSyncId ?: YouTube.visitorData
         if (MAIN_CLIENT.useWebPoTokens && sessionId != null) {
             Timber.tag(logTag).d("Generating PoToken for MAIN_CLIENT with sessionId")
             try {

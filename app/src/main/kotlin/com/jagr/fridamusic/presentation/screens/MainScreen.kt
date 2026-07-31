@@ -152,19 +152,19 @@ fun MainScreen(
             composable(
                 route = "playlist/{playlistId}",
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
-            ) { backStackEntry ->
-                val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
-                // Local playlist IDs are UUIDs (contain hyphens); YouTube IDs never do
-                if (playlistId.contains('-')) {
-                    LocalPlaylistScreen(
-                        onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                        onBack = { navController.popBackStack() },
-                    )
-                } else {
-                    OnlinePlaylistScreen(
-                        onBack = { navController.popBackStack() },
-                    )
-                }
+            ) {
+                OnlinePlaylistScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "local_playlist/{playlistId}",
+                arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+            ) {
+                LocalPlaylistScreen(
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onBack = { navController.popBackStack() },
+                )
             }
 
         }
@@ -204,11 +204,17 @@ fun MainScreen(
 }
 
 private fun NavHostController.navigateToDetail(item: LocalItem) {
-    val encodedId = Uri.encode(item.id)
     when (item) {
-        is Album -> navigate("album/$encodedId")
-        is Artist -> navigate("artist/$encodedId")
-        is Playlist -> navigate("playlist/$encodedId")
+        is Album -> navigate("album/${Uri.encode(item.id)}")
+        is Artist -> navigate("artist/${Uri.encode(item.id)}")
+        is Playlist -> {
+            val browseId = item.playlist.browseId
+            if (browseId != null && !item.playlist.isLocal) {
+                navigate("playlist/${Uri.encode(browseId)}")
+            } else {
+                navigate("local_playlist/${Uri.encode(item.id)}")
+            }
+        }
         else -> { /* type not supported yet */ }
     }
 }
