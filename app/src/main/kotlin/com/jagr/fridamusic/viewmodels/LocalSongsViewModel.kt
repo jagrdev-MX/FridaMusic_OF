@@ -78,11 +78,28 @@ constructor(
         LocalSongSortPreference(),
     )
 
+    private val allLocalSongs = database.localSongs().stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        emptyList(),
+    )
+
     val songs = combine(
-        database.localSongs(),
+        allLocalSongs,
         blacklistedSongIds,
     ) { localSongs, blacklistedIds ->
         localSongs.filterNot { song -> song.song.id in blacklistedIds }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        emptyList(),
+    )
+
+    val blacklistedSongs = combine(
+        allLocalSongs,
+        blacklistedSongIds,
+    ) { localSongs, blacklistedIds ->
+        localSongs.filter { song -> song.song.id in blacklistedIds }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -99,7 +116,7 @@ constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            songs
+            allLocalSongs
                 .map { localSongs -> localSongs.mapTo(linkedSetOf()) { it.song.id } }
                 .distinctUntilChanged()
                 .collect { localSongIds -> loadSortMetadata(localSongIds) }
@@ -116,7 +133,7 @@ constructor(
 
     fun refreshSortMetadata() {
         viewModelScope.launch(Dispatchers.IO) {
-            loadSortMetadata(songs.value.mapTo(linkedSetOf()) { it.song.id })
+            loadSortMetadata(allLocalSongs.value.mapTo(linkedSetOf()) { it.song.id })
         }
     }
 

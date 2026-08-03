@@ -1665,4 +1665,9 @@
     <string name="local_song_folder_unavailable">Ningún administrador de archivos compatible pudo abrir esta carpeta.</string>
     <string name="local_song_share_unavailable">Este archivo local no se puede compartir.</string>
     <string name="local_song_blacklisted">Canción agregada a la lista negra.</string>
+    <string name="local_blacklist_song_count">%1$d pistas</string>
+    <string name="local_blacklist_empty_title">La lista negra está vacía</string>
+    <string name="local_blacklist_empty_description">Las canciones locales que agregues a la lista negra aparecerán aquí.</string>
+    <string name="local_song_remove_from_blacklist">Quitar de la lista negra</string>
+    <string name="local_song_restored_from_blacklist">Canción restaurada en Música local.</string>
 </resources>

@@ -1657,4 +1657,9 @@
     <string name="local_song_folder_unavailable">No compatible file manager could open this folder.</string>
     <string name="local_song_share_unavailable">This local file cannot be shared.</string>
     <string name="local_song_blacklisted">Song added to the blacklist.</string>
+    <string name="local_blacklist_song_count">%1$d tracks</string>
+    <string name="local_blacklist_empty_title">The blacklist is empty</string>
+    <string name="local_blacklist_empty_description">Local songs you add to the blacklist will appear here.</string>
+    <string name="local_song_remove_from_blacklist">Remove from blacklist</string>
+    <string name="local_song_restored_from_blacklist">Song restored to Local music.</string>
 </resources>

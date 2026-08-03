@@ -96,6 +96,7 @@ fun LocalSongListItem(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onMoreClick: () -> Unit,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val containerColor by animateColorAsState(
         targetValue = if (isCurrent) {
@@ -162,16 +163,20 @@ fun LocalSongListItem(
                     modifier = Modifier.size(25.dp),
                 )
             }
-            IconButton(onClick = onMoreClick, modifier = Modifier.size(38.dp)) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = stringResource(R.string.more_options),
-                    tint = if (isCurrent) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
+            if (trailingContent != null) {
+                trailingContent()
+            } else {
+                IconButton(onClick = onMoreClick, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = stringResource(R.string.more_options),
+                        tint = if (isCurrent) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
         }
     }

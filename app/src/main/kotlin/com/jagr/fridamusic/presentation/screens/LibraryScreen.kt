@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
@@ -54,6 +56,9 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
+import com.jagr.fridamusic.constants.MiniPlayerHeight
+import com.jagr.fridamusic.constants.NavigationBarHeight
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -138,6 +143,9 @@ private enum class LocalSongSortType(val labelRes: Int) {
     DATE_ADDED(R.string.sort_by_date_added),
 }
 
+private val LibrarySnackbarBottomPadding =
+    MiniPlayerHeight + NavigationBarHeight + MiniPlayerBottomSpacing + 12.dp
+
 @SuppressLint("ConfigurationScreenWidthHeight")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -156,6 +164,7 @@ fun LibraryScreen(
     val configuration = LocalConfiguration.current
     val currentFilter = filters[pagerState.currentPage]
     var songMode by rememberSaveable { mutableStateOf(LibrarySongMode.FAVORITES) }
+    var showLocalBlacklist by rememberSaveable { mutableStateOf(false) }
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
@@ -257,8 +266,15 @@ fun LibraryScreen(
                             onLocalItemClick = onLocalItemClick,
                             onStatsClick = onStatsClick,
                             onTabSelected = { filter ->
+                                if (filter == LibraryFilter.LOCAL) showLocalBlacklist = false
                                 scope.launch {
                                     pagerState.animateScrollToPage(filters.indexOf(filter))
+                                }
+                            },
+                            onBlacklistSelected = {
+                                showLocalBlacklist = true
+                                scope.launch {
+                                    pagerState.animateScrollToPage(filters.indexOf(LibraryFilter.LOCAL))
                                 }
                             },
                             onSongCollectionSelected = { mode ->
@@ -278,6 +294,8 @@ fun LibraryScreen(
                         LibraryFilter.LOCAL -> LocalSongsTab(
                             onSongClick = onSongClick,
                             onLocalItemClick = onLocalItemClick,
+                            showBlacklist = showLocalBlacklist,
+                            onCloseBlacklist = { showLocalBlacklist = false },
                         )
                         LibraryFilter.ARTISTS -> ArtistsTab(onLocalItemClick = onLocalItemClick)
                         LibraryFilter.ALBUMS -> AlbumsTab(onLocalItemClick = onLocalItemClick)
@@ -299,6 +317,7 @@ fun LibraryScreen(
                             icon = filter.icon,
                             selected = currentFilter == filter,
                             onClick = {
+                                if (filter == LibraryFilter.LOCAL) showLocalBlacklist = false
                                 scope.launch {
                                     pagerState.animateScrollToPage(filters.indexOf(filter))
                                 }
@@ -314,7 +333,11 @@ fun LibraryScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 96.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = LibrarySnackbarBottomPadding,
+                ),
         )
     }
 }
@@ -378,17 +401,20 @@ private fun LibraryMixTab(
     onLocalItemClick: (LocalItem) -> Unit,
     onStatsClick: () -> Unit,
     onTabSelected: (LibraryFilter) -> Unit,
+    onBlacklistSelected: () -> Unit,
     onSongCollectionSelected: (LibrarySongMode) -> Unit,
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
     artistsViewModel: LibraryArtistsViewModel = hiltViewModel(),
     songsViewModel: LibrarySongsViewModel = hiltViewModel(),
     cacheViewModel: CachePlaylistViewModel = hiltViewModel(),
+    localSongsViewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val artists by artistsViewModel.allArtists.collectAsState()
     val favoriteSongs by songsViewModel.favoriteSongs.collectAsState()
     val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
     val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
+    val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -461,7 +487,18 @@ private fun LibraryMixTab(
                         modifier = Modifier.weight(1f),
                         onClick = onStatsClick,
                     )
-                    Spacer(modifier = Modifier.weight(1f).aspectRatio(1.45f))
+                    ShortcutCard(
+                        title = stringResource(R.string.local_song_blacklist),
+                        countText = stringResource(
+                            R.string.local_blacklist_song_count,
+                            blacklistedSongs.size,
+                        ),
+                        icon = Icons.Rounded.Block,
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f),
+                        iconColor = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                        onClick = onBlacklistSelected,
+                    )
                 }
             }
         }
@@ -1007,6 +1044,8 @@ private fun LibrarySongsEmptyState(
 private fun LocalSongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    showBlacklist: Boolean,
+    onCloseBlacklist: () -> Unit,
     viewModel: LocalSongsViewModel = hiltViewModel(),
     playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
@@ -1031,6 +1070,7 @@ private fun LocalSongsTab(
         )
     }
     val songs by viewModel.songs.collectAsState()
+    val blacklistedSongs by viewModel.blacklistedSongs.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
     val sortMetadata by viewModel.sortMetadata.collectAsState()
     val pinnedSongIds by viewModel.pinnedSongIds.collectAsState()
@@ -1059,16 +1099,47 @@ private fun LocalSongsTab(
             ascending = sortAscending,
         )
     }
+    val sortedBlacklistedSongs = remember(
+        blacklistedSongs,
+        sortMetadata,
+        pinnedSongIds,
+        sortType,
+        sortAscending,
+    ) {
+        sortLocalSongs(
+            songs = blacklistedSongs,
+            metadata = sortMetadata,
+            pinnedSongIds = pinnedSongIds,
+            sortType = sortType,
+            ascending = sortAscending,
+        )
+    }
     val actionFailedMessage = stringResource(R.string.local_song_action_failed)
     val metadataSavedMessage = stringResource(R.string.local_song_information_saved)
     val deletedMessage = stringResource(R.string.local_song_deleted)
     val folderUnavailableMessage = stringResource(R.string.local_song_folder_unavailable)
     val sharedUnavailableMessage = stringResource(R.string.local_song_share_unavailable)
     val blacklistedMessage = stringResource(R.string.local_song_blacklisted)
+    val restoredMessage = stringResource(R.string.local_song_restored_from_blacklist)
     val undoLabel = stringResource(R.string.undo)
+
+    BackHandler(enabled = showBlacklist, onBack = onCloseBlacklist)
 
     fun showMessage(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun restoreFromBlacklist(songId: String) {
+        viewModel.setSongBlacklisted(songId, blacklisted = false)
+        scope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = restoredMessage,
+                actionLabel = undoLabel,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.setSongBlacklisted(songId, blacklisted = true)
+            }
+        }
     }
 
     fun completeMetadataUpdate() {
@@ -1215,7 +1286,17 @@ private fun LocalSongsTab(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
+        if (showBlacklist) {
+            LocalBlacklistContent(
+                songs = sortedBlacklistedSongs,
+                currentSongId = currentSong?.song?.id,
+                isPlaying = isPlaying,
+                onClose = onCloseBlacklist,
+                onSongClick = { song -> onSongClick(song, sortedBlacklistedSongs) },
+                onRestore = { song -> restoreFromBlacklist(song.song.id) },
+            )
+        } else {
+            LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -1359,12 +1440,18 @@ private fun LocalSongsTab(
                 )
             }
         }
+        }
 
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(start = 16.dp, end = 16.dp, bottom = 112.dp),
+                .navigationBarsPadding()
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = LibrarySnackbarBottomPadding,
+                ),
         )
     }
 
@@ -1524,6 +1611,119 @@ private fun LocalSongsTab(
                 startDelete(selectedSong.song.id)
             },
         )
+    }
+}
+
+@Composable
+private fun LocalBlacklistContent(
+    songs: List<Song>,
+    currentSongId: String?,
+    isPlaying: Boolean,
+    onClose: () -> Unit,
+    onSongClick: (Song) -> Unit,
+    onRestore: (Song) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 60.dp,
+            bottom = 140.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item(key = "local_blacklist_header") {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    FilledTonalIconButton(onClick = onClose) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.local_song_blacklist),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = stringResource(R.string.local_blacklist_song_count, songs.size),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Rounded.Block,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+
+        if (songs.isEmpty()) {
+            item(key = "local_blacklist_empty") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Block,
+                        contentDescription = null,
+                        modifier = Modifier.size(42.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(R.string.local_blacklist_empty_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = stringResource(R.string.local_blacklist_empty_description),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+
+        items(songs, key = { "blacklisted_${it.song.id}" }) { song ->
+            LocalSongListItem(
+                song = song,
+                isCurrent = currentSongId == song.song.id,
+                isPlaying = isPlaying,
+                onClick = { onSongClick(song) },
+                onMoreClick = { onRestore(song) },
+                trailingContent = {
+                    IconButton(
+                        onClick = { onRestore(song) },
+                        modifier = Modifier.size(38.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.RemoveCircleOutline,
+                            contentDescription = stringResource(R.string.local_song_remove_from_blacklist),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                },
+            )
+        }
     }
 }
 
