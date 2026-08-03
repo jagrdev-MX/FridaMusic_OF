@@ -1,5 +1,8 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
@@ -58,6 +63,13 @@ fun HomeScreen(
 
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
+    val activity = LocalContext.current.findActivity()
+    val interstitialAdManager = remember(activity) { InterstitialAdManager(activity) }
+
+    DisposableEffect(interstitialAdManager) {
+        interstitialAdManager.load()
+        onDispose { interstitialAdManager.release() }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -155,10 +167,16 @@ fun HomeScreen(
             onDismiss = { showSupportDialog = false },
             onWatchAdClick = {
                 showSupportDialog = false
-                // TODO: Aquí va la lógica para llamar a tu SDK de anuncios (AdMob, AppLovin, etc.)
+                interstitialAdManager.show()
             }
         )
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable

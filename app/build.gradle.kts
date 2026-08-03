@@ -33,8 +33,8 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3.50"
+        versionCode = 5
+        versionName = "1.0.4.57"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -236,6 +236,7 @@ dependencies {
     "gmsImplementation"("com.google.firebase:firebase-crashlytics")
 
     "gmsImplementation"(libs.play.services.auth)
+    "gmsImplementation"(libs.play.services.ads)
     "gmsImplementation"(libs.google.api.client.android)
     "gmsImplementation"(libs.google.api.services.drive) {
         exclude(group = "org.apache.httpcomponents")
