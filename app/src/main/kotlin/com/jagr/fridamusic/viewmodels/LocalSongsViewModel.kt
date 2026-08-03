@@ -16,6 +16,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.jagr.fridamusic.db.MusicDatabase
@@ -24,6 +26,7 @@ import com.jagr.fridamusic.localmedia.LocalAudioPreferencesRepository
 import com.jagr.fridamusic.localmedia.LocalSongScanConfig
 import com.jagr.fridamusic.localmedia.LocalSongScanSummary
 import com.jagr.fridamusic.localmedia.LocalSongScanner
+import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.utils.reportException
 import javax.inject.Inject
 
@@ -41,6 +44,9 @@ constructor(
 
     private val _foldersState = MutableStateFlow(LocalAudioFoldersState())
     val foldersState = _foldersState.asStateFlow()
+
+    private val _sortMetadata = MutableStateFlow<Map<String, LocalSongSortMetadata>>(emptyMap())
+    val sortMetadata = _sortMetadata.asStateFlow()
 
     val scanConfig = preferencesRepository.scanConfig.stateIn(
         viewModelScope,
@@ -63,6 +69,12 @@ constructor(
                 performScan(request)
             }
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            songs
+                .map { localSongs -> localSongs.mapTo(linkedSetOf()) { it.song.id } }
+                .distinctUntilChanged()
+                .collect { localSongIds -> loadSortMetadata(localSongIds) }
+        }
     }
 
     fun refreshLibrary() {
@@ -71,6 +83,12 @@ constructor(
 
     fun scanDevice() {
         enqueueCurrentConfig(force = true)
+    }
+
+    fun refreshSortMetadata() {
+        viewModelScope.launch(Dispatchers.IO) {
+            loadSortMetadata(songs.value.mapTo(linkedSetOf()) { it.song.id })
+        }
     }
 
     fun loadAudioFolders() {
@@ -168,6 +186,15 @@ constructor(
                     errorMessage = error.message,
                 )
             }
+    }
+
+    private suspend fun loadSortMetadata(localSongIds: Set<String>) {
+        if (!hasAudioPermission() || localSongIds.isEmpty()) {
+            _sortMetadata.value = emptyMap()
+            return
+        }
+        _sortMetadata.value = localSongScanner.querySortMetadata()
+            .filterKeys { it in localSongIds }
     }
 
     private fun hasAudioPermission(): Boolean {

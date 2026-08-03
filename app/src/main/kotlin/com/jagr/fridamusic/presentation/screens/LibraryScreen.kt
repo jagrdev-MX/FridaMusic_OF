@@ -57,6 +57,7 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.utils.SyncErrorKind
 import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.resize
@@ -68,6 +69,8 @@ import com.jagr.fridamusic.viewmodels.LibraryPlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
 import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
 import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.util.Locale
 
 private enum class LibraryFilter(val label: String, val icon: ImageVector) {
     LIBRARY("Biblioteca", Icons.Rounded.LibraryMusic),
@@ -102,6 +105,20 @@ private enum class LibrarySongMode(
         "Las canciones reproducibles completamente desde la caché aparecerán aquí.",
         Icons.Rounded.Cached,
     ),
+}
+
+private enum class LocalSongSortType(val labelRes: Int) {
+    NAME(R.string.sort_by_name),
+    ALBUM(R.string.sort_by_album),
+    ARTIST(R.string.sort_by_artist),
+    ALBUM_ARTIST(R.string.sort_by_album_artist),
+    GENRE(R.string.sort_by_genre),
+    TRACK_NUMBER(R.string.sort_by_track_number),
+    DURATION(R.string.sort_by_length),
+    YEAR(R.string.sort_by_year),
+    COMPOSER(R.string.sort_by_composer),
+    DATE_MODIFIED(R.string.sort_by_date_modified),
+    DATE_ADDED(R.string.sort_by_date_added),
 }
 
 @SuppressLint("ConfigurationScreenWidthHeight")
@@ -965,6 +982,7 @@ private fun LibrarySongsEmptyState(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LocalSongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
@@ -984,6 +1002,18 @@ private fun LocalSongsTab(
     }
     val songs by viewModel.songs.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
+    val sortMetadata by viewModel.sortMetadata.collectAsState()
+    var sortType by rememberSaveable { mutableStateOf(LocalSongSortType.DATE_ADDED) }
+    var sortAscending by rememberSaveable { mutableStateOf(true) }
+    var showSortSheet by rememberSaveable { mutableStateOf(false) }
+    val sortedSongs = remember(songs, sortMetadata, sortType, sortAscending) {
+        sortLocalSongs(
+            songs = songs,
+            metadata = sortMetadata,
+            sortType = sortType,
+            ascending = sortAscending,
+        )
+    }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -993,7 +1023,21 @@ private fun LocalSongsTab(
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
             viewModel.refreshLibrary()
+            viewModel.refreshSortMetadata()
         }
+    }
+
+    if (showSortSheet) {
+        LocalSongSortSheet(
+            selectedSort = sortType,
+            ascending = sortAscending,
+            onSortSelected = {
+                sortType = it
+                showSortSheet = false
+            },
+            onAscendingChanged = { sortAscending = it },
+            onDismiss = { showSortSheet = false },
+        )
     }
 
     LazyColumn(
@@ -1080,6 +1124,22 @@ private fun LocalSongsTab(
             }
         }
 
+        if (hasPermission && songs.isNotEmpty()) {
+            item(key = "local_sort_controls") {
+                LocalSongSortControls(
+                    sortLabel = stringResource(sortType.labelRes),
+                    ascending = sortAscending,
+                    onSortClick = { showSortSheet = true },
+                    onShuffleClick = {
+                        val shuffledSongs = sortedSongs.shuffled()
+                        shuffledSongs.firstOrNull()?.let { firstSong ->
+                            onSongClick(firstSong, shuffledSongs)
+                        }
+                    },
+                )
+            }
+        }
+
         if (!hasPermission) {
             item(key = "local_permission") {
                 Text(
@@ -1114,12 +1174,12 @@ private fun LocalSongsTab(
             }
         }
 
-        items(songs, key = { "local_${it.song.id}" }) { song ->
+        items(sortedSongs, key = { "local_${it.song.id}" }) { song ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { onSongClick(song, songs) }
+                    .clickable { onSongClick(song, sortedSongs) }
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1154,6 +1214,301 @@ private fun LocalSongsTab(
         }
 
     }
+}
+
+@Composable
+private fun LocalSongSortControls(
+    sortLabel: String,
+    ascending: Boolean,
+    onSortClick: () -> Unit,
+    onShuffleClick: () -> Unit,
+) {
+    val locale = LocalConfiguration.current.locales[0]
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            onClick = onSortClick,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = sortLabel.uppercase(locale),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(
+                    imageVector = if (ascending) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        FilledTonalIconButton(
+            onClick = onShuffleClick,
+            modifier = Modifier.size(52.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Shuffle,
+                contentDescription = stringResource(R.string.shuffle_content_desc),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocalSongSortSheet(
+    selectedSort: LocalSongSortType,
+    ascending: Boolean,
+    onSortSelected: (LocalSongSortType) -> Unit,
+    onAscendingChanged: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val locale = LocalConfiguration.current.locales[0]
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.songs).uppercase(locale),
+                        style = MaterialTheme.typography.labelMedium,
+                        letterSpacing = 2.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(R.string.sort_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    LocalSortDirectionOption(
+                        selected = ascending,
+                        icon = Icons.Rounded.ArrowUpward,
+                        label = stringResource(R.string.sort_ascending_short),
+                        onClick = { onAscendingChanged(true) },
+                    )
+                    LocalSortDirectionOption(
+                        selected = !ascending,
+                        icon = Icons.Rounded.ArrowDownward,
+                        label = stringResource(R.string.sort_descending_short),
+                        onClick = { onAscendingChanged(false) },
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                items(LocalSongSortType.entries, key = { it.name }) { sortType ->
+                    val selected = sortType == selectedSort
+                    Surface(
+                        onClick = { onSortSelected(sortType) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerLow
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 17.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(sortType.labelRes),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (selected) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalSortDirectionOption(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            Color.Transparent
+        },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(text = label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun sortLocalSongs(
+    songs: List<Song>,
+    metadata: Map<String, LocalSongSortMetadata>,
+    sortType: LocalSongSortType,
+    ascending: Boolean,
+): List<Song> {
+    val zoneId = ZoneId.systemDefault()
+    return songs.sortedWith { first, second ->
+        val firstMetadata = metadata[first.song.id]
+        val secondMetadata = metadata[second.song.id]
+        val primaryComparison = when (sortType) {
+            LocalSongSortType.NAME -> compareLocalSortText(
+                firstMetadata?.title ?: first.song.title,
+                secondMetadata?.title ?: second.song.title,
+                ascending,
+            )
+            LocalSongSortType.ALBUM -> compareLocalSortText(
+                firstMetadata?.album ?: first.song.albumName ?: first.album?.title,
+                secondMetadata?.album ?: second.song.albumName ?: second.album?.title,
+                ascending,
+            )
+            LocalSongSortType.ARTIST -> compareLocalSortText(
+                firstMetadata?.artist ?: first.artists.joinToString(", ") { it.name },
+                secondMetadata?.artist ?: second.artists.joinToString(", ") { it.name },
+                ascending,
+            )
+            LocalSongSortType.ALBUM_ARTIST -> compareLocalSortText(
+                firstMetadata?.albumArtist ?: first.artists.joinToString(", ") { it.name },
+                secondMetadata?.albumArtist ?: second.artists.joinToString(", ") { it.name },
+                ascending,
+            )
+            LocalSongSortType.GENRE -> compareLocalSortText(
+                firstMetadata?.genre,
+                secondMetadata?.genre,
+                ascending,
+            )
+            LocalSongSortType.TRACK_NUMBER -> compareLocalSortValues(
+                firstMetadata?.trackNumber,
+                secondMetadata?.trackNumber,
+                ascending,
+            )
+            LocalSongSortType.DURATION -> compareLocalSortValues(
+                firstMetadata?.durationMs ?: first.song.duration.takeIf { it >= 0 }?.times(1000L),
+                secondMetadata?.durationMs ?: second.song.duration.takeIf { it >= 0 }?.times(1000L),
+                ascending,
+            )
+            LocalSongSortType.YEAR -> compareLocalSortValues(
+                firstMetadata?.year ?: first.song.year,
+                secondMetadata?.year ?: second.song.year,
+                ascending,
+            )
+            LocalSongSortType.COMPOSER -> compareLocalSortText(
+                firstMetadata?.composer,
+                secondMetadata?.composer,
+                ascending,
+            )
+            LocalSongSortType.DATE_MODIFIED -> compareLocalSortValues(
+                firstMetadata?.dateModifiedSeconds ?: first.song.dateModified?.atZone(zoneId)?.toEpochSecond(),
+                secondMetadata?.dateModifiedSeconds ?: second.song.dateModified?.atZone(zoneId)?.toEpochSecond(),
+                ascending,
+            )
+            LocalSongSortType.DATE_ADDED -> compareLocalSortValues(
+                firstMetadata?.dateAddedSeconds ?: first.song.date?.atZone(zoneId)?.toEpochSecond(),
+                secondMetadata?.dateAddedSeconds ?: second.song.date?.atZone(zoneId)?.toEpochSecond(),
+                ascending,
+            )
+        }
+
+        if (primaryComparison != 0) {
+            primaryComparison
+        } else {
+            val titleComparison = compareLocalSortText(
+                first.song.title,
+                second.song.title,
+                ascending = true,
+            )
+            if (titleComparison != 0) titleComparison else first.song.id.compareTo(second.song.id)
+        }
+    }
+}
+
+private fun compareLocalSortText(first: String?, second: String?, ascending: Boolean): Int =
+    compareLocalSortValues(
+        first.normalizedLocalSortText(),
+        second.normalizedLocalSortText(),
+        ascending,
+    )
+
+private fun String?.normalizedLocalSortText(): String? =
+    this?.trim()?.takeIf(String::isNotEmpty)?.lowercase(Locale.getDefault())
+
+private fun <T : Comparable<T>> compareLocalSortValues(
+    first: T?,
+    second: T?,
+    ascending: Boolean,
+): Int = when {
+    first == null && second == null -> 0
+    first == null -> 1
+    second == null -> -1
+    ascending -> first.compareTo(second)
+    else -> second.compareTo(first)
 }
 
 @Composable

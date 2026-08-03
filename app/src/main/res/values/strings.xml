@@ -135,11 +135,21 @@
     <string name="sort_by_create_date">Date added</string>
     <string name="sort_by_name">Name</string>
     <string name="sort_by_artist">Artist</string>
+    <string name="sort_by_album_artist">Album artist</string>
+    <string name="sort_by_genre">Genre</string>
+    <string name="sort_by_track_number">Track number</string>
+    <string name="sort_by_composer">Composer(s)</string>
+    <string name="sort_by_date_modified">Date modified</string>
+    <string name="sort_by_date_added">Date added</string>
     <string name="sort_by_year">Year</string>
     <string name="sort_by_song_count">Song count</string>
     <string name="sort_by_length">Length</string>
     <string name="sort_by_play_time">Play time</string>
     <string name="sort_by_custom">Custom order</string>
+    <string name="sort_local_songs">Sort local songs</string>
+    <string name="sort_title">Sort by</string>
+    <string name="sort_ascending_short">ASC</string>
+    <string name="sort_descending_short">DESC</string>
 
     <!-- Dialog -->
     <string name="media_id">Media id</string>

@@ -130,11 +130,21 @@
     <string name="sort_by_create_date">Fecha de añadido</string>
     <string name="sort_by_name">Nombre</string>
     <string name="sort_by_artist">Artista</string>
+    <string name="sort_by_album_artist">Artista del álbum</string>
+    <string name="sort_by_genre">Género</string>
+    <string name="sort_by_track_number">Número de pista</string>
+    <string name="sort_by_composer">Compositor(es)</string>
+    <string name="sort_by_date_modified">Fecha de modificación</string>
+    <string name="sort_by_date_added">Fecha de agregado</string>
     <string name="sort_by_year">Año</string>
     <string name="sort_by_song_count">Número de canciones</string>
     <string name="sort_by_length">Duración</string>
     <string name="sort_by_play_time">Tiempo de reproducción</string>
     <string name="sort_by_custom">Orden personalizado</string>
+    <string name="sort_local_songs">Ordenar canciones locales</string>
+    <string name="sort_title">Ordenar por</string>
+    <string name="sort_ascending_short">ASC</string>
+    <string name="sort_descending_short">DESC</string>
 
     <!-- Diálogos -->
     <string name="media_id">ID de medio</string>

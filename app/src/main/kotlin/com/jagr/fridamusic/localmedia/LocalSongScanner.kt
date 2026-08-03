@@ -35,6 +35,20 @@ data class LocalSongScanSummary(
     val removedSongs: Int,
 )
 
+data class LocalSongSortMetadata(
+    val title: String? = null,
+    val album: String? = null,
+    val artist: String? = null,
+    val albumArtist: String? = null,
+    val genre: String? = null,
+    val trackNumber: Int? = null,
+    val durationMs: Long? = null,
+    val year: Int? = null,
+    val composer: String? = null,
+    val dateModifiedSeconds: Long? = null,
+    val dateAddedSeconds: Long? = null,
+)
+
 @Singleton
 class LocalSongScanner
 @Inject
@@ -145,7 +159,7 @@ constructor(
                             albumName = track.albumName,
                             explicit = existingSong?.explicit ?: false,
                             year = track.year ?: existingSong?.year,
-                            date = existingSong?.date,
+                            date = track.dateAdded ?: existingSong?.date,
                             dateModified = track.dateModified ?: existingSong?.dateModified,
                             liked = existingSong?.liked ?: false,
                             likedDate = existingSong?.likedDate,
@@ -224,6 +238,113 @@ constructor(
             .associateBy { item -> item.id }
 
     @Suppress("DEPRECATION")
+    suspend fun querySortMetadata(): Map<String, LocalSongSortMetadata> = withContext(Dispatchers.IO) {
+        val baseProjection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.YEAR,
+            MediaStore.Audio.Media.DATE_MODIFIED,
+            MediaStore.Audio.Media.DATE_ADDED,
+        )
+        val commonAudioProjection = baseProjection + arrayOf(
+            MediaStore.Audio.Media.TRACK,
+            MediaStore.Audio.Media.COMPOSER,
+        )
+        val projections = listOf(commonAudioProjection, baseProjection)
+
+        var metadata: Map<String, LocalSongSortMetadata>? = null
+        for (projection in projections) {
+            metadata = runCatching { querySortMetadata(projection) }.getOrNull()
+            if (metadata != null) break
+        }
+        val availableMetadata = metadata ?: return@withContext emptyMap()
+        val albumArtists = queryOptionalSortText(AlbumArtistColumn)
+        val genres = queryOptionalSortText(GenreColumn)
+        availableMetadata.mapValues { (songId, value) ->
+            value.copy(
+                albumArtist = albumArtists[songId],
+                genre = genres[songId],
+            )
+        }
+    }
+
+    private fun queryOptionalSortText(column: String): Map<String, String> = runCatching {
+        val values = linkedMapOf<String, String>()
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Audio.Media._ID, column),
+            buildAvailableMediaSelection(),
+            null,
+            null,
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val valueIndex = cursor.getColumnIndex(column)
+            while (cursor.moveToNext()) {
+                val value = cursor.getStringOrNull(valueIndex).normalizedMetadataValue() ?: continue
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    cursor.getLong(idIndex),
+                ).toString()
+                values[contentUri] = value
+            }
+        }
+        values
+    }.getOrDefault(emptyMap())
+
+    private fun querySortMetadata(projection: Array<String>): Map<String, LocalSongSortMetadata> {
+        val metadata = linkedMapOf<String, LocalSongSortMetadata>()
+        context.contentResolver.query(
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            buildAvailableMediaSelection(),
+            null,
+            null,
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val titleIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+            val albumIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
+            val artistIndex = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+            val albumArtistIndex = cursor.getColumnIndex(AlbumArtistColumn)
+            val genreIndex = cursor.getColumnIndex(GenreColumn)
+            val trackIndex = cursor.getColumnIndex(MediaStore.Audio.Media.TRACK)
+            val durationIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DURATION)
+            val yearIndex = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
+            val composerIndex = cursor.getColumnIndex(MediaStore.Audio.Media.COMPOSER)
+            val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
+            val dateAddedIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_ADDED)
+
+            while (cursor.moveToNext()) {
+                val mediaId = cursor.getLong(idIndex)
+                val rawTrackNumber = cursor.getIntOrNull(trackIndex)?.takeIf { it > 0 }
+                val trackNumber = rawTrackNumber?.let { value ->
+                    (value % 1000).takeIf { it > 0 } ?: value
+                }
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    mediaId,
+                ).toString()
+                metadata[contentUri] = LocalSongSortMetadata(
+                    title = cursor.getStringOrNull(titleIndex).normalizedMetadataValue(),
+                    album = cursor.getStringOrNull(albumIndex).normalizedMetadataValue(),
+                    artist = cursor.getStringOrNull(artistIndex).normalizedMetadataValue(),
+                    albumArtist = cursor.getStringOrNull(albumArtistIndex).normalizedMetadataValue(),
+                    genre = cursor.getStringOrNull(genreIndex).normalizedMetadataValue(),
+                    trackNumber = trackNumber,
+                    durationMs = cursor.getLongOrNull(durationIndex)?.takeIf { it >= 0L },
+                    year = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 },
+                    composer = cursor.getStringOrNull(composerIndex).normalizedMetadataValue(),
+                    dateModifiedSeconds = cursor.getLongOrNull(dateModifiedIndex)?.takeIf { it > 0L },
+                    dateAddedSeconds = cursor.getLongOrNull(dateAddedIndex)?.takeIf { it > 0L },
+                )
+            }
+        }
+        return metadata
+    }
+
+    @Suppress("DEPRECATION")
     private fun queryTracks(scanConfig: LocalSongScanConfig): LocalScanSnapshot {
         val projection = buildList {
             add(MediaStore.Audio.Media._ID)
@@ -236,6 +357,7 @@ constructor(
             add(MediaStore.Audio.Media.DURATION)
             add(MediaStore.Audio.Media.YEAR)
             add(MediaStore.Audio.Media.DATE_MODIFIED)
+            add(MediaStore.Audio.Media.DATE_ADDED)
             add(MediaStore.Audio.Media.SIZE)
             add(MediaStore.Audio.Media.MIME_TYPE)
             add(MediaStore.Audio.Media.IS_MUSIC)
@@ -274,6 +396,7 @@ constructor(
             val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val yearIndex = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
             val dateModifiedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
+            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val mimeTypeIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
             val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
@@ -359,6 +482,9 @@ constructor(
                         .toInt(),
                     year = cursor.getIntOrNull(yearIndex)?.takeIf { it > 0 },
                     dateModified = cursor.getLongOrNull(dateModifiedIndex)
+                        ?.takeIf { it > 0L }
+                        ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
+                    dateAdded = cursor.getLongOrNull(dateAddedIndex)
                         ?.takeIf { it > 0L }
                         ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
                     sizeBytes = (sizeBytes ?: 0L).coerceAtLeast(0L),
@@ -536,6 +662,9 @@ constructor(
         return if (columnIndex >= 0 && !isNull(columnIndex)) getInt(columnIndex) != 0 else null
     }
 
+    private fun String?.normalizedMetadataValue(): String? =
+        this?.trim()?.takeIf { it.isNotEmpty() && !it.equals("<unknown>", ignoreCase = true) }
+
     private data class LocalScanSnapshot(
         val tracks: List<LocalTrackRecord>,
         val artists: List<LocalArtistRecord>,
@@ -551,6 +680,7 @@ constructor(
         val durationSeconds: Int,
         val year: Int?,
         val dateModified: LocalDateTime?,
+        val dateAdded: LocalDateTime?,
         val sizeBytes: Long,
         val mimeType: String,
         val thumbnailUrl: String?,
@@ -574,6 +704,8 @@ constructor(
     private companion object {
         val AlbumArtUri: Uri = Uri.parse("content://media/external/audio/albumart")
         val ArtistSeparators = Regex("[,;/&]")
+        const val AlbumArtistColumn = "album_artist"
+        const val GenreColumn = "genre"
         const val SqlBatchSize = 900
     }
 }
