@@ -1623,4 +1623,5 @@
     <string name="about_made_with_love">Made with ❤️ by</string>
     <string name="about_fork_credit">FridaMusic is based on EchoMusic and ViMusic, open source projects licensed under GPL-3.0.</string>
     <string name="about_licenses_desc">FridaMusic uses the following open source libraries. Tap any to visit their repository.</string>
+    <string name="no_playlists">No playlists available. Create one first.</string>
 </resources>

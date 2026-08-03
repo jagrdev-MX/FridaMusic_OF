@@ -1,5 +1,3 @@
-
-
 @file:OptIn(ExperimentalCoroutinesApi::class)
 
 package com.jagr.fridamusic.viewmodels
@@ -11,9 +9,12 @@ import com.jagr.fridamusic.constants.AddToPlaylistSortDescendingKey
 import com.jagr.fridamusic.constants.AddToPlaylistSortTypeKey
 import com.jagr.fridamusic.constants.PlaylistSortType
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.extensions.toEnum
+import com.jagr.fridamusic.models.toMediaMetadata
 import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
+import com.music.innertube.models.SongItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -29,7 +31,7 @@ class PlaylistsViewModel
 @Inject
 constructor(
     @ApplicationContext context: Context,
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
     val allPlaylists =
@@ -42,7 +44,15 @@ constructor(
                 database.playlists(sortType, descending)
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    
+    fun addSongToPlaylist(playlist: Playlist, songItem: SongItem) {
+        viewModelScope.launch {
+            database.query {
+                insert(songItem.toMediaMetadata())
+                addSongToPlaylist(playlist, listOf(songItem.id))
+            }
+        }
+    }
+
     suspend fun sync() {
         syncUtils.syncSavedPlaylists()
     }

@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,8 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NorthWest
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Queue
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,10 +39,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.Playlist
+import com.jagr.fridamusic.extensions.toMediaItem
+import com.jagr.fridamusic.models.toMediaMetadata
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
@@ -241,7 +253,11 @@ private fun SuggestionRow(
 }
 
 @Composable
-fun YTItemRow(item: YTItem, onClick: () -> Unit) {
+fun YTItemRow(
+    item: YTItem,
+    onClick: () -> Unit,
+    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
+) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
         is AlbumItem -> item.artists?.joinToString(", ") { it.name } ?: stringResource(R.string.albums)
@@ -250,11 +266,20 @@ fun YTItemRow(item: YTItem, onClick: () -> Unit) {
         else -> null
     }
     val isRound = item is ArtistItem
+    val isSong = item is SongItem
+
+    val playerConnection = LocalPlayerConnection.current
+    var showMenu by remember { mutableStateOf(false) }
+    var showPlaylistPicker by remember { mutableStateOf(false) }
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { if (isSong) showMenu = true },
+            )
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -287,5 +312,245 @@ fun YTItemRow(item: YTItem, onClick: () -> Unit) {
                 )
             }
         }
+        if (isSong) {
+            IconButton(
+                onClick = { showMenu = true },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.more_options),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
     }
+
+    if (showMenu && item is SongItem) {
+        SongActionsSheet(
+            item = item,
+            onDismiss = { showMenu = false },
+            onPlayNext = {
+                showMenu = false
+                playerConnection?.playNext(item.toMediaItem())
+            },
+            onAddToQueue = {
+                showMenu = false
+                playerConnection?.addToQueue(item.toMediaItem())
+            },
+            onAddToPlaylist = {
+                showMenu = false
+                showPlaylistPicker = true
+            },
+        )
+    }
+
+    if (showPlaylistPicker && item is SongItem) {
+        PlaylistPickerDialog(
+            playlists = playlists,
+            onDismiss = { showPlaylistPicker = false },
+            onSelect = { playlist ->
+                showPlaylistPicker = false
+                playlistsViewModel.addSongToPlaylist(
+                    playlist = playlist,
+                    songItem = item,
+                )
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SongActionsSheet(
+    item: SongItem,
+    onDismiss: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1A1A1A),
+        contentColor = Color.White,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.3f)),
+            )
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                AsyncImage(
+                    model = item.thumbnail?.resize(width = 96),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.08f)),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = item.artists.joinToString(", ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.65f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.1f)),
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            SheetAction(
+                icon = Icons.Rounded.SkipNext,
+                label = stringResource(R.string.play_next),
+                onClick = onPlayNext,
+            )
+            SheetAction(
+                icon = Icons.Rounded.Queue,
+                label = stringResource(R.string.add_to_queue),
+                onClick = onAddToQueue,
+            )
+            SheetAction(
+                icon = Icons.Rounded.PlaylistAdd,
+                label = stringResource(R.string.add_to_playlist),
+                onClick = onAddToPlaylist,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = Color.White,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun PlaylistPickerDialog(
+    playlists: List<Playlist>,
+    onDismiss: () -> Unit,
+    onSelect: (Playlist) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.add_to_playlist)) },
+        text = {
+            if (playlists.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.no_playlists),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn {
+                    items(playlists.filter { it.playlist.isEditable }, key = { it.id }) { playlist ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(playlist) }
+                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlaylistAdd,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Column {
+                                Text(
+                                    text = playlist.playlist.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    text = pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
 }
