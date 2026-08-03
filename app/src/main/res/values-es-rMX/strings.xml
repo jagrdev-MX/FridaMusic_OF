@@ -1642,4 +1642,27 @@
     <string name="about_fork_credit">FridaMusic está basado en EchoMusic y ViMusic, proyectos de código abierto bajo licencia GPL-3.0.</string>
     <string name="about_licenses_desc">FridaMusic utiliza las siguientes librerías de código abierto. Toca alguna para ver su repositorio.</string>
     <string name="no_playlists">No hay listas de reproducción. Crea una primero.</string>
+    <string name="local_song_add_favorite">Agregar a favoritas</string>
+    <string name="local_song_remove_favorite">Quitar de favoritas</string>
+    <string name="local_song_pin">Fijar al inicio</string>
+    <string name="local_song_unpin">Desfijar del inicio</string>
+    <string name="local_song_go_to_album">Ir al álbum</string>
+    <string name="local_song_go_to_artist">Ir al artista</string>
+    <string name="local_song_go_to_album_artist">Ver artista del álbum</string>
+    <string name="local_song_go_to_folder">Ir a la carpeta</string>
+    <string name="local_song_edit_information">Editar información</string>
+    <string name="local_song_blacklist">Lista negra</string>
+    <string name="local_song_delete_from_device">Eliminar del dispositivo</string>
+    <string name="local_song_title_field">Título</string>
+    <string name="local_song_file_name">Nombre del archivo</string>
+    <string name="local_song_folder">Carpeta</string>
+    <string name="local_song_format">Formato</string>
+    <string name="local_song_file_size">Tamaño del archivo</string>
+    <string name="local_song_delete_confirmation">¿Eliminar “%1$s” permanentemente de este dispositivo?</string>
+    <string name="local_song_action_failed">No se pudo completar la acción de música local.</string>
+    <string name="local_song_information_saved">Información de la canción actualizada.</string>
+    <string name="local_song_deleted">Canción eliminada del dispositivo.</string>
+    <string name="local_song_folder_unavailable">Ningún administrador de archivos compatible pudo abrir esta carpeta.</string>
+    <string name="local_song_share_unavailable">Este archivo local no se puede compartir.</string>
+    <string name="local_song_blacklisted">Canción agregada a la lista negra.</string>
 </resources>

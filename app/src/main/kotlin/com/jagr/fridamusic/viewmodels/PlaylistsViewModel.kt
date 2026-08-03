@@ -10,6 +10,7 @@ import com.jagr.fridamusic.constants.AddToPlaylistSortTypeKey
 import com.jagr.fridamusic.constants.PlaylistSortType
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.Playlist
+import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.models.toMediaMetadata
 import com.jagr.fridamusic.utils.SyncUtils
@@ -49,6 +50,14 @@ constructor(
             database.query {
                 insert(songItem.toMediaMetadata())
                 addSongToPlaylist(playlist, listOf(songItem.id))
+            }
+        }
+    }
+
+    fun addSongToPlaylist(playlist: Playlist, song: Song) {
+        viewModelScope.launch {
+            database.query {
+                addSongToPlaylist(playlist, listOf(song.song.id))
             }
         }
     }

@@ -2,9 +2,11 @@ package com.jagr.fridamusic.presentation.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -57,7 +59,20 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.extensions.toMediaItem
+import com.jagr.fridamusic.localmedia.LocalMediaStoreActionResult
+import com.jagr.fridamusic.localmedia.LocalSongMetadataUpdate
 import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.DeleteLocalSongDialog
+import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
+import com.jagr.fridamusic.presentation.components.LocalSongActionsSheet
+import com.jagr.fridamusic.presentation.components.LocalSongDetailsDialog
+import com.jagr.fridamusic.presentation.components.LocalSongListItem
+import com.jagr.fridamusic.presentation.components.LocalSongLyricsEditorDialog
+import com.jagr.fridamusic.presentation.components.LocalSongMetadataEditorDialog
+import com.jagr.fridamusic.utils.openLocalAudioFolder
+import com.jagr.fridamusic.utils.shareLocalAudio
 import com.jagr.fridamusic.utils.SyncErrorKind
 import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.resize
@@ -68,6 +83,8 @@ import com.jagr.fridamusic.viewmodels.LibraryMixViewModel
 import com.jagr.fridamusic.viewmodels.LibraryPlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
 import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.util.Locale
@@ -258,7 +275,10 @@ fun LibraryScreen(
                             onSongClick = onSongClick,
                             onCachedSongClick = onCachedSongClick,
                         )
-                        LibraryFilter.LOCAL -> LocalSongsTab(onSongClick = onSongClick)
+                        LibraryFilter.LOCAL -> LocalSongsTab(
+                            onSongClick = onSongClick,
+                            onLocalItemClick = onLocalItemClick,
+                        )
                         LibraryFilter.ARTISTS -> ArtistsTab(onLocalItemClick = onLocalItemClick)
                         LibraryFilter.ALBUMS -> AlbumsTab(onLocalItemClick = onLocalItemClick)
                     }
@@ -986,9 +1006,19 @@ private fun LibrarySongsEmptyState(
 @Composable
 private fun LocalSongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
+    onLocalItemClick: (LocalItem) -> Unit,
     viewModel: LocalSongsViewModel = hiltViewModel(),
+    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val playerConnection = LocalPlayerConnection.current
+    val currentSongFlow = remember(playerConnection) { playerConnection?.currentSong ?: flowOf(null) }
+    val isPlayingFlow = remember(playerConnection) { playerConnection?.isEffectivelyPlaying ?: flowOf(false) }
+    val currentSong by currentSongFlow.collectAsState(initial = null)
+    val isPlaying by isPlayingFlow.collectAsState(initial = false)
     val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -1003,17 +1033,161 @@ private fun LocalSongsTab(
     val songs by viewModel.songs.collectAsState()
     val scanState by viewModel.scanState.collectAsState()
     val sortMetadata by viewModel.sortMetadata.collectAsState()
-    var sortType by rememberSaveable { mutableStateOf(LocalSongSortType.DATE_ADDED) }
-    var sortAscending by rememberSaveable { mutableStateOf(true) }
+    val pinnedSongIds by viewModel.pinnedSongIds.collectAsState()
+    val sortPreference by viewModel.sortPreference.collectAsState()
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val sortType = remember(sortPreference.typeName) {
+        runCatching { LocalSongSortType.valueOf(sortPreference.typeName) }
+            .getOrDefault(LocalSongSortType.DATE_ADDED)
+    }
+    val sortAscending = !sortPreference.descending
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
-    val sortedSongs = remember(songs, sortMetadata, sortType, sortAscending) {
+    var menuSong by remember { mutableStateOf<Song?>(null) }
+    var playlistSong by remember { mutableStateOf<Song?>(null) }
+    var metadataEditorSong by remember { mutableStateOf<Song?>(null) }
+    var lyricsEditorSong by remember { mutableStateOf<Song?>(null) }
+    var detailsSong by remember { mutableStateOf<Song?>(null) }
+    var deleteSong by remember { mutableStateOf<Song?>(null) }
+    var pendingMetadataUpdate by remember { mutableStateOf<LocalSongMetadataUpdate?>(null) }
+    var pendingDeleteSongId by rememberSaveable { mutableStateOf<String?>(null) }
+    val sortedSongs = remember(songs, sortMetadata, pinnedSongIds, sortType, sortAscending) {
         sortLocalSongs(
             songs = songs,
             metadata = sortMetadata,
+            pinnedSongIds = pinnedSongIds,
             sortType = sortType,
             ascending = sortAscending,
         )
     }
+    val actionFailedMessage = stringResource(R.string.local_song_action_failed)
+    val metadataSavedMessage = stringResource(R.string.local_song_information_saved)
+    val deletedMessage = stringResource(R.string.local_song_deleted)
+    val folderUnavailableMessage = stringResource(R.string.local_song_folder_unavailable)
+    val sharedUnavailableMessage = stringResource(R.string.local_song_share_unavailable)
+    val blacklistedMessage = stringResource(R.string.local_song_blacklisted)
+    val undoLabel = stringResource(R.string.undo)
+
+    fun showMessage(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun completeMetadataUpdate() {
+        val update = pendingMetadataUpdate ?: return
+        viewModel.updateSongMetadata(update, requestPermission = false) { result ->
+            when (result) {
+                LocalMediaStoreActionResult.Success -> showMessage(metadataSavedMessage)
+                is LocalMediaStoreActionResult.Failure,
+                is LocalMediaStoreActionResult.PermissionRequired -> showMessage(actionFailedMessage)
+            }
+            pendingMetadataUpdate = null
+        }
+    }
+
+    fun completeLegacyDelete() {
+        val songId = pendingDeleteSongId ?: return
+        viewModel.deleteSongFromDevice(songId, requestPermission = false) { result ->
+            when (result) {
+                LocalMediaStoreActionResult.Success -> showMessage(deletedMessage)
+                is LocalMediaStoreActionResult.Failure,
+                is LocalMediaStoreActionResult.PermissionRequired -> showMessage(actionFailedMessage)
+            }
+            pendingDeleteSongId = null
+        }
+    }
+
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            when {
+                pendingMetadataUpdate != null -> completeMetadataUpdate()
+                pendingDeleteSongId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                    viewModel.refreshAfterExternalMediaAction()
+                    showMessage(deletedMessage)
+                    pendingDeleteSongId = null
+                }
+                pendingDeleteSongId != null -> completeLegacyDelete()
+            }
+        } else {
+            pendingMetadataUpdate = null
+            pendingDeleteSongId = null
+        }
+    }
+
+    val legacyWritePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            if (pendingMetadataUpdate != null) completeMetadataUpdate() else completeLegacyDelete()
+        } else {
+            showMessage(actionFailedMessage)
+            pendingMetadataUpdate = null
+            pendingDeleteSongId = null
+        }
+    }
+
+    fun launchMediaPermission(result: LocalMediaStoreActionResult.PermissionRequired) {
+        runCatching {
+            mediaPermissionLauncher.launch(
+                IntentSenderRequest.Builder(result.pendingIntent.intentSender).build(),
+            )
+        }.onFailure {
+            showMessage(actionFailedMessage)
+            pendingMetadataUpdate = null
+            pendingDeleteSongId = null
+        }
+    }
+
+    fun startMetadataUpdate(update: LocalSongMetadataUpdate) {
+        pendingDeleteSongId = null
+        pendingMetadataUpdate = update
+        val needsLegacyWritePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsLegacyWritePermission) {
+            legacyWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        viewModel.updateSongMetadata(update, requestPermission = true) { result ->
+            when (result) {
+                LocalMediaStoreActionResult.Success -> {
+                    showMessage(metadataSavedMessage)
+                    pendingMetadataUpdate = null
+                }
+                is LocalMediaStoreActionResult.PermissionRequired -> launchMediaPermission(result)
+                is LocalMediaStoreActionResult.Failure -> {
+                    showMessage(actionFailedMessage)
+                    pendingMetadataUpdate = null
+                }
+            }
+        }
+    }
+
+    fun startDelete(songId: String) {
+        pendingMetadataUpdate = null
+        pendingDeleteSongId = songId
+        val needsLegacyWritePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsLegacyWritePermission) {
+            legacyWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        viewModel.deleteSongFromDevice(songId, requestPermission = true) { result ->
+            when (result) {
+                LocalMediaStoreActionResult.Success -> {
+                    showMessage(deletedMessage)
+                    pendingDeleteSongId = null
+                }
+                is LocalMediaStoreActionResult.PermissionRequired -> launchMediaPermission(result)
+                is LocalMediaStoreActionResult.Failure -> {
+                    showMessage(actionFailedMessage)
+                    pendingDeleteSongId = null
+                }
+            }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -1032,187 +1206,324 @@ private fun LocalSongsTab(
             selectedSort = sortType,
             ascending = sortAscending,
             onSortSelected = {
-                sortType = it
+                viewModel.setSortType(it.name)
                 showSortSheet = false
             },
-            onAscendingChanged = { sortAscending = it },
+            onAscendingChanged = { viewModel.setSortDescending(!it) },
             onDismiss = { showSortSheet = false },
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = 60.dp,
-            bottom = 140.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "local_scan") {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-                shape = RoundedCornerShape(20.dp),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 60.dp,
+                bottom = 140.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(key = "local_scan") {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                    shape = RoundedCornerShape(20.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.local_songs_scan_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = if (hasPermission) {
-                            stringResource(R.string.local_songs_scan_subtitle)
-                        } else {
-                            stringResource(R.string.local_songs_permission_body)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    FilledTonalButton(
-                        enabled = !scanState.isScanning,
-                        onClick = {
-                            if (hasPermission) {
-                                viewModel.scanDevice()
-                            } else {
-                                permissionLauncher.launch(requiredPermission)
-                            }
-                        },
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        if (scanState.isScanning) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
                         Text(
-                            text = when {
-                                scanState.isScanning -> stringResource(R.string.scanning_device)
-                                hasPermission -> stringResource(R.string.scan_device)
-                                else -> stringResource(R.string.allow)
-                            },
+                            text = stringResource(R.string.local_songs_scan_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
                         )
-                    }
-                    scanState.lastSummary?.let { summary ->
                         Text(
-                            text = stringResource(
-                                R.string.local_songs_scan_summary,
-                                summary.scannedSongs,
-                                summary.removedSongs,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = if (hasPermission) {
+                                stringResource(R.string.local_songs_scan_subtitle)
+                            } else {
+                                stringResource(R.string.local_songs_permission_body)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        FilledTonalButton(
+                            enabled = !scanState.isScanning,
+                            onClick = {
+                                if (hasPermission) {
+                                    viewModel.scanDevice()
+                                } else {
+                                    permissionLauncher.launch(requiredPermission)
+                                }
+                            },
+                        ) {
+                            if (scanState.isScanning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = when {
+                                    scanState.isScanning -> stringResource(R.string.scanning_device)
+                                    hasPermission -> stringResource(R.string.scan_device)
+                                    else -> stringResource(R.string.allow)
+                                },
+                            )
+                        }
+                        scanState.lastSummary?.let { summary ->
+                            Text(
+                                text = stringResource(
+                                    R.string.local_songs_scan_summary,
+                                    summary.scannedSongs,
+                                    summary.removedSongs,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (scanState.errorMessage != null) {
+                            Text(
+                                text = stringResource(R.string.local_songs_scan_failed),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
-                    if (scanState.errorMessage != null) {
+                }
+            }
+
+            if (hasPermission && songs.isNotEmpty()) {
+                item(key = "local_sort_controls") {
+                    LocalSongSortControls(
+                        sortLabel = stringResource(sortType.labelRes),
+                        ascending = sortAscending,
+                        onSortClick = { showSortSheet = true },
+                        onShuffleClick = {
+                            val shuffledSongs = sortedSongs.shuffled()
+                            shuffledSongs.firstOrNull()?.let { firstSong ->
+                                onSongClick(firstSong, shuffledSongs)
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (!hasPermission) {
+                item(key = "local_permission") {
+                    Text(
+                        text = stringResource(R.string.permission_storage_desc),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (songs.isEmpty() && !scanState.isScanning) {
+                item(key = "local_empty") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         Text(
-                            text = stringResource(R.string.local_songs_scan_failed),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            text = stringResource(R.string.local_songs_empty_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = stringResource(R.string.local_songs_ready_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
             }
-        }
 
-        if (hasPermission && songs.isNotEmpty()) {
-            item(key = "local_sort_controls") {
-                LocalSongSortControls(
-                    sortLabel = stringResource(sortType.labelRes),
-                    ascending = sortAscending,
-                    onSortClick = { showSortSheet = true },
-                    onShuffleClick = {
-                        val shuffledSongs = sortedSongs.shuffled()
-                        shuffledSongs.firstOrNull()?.let { firstSong ->
-                            onSongClick(firstSong, shuffledSongs)
-                        }
-                    },
+            items(sortedSongs, key = { "local_${it.song.id}" }) { song ->
+                LocalSongListItem(
+                    song = song,
+                    isCurrent = currentSong?.song?.id == song.song.id,
+                    isPlaying = isPlaying,
+                    onClick = { onSongClick(song, sortedSongs) },
+                    onMoreClick = { menuSong = song },
                 )
             }
         }
 
-        if (!hasPermission) {
-            item(key = "local_permission") {
-                Text(
-                    text = stringResource(R.string.permission_storage_desc),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else if (songs.isEmpty() && !scanState.isScanning) {
-            item(key = "local_empty") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.local_songs_empty_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(
-                        text = stringResource(R.string.local_songs_ready_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = 112.dp),
+        )
+    }
+
+    menuSong?.let { selectedSong ->
+        val metadata = sortMetadata[selectedSong.song.id]
+        val albumTarget = selectedSong.album?.let { album ->
+            Album(album = album, artists = selectedSong.artists)
+        }
+        val artistTarget = selectedSong.artists.firstOrNull()?.let { artist ->
+            Artist(artist = artist, songCount = 0)
+        }
+        val albumArtistTarget = selectedSong.artists.firstOrNull { artist ->
+            artist.name.equals(metadata?.albumArtist, ignoreCase = true)
+        }?.let { artist -> Artist(artist = artist, songCount = 0) } ?: artistTarget
+        val canOpenFolder = !metadata?.relativePath.isNullOrBlank() || !metadata?.absolutePath.isNullOrBlank()
+
+        LocalSongActionsSheet(
+            song = selectedSong,
+            metadata = metadata,
+            isPinned = selectedSong.song.id in pinnedSongIds,
+            onDismiss = { menuSong = null },
+            onToggleFavorite = {
+                viewModel.toggleFavorite(selectedSong)
+                menuSong = null
+            },
+            onPlayNext = {
+                playerConnection?.playNext(selectedSong.toMediaItem())
+                menuSong = null
+            },
+            onAddToQueue = {
+                playerConnection?.addToQueue(selectedSong.toMediaItem())
+                menuSong = null
+            },
+            onAddToPlaylist = {
+                playlistSong = selectedSong
+                menuSong = null
+            },
+            onTogglePinned = {
+                viewModel.togglePinnedSong(selectedSong.song.id)
+                menuSong = null
+            },
+            onGoToAlbum = albumTarget?.let { target ->
+                { onLocalItemClick(target); menuSong = null }
+            },
+            onGoToArtist = artistTarget?.let { target ->
+                { onLocalItemClick(target); menuSong = null }
+            },
+            onGoToAlbumArtist = albumArtistTarget?.let { target ->
+                { onLocalItemClick(target); menuSong = null }
+            },
+            onGoToFolder = if (canOpenFolder) {
+                {
+                    val opened = openLocalAudioFolder(context, metadata.relativePath, metadata.absolutePath)
+                    if (!opened) showMessage(folderUnavailableMessage)
+                    menuSong = null
                 }
-            }
-        }
-
-        items(sortedSongs, key = { "local_${it.song.id}" }) { song ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onSongClick(song, sortedSongs) }
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AsyncImage(
-                    model = song.thumbnailUrl?.resize(width = 96),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = song.song.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onBackground,
+            } else {
+                null
+            },
+            onEditMetadata = {
+                metadataEditorSong = selectedSong
+                menuSong = null
+            },
+            onEditLyrics = {
+                lyricsEditorSong = selectedSong
+                menuSong = null
+            },
+            onBlacklist = {
+                viewModel.setSongBlacklisted(selectedSong.song.id, blacklisted = true)
+                menuSong = null
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = blacklistedMessage,
+                        actionLabel = undoLabel,
                     )
-                    Text(
-                        text = song.artists.joinToString(", ") { it.name },
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.setSongBlacklisted(selectedSong.song.id, blacklisted = false)
+                    }
                 }
-            }
-        }
+            },
+            onDetails = {
+                detailsSong = selectedSong
+                menuSong = null
+            },
+            onShare = {
+                val shared = shareLocalAudio(context, selectedSong.song.id, metadata?.mimeType)
+                if (!shared) showMessage(sharedUnavailableMessage)
+                menuSong = null
+            },
+            onDelete = {
+                deleteSong = selectedSong
+                menuSong = null
+            },
+        )
+    }
 
+    playlistSong?.let { selectedSong ->
+        LocalPlaylistPickerDialog(
+            playlists = playlists,
+            onDismiss = { playlistSong = null },
+            onSelect = { playlist ->
+                playlistsViewModel.addSongToPlaylist(playlist, selectedSong)
+                playlistSong = null
+            },
+        )
+    }
+
+    metadataEditorSong?.let { selectedSong ->
+        LocalSongMetadataEditorDialog(
+            song = selectedSong,
+            metadata = sortMetadata[selectedSong.song.id],
+            onDismiss = { metadataEditorSong = null },
+            onSave = { title, artist, album ->
+                metadataEditorSong = null
+                startMetadataUpdate(
+                    LocalSongMetadataUpdate(
+                        mediaId = selectedSong.song.id,
+                        title = title,
+                        artist = artist,
+                        album = album,
+                    ),
+                )
+            },
+        )
+    }
+
+    lyricsEditorSong?.let { selectedSong ->
+        val lyricsEntity by remember(selectedSong.song.id) {
+            viewModel.lyrics(selectedSong.song.id)
+        }.collectAsState(initial = null)
+        LocalSongLyricsEditorDialog(
+            songId = selectedSong.song.id,
+            initialLyrics = lyricsEntity?.lyrics.orEmpty(),
+            onDismiss = { lyricsEditorSong = null },
+            onSave = { lyrics ->
+                viewModel.saveLyrics(selectedSong.song.id, lyrics)
+                lyricsEditorSong = null
+            },
+        )
+    }
+
+    detailsSong?.let { selectedSong ->
+        LocalSongDetailsDialog(
+            song = selectedSong,
+            metadata = sortMetadata[selectedSong.song.id],
+            locale = locale,
+            onDismiss = { detailsSong = null },
+        )
+    }
+
+    deleteSong?.let { selectedSong ->
+        DeleteLocalSongDialog(
+            title = selectedSong.song.title,
+            onDismiss = { deleteSong = null },
+            onConfirm = {
+                deleteSong = null
+                startDelete(selectedSong.song.id)
+            },
+        )
     }
 }
 
@@ -1411,11 +1722,17 @@ private fun LocalSortDirectionOption(
 private fun sortLocalSongs(
     songs: List<Song>,
     metadata: Map<String, LocalSongSortMetadata>,
+    pinnedSongIds: Set<String>,
     sortType: LocalSongSortType,
     ascending: Boolean,
 ): List<Song> {
     val zoneId = ZoneId.systemDefault()
     return songs.sortedWith { first, second ->
+        val firstPinned = first.song.id in pinnedSongIds
+        val secondPinned = second.song.id in pinnedSongIds
+        if (firstPinned != secondPinned) {
+            return@sortedWith if (firstPinned) -1 else 1
+        }
         val firstMetadata = metadata[first.song.id]
         val secondMetadata = metadata[second.song.id]
         val primaryComparison = when (sortType) {

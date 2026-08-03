@@ -228,6 +228,8 @@ val DiscordActivityButton2UrlSourceKey = stringPreferencesKey("discord_activity_
 val DiscordActivityButton2CustomUrlKey = stringPreferencesKey("discord_activity_button2_custom_url")
 val LocalSongsSortTypeKey = stringPreferencesKey("local_songs_sort_type")
 val LocalSongsSortDescendingKey = booleanPreferencesKey("local_songs_sort_descending")
+val LocalSongsPinnedIdsKey = stringSetPreferencesKey("local_songs_pinned_ids")
+val LocalSongsBlacklistedIdsKey = stringSetPreferencesKey("local_songs_blacklisted_ids")
 
 val SongFilterKey = stringPreferencesKey("songFilter")
 val ArtistFilterKey = stringPreferencesKey("artistFilter")

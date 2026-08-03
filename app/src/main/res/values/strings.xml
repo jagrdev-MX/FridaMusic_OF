@@ -1634,4 +1634,27 @@
     <string name="about_fork_credit">FridaMusic is based on EchoMusic and ViMusic, open source projects licensed under GPL-3.0.</string>
     <string name="about_licenses_desc">FridaMusic uses the following open source libraries. Tap any to visit their repository.</string>
     <string name="no_playlists">No playlists available. Create one first.</string>
+    <string name="local_song_add_favorite">Add to favorites</string>
+    <string name="local_song_remove_favorite">Remove from favorites</string>
+    <string name="local_song_pin">Pin to top</string>
+    <string name="local_song_unpin">Unpin from top</string>
+    <string name="local_song_go_to_album">Go to album</string>
+    <string name="local_song_go_to_artist">Go to artist</string>
+    <string name="local_song_go_to_album_artist">View album artist</string>
+    <string name="local_song_go_to_folder">Go to folder</string>
+    <string name="local_song_edit_information">Edit information</string>
+    <string name="local_song_blacklist">Blacklist</string>
+    <string name="local_song_delete_from_device">Delete from device</string>
+    <string name="local_song_title_field">Title</string>
+    <string name="local_song_file_name">File name</string>
+    <string name="local_song_folder">Folder</string>
+    <string name="local_song_format">Format</string>
+    <string name="local_song_file_size">File size</string>
+    <string name="local_song_delete_confirmation">Delete “%1$s” permanently from this device?</string>
+    <string name="local_song_action_failed">The local music action could not be completed.</string>
+    <string name="local_song_information_saved">Song information updated.</string>
+    <string name="local_song_deleted">Song deleted from the device.</string>
+    <string name="local_song_folder_unavailable">No compatible file manager could open this folder.</string>
+    <string name="local_song_share_unavailable">This local file cannot be shared.</string>
+    <string name="local_song_blacklisted">Song added to the blacklist.</string>
 </resources>

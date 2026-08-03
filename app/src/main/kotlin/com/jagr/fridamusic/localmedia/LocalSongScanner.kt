@@ -2,6 +2,9 @@
 
 package com.jagr.fridamusic.localmedia
 
+import android.app.PendingIntent
+import android.app.RecoverableSecurityException
+import android.content.ContentValues
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
@@ -47,7 +50,25 @@ data class LocalSongSortMetadata(
     val composer: String? = null,
     val dateModifiedSeconds: Long? = null,
     val dateAddedSeconds: Long? = null,
+    val displayName: String? = null,
+    val relativePath: String? = null,
+    val absolutePath: String? = null,
+    val mimeType: String? = null,
+    val sizeBytes: Long? = null,
 )
+
+data class LocalSongMetadataUpdate(
+    val mediaId: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+)
+
+sealed interface LocalMediaStoreActionResult {
+    data object Success : LocalMediaStoreActionResult
+    data class PermissionRequired(val pendingIntent: PendingIntent) : LocalMediaStoreActionResult
+    data class Failure(val error: Throwable) : LocalMediaStoreActionResult
+}
 
 @Singleton
 class LocalSongScanner
@@ -239,16 +260,23 @@ constructor(
 
     @Suppress("DEPRECATION")
     suspend fun querySortMetadata(): Map<String, LocalSongSortMetadata> = withContext(Dispatchers.IO) {
-        val baseProjection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.YEAR,
-            MediaStore.Audio.Media.DATE_MODIFIED,
-            MediaStore.Audio.Media.DATE_ADDED,
-        )
+        val baseProjection = buildList {
+            add(MediaStore.Audio.Media._ID)
+            add(MediaStore.Audio.Media.TITLE)
+            add(MediaStore.Audio.Media.ALBUM)
+            add(MediaStore.Audio.Media.ARTIST)
+            add(MediaStore.Audio.Media.DURATION)
+            add(MediaStore.Audio.Media.YEAR)
+            add(MediaStore.Audio.Media.DATE_MODIFIED)
+            add(MediaStore.Audio.Media.DATE_ADDED)
+            add(MediaStore.Audio.Media.DISPLAY_NAME)
+            add(MediaStore.Audio.Media.MIME_TYPE)
+            add(MediaStore.Audio.Media.SIZE)
+            add(MediaStore.MediaColumns.DATA)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.RELATIVE_PATH)
+            }
+        }.toTypedArray()
         val commonAudioProjection = baseProjection + arrayOf(
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.COMPOSER,
@@ -270,6 +298,88 @@ constructor(
             )
         }
     }
+
+    suspend fun updateSongMetadata(
+        update: LocalSongMetadataUpdate,
+        requestPermission: Boolean,
+    ): LocalMediaStoreActionResult = withContext(Dispatchers.IO) {
+        val uri = update.mediaId.asLocalMediaUri()
+            ?: return@withContext LocalMediaStoreActionResult.Failure(
+                IllegalArgumentException("Invalid local media URI"),
+            )
+        if (requestPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return@withContext createPermissionResult {
+                MediaStore.createWriteRequest(context.contentResolver, listOf(uri))
+            }
+        }
+
+        try {
+            val updatedRows = context.contentResolver.update(
+                uri,
+                ContentValues().apply {
+                    put(MediaStore.Audio.Media.TITLE, update.title.trim())
+                    put(MediaStore.Audio.Media.ARTIST, update.artist.trim())
+                    put(MediaStore.Audio.Media.ALBUM, update.album.trim())
+                },
+                null,
+                null,
+            )
+            if (updatedRows > 0) {
+                LocalMediaStoreActionResult.Success
+            } else {
+                LocalMediaStoreActionResult.Failure(IllegalStateException("Local song was not updated"))
+            }
+        } catch (error: SecurityException) {
+            error.permissionResultOrFailure()
+        } catch (error: Throwable) {
+            LocalMediaStoreActionResult.Failure(error)
+        }
+    }
+
+    suspend fun deleteSongFromDevice(
+        mediaId: String,
+        requestPermission: Boolean,
+    ): LocalMediaStoreActionResult = withContext(Dispatchers.IO) {
+        val uri = mediaId.asLocalMediaUri()
+            ?: return@withContext LocalMediaStoreActionResult.Failure(
+                IllegalArgumentException("Invalid local media URI"),
+            )
+        if (requestPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return@withContext createPermissionResult {
+                MediaStore.createDeleteRequest(context.contentResolver, listOf(uri))
+            }
+        }
+
+        try {
+            val deletedRows = context.contentResolver.delete(uri, null, null)
+            if (deletedRows > 0) {
+                LocalMediaStoreActionResult.Success
+            } else {
+                LocalMediaStoreActionResult.Failure(IllegalStateException("Local song was not deleted"))
+            }
+        } catch (error: SecurityException) {
+            error.permissionResultOrFailure()
+        } catch (error: Throwable) {
+            LocalMediaStoreActionResult.Failure(error)
+        }
+    }
+
+    private fun createPermissionResult(request: () -> PendingIntent): LocalMediaStoreActionResult =
+        runCatching(request).fold(
+            onSuccess = LocalMediaStoreActionResult::PermissionRequired,
+            onFailure = LocalMediaStoreActionResult::Failure,
+        )
+
+    private fun SecurityException.permissionResultOrFailure(): LocalMediaStoreActionResult =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && this is RecoverableSecurityException) {
+            LocalMediaStoreActionResult.PermissionRequired(userAction.actionIntent)
+        } else {
+            LocalMediaStoreActionResult.Failure(this)
+        }
+
+    private fun String.asLocalMediaUri(): Uri? = runCatching { Uri.parse(this) }
+        .getOrNull()
+        ?.takeIf { uri -> uri.scheme == "content" }
 
     private fun queryOptionalSortText(column: String): Map<String, String> = runCatching {
         val values = linkedMapOf<String, String>()
@@ -315,6 +425,11 @@ constructor(
             val composerIndex = cursor.getColumnIndex(MediaStore.Audio.Media.COMPOSER)
             val dateModifiedIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_MODIFIED)
             val dateAddedIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_ADDED)
+            val displayNameIndex = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+            val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val absolutePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+            val mimeTypeIndex = cursor.getColumnIndex(MediaStore.Audio.Media.MIME_TYPE)
+            val sizeIndex = cursor.getColumnIndex(MediaStore.Audio.Media.SIZE)
 
             while (cursor.moveToNext()) {
                 val mediaId = cursor.getLong(idIndex)
@@ -338,6 +453,11 @@ constructor(
                     composer = cursor.getStringOrNull(composerIndex).normalizedMetadataValue(),
                     dateModifiedSeconds = cursor.getLongOrNull(dateModifiedIndex)?.takeIf { it > 0L },
                     dateAddedSeconds = cursor.getLongOrNull(dateAddedIndex)?.takeIf { it > 0L },
+                    displayName = cursor.getStringOrNull(displayNameIndex).normalizedMetadataValue(),
+                    relativePath = cursor.getStringOrNull(relativePathIndex).normalizedMetadataValue(),
+                    absolutePath = cursor.getStringOrNull(absolutePathIndex).normalizedMetadataValue(),
+                    mimeType = cursor.getStringOrNull(mimeTypeIndex).normalizedMetadataValue(),
+                    sizeBytes = cursor.getLongOrNull(sizeIndex)?.takeIf { it >= 0L },
                 )
             }
         }

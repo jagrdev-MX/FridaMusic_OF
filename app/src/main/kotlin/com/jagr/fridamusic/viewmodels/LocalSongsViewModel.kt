@@ -16,16 +16,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.LyricsEntity
+import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.localmedia.LocalAudioFolder
 import com.jagr.fridamusic.localmedia.LocalAudioPreferencesRepository
+import com.jagr.fridamusic.localmedia.LocalMediaStoreActionResult
 import com.jagr.fridamusic.localmedia.LocalSongScanConfig
+import com.jagr.fridamusic.localmedia.LocalSongMetadataUpdate
 import com.jagr.fridamusic.localmedia.LocalSongScanSummary
 import com.jagr.fridamusic.localmedia.LocalSongScanner
+import com.jagr.fridamusic.localmedia.LocalSongSortPreference
 import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.utils.reportException
 import javax.inject.Inject
@@ -34,7 +40,7 @@ import javax.inject.Inject
 class LocalSongsViewModel
 @Inject
 constructor(
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     private val localSongScanner: LocalSongScanner,
     private val preferencesRepository: LocalAudioPreferencesRepository,
     @ApplicationContext private val context: Context,
@@ -54,7 +60,30 @@ constructor(
         LocalSongScanConfig(),
     )
 
-    val songs = database.localSongs().stateIn(
+    val pinnedSongIds = preferencesRepository.pinnedSongIds.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        emptySet(),
+    )
+
+    val blacklistedSongIds = preferencesRepository.blacklistedSongIds.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        emptySet(),
+    )
+
+    val sortPreference = preferencesRepository.sortPreference.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        LocalSongSortPreference(),
+    )
+
+    val songs = combine(
+        database.localSongs(),
+        blacklistedSongIds,
+    ) { localSongs, blacklistedIds ->
+        localSongs.filterNot { song -> song.song.id in blacklistedIds }
+    }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         emptyList(),
@@ -89,6 +118,68 @@ constructor(
         viewModelScope.launch(Dispatchers.IO) {
             loadSortMetadata(songs.value.mapTo(linkedSetOf()) { it.song.id })
         }
+    }
+
+    fun togglePinnedSong(songId: String) {
+        viewModelScope.launch { preferencesRepository.togglePinnedSong(songId) }
+    }
+
+    fun setSortType(typeName: String) {
+        viewModelScope.launch { preferencesRepository.setSortType(typeName) }
+    }
+
+    fun setSortDescending(descending: Boolean) {
+        viewModelScope.launch { preferencesRepository.setSortDescending(descending) }
+    }
+
+    fun setSongBlacklisted(songId: String, blacklisted: Boolean) {
+        viewModelScope.launch { preferencesRepository.setSongBlacklisted(songId, blacklisted) }
+    }
+
+    fun toggleFavorite(song: Song) {
+        database.query { update(song.song.localToggleLike()) }
+    }
+
+    fun lyrics(songId: String) = database.lyrics(songId)
+
+    fun saveLyrics(songId: String, lyrics: String) {
+        database.query {
+            upsert(
+                LyricsEntity(
+                    id = songId,
+                    lyrics = lyrics.trim(),
+                    provider = "Manual",
+                ),
+            )
+        }
+    }
+
+    fun updateSongMetadata(
+        update: LocalSongMetadataUpdate,
+        requestPermission: Boolean,
+        onResult: (LocalMediaStoreActionResult) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = localSongScanner.updateSongMetadata(update, requestPermission)
+            if (result == LocalMediaStoreActionResult.Success) enqueueCurrentConfig(force = true)
+            onResult(result)
+        }
+    }
+
+    fun deleteSongFromDevice(
+        songId: String,
+        requestPermission: Boolean,
+        onResult: (LocalMediaStoreActionResult) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = localSongScanner.deleteSongFromDevice(songId, requestPermission)
+            if (result == LocalMediaStoreActionResult.Success) enqueueCurrentConfig(force = true)
+            onResult(result)
+        }
+    }
+
+    fun refreshAfterExternalMediaAction() {
+        enqueueCurrentConfig(force = true)
     }
 
     fun loadAudioFolders() {
