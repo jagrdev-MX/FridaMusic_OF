@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -133,23 +134,17 @@ fun StatsScreen(
             }
 
             item {
-                AnimatedContent(
-                    targetState = Triple(totalPlayTime, uniqueSongs, uniqueArtists),
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "summary_cards",
-                ) { (playTime, songs, artists) ->
-                    SummarySection(
-                        playTimeMs = playTime,
-                        songCount = songs,
-                        artistCount = artists,
-                        albumCount = uniqueAlbums,
-                        allTimePlayTimeMs = allTimePlayTime,
-                        allTimeSongs = allTimeSongs,
-                        allTimeArtists = allTimeArtists,
-                        allTimeAlbums = allTimeAlbums,
-                        firstEventMs = firstEvent?.event?.timestamp?.atZone(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
-                    )
-                }
+                SummarySection(
+                    playTimeMs = totalPlayTime,
+                    songCount = uniqueSongs,
+                    artistCount = uniqueArtists,
+                    albumCount = uniqueAlbums,
+                    allTimePlayTimeMs = allTimePlayTime,
+                    allTimeSongs = allTimeSongs,
+                    allTimeArtists = allTimeArtists,
+                    allTimeAlbums = allTimeAlbums,
+                    firstEventMs = firstEvent?.event?.timestamp?.atZone(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli(),
+                )
             }
 
             item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)) }
@@ -166,26 +161,29 @@ fun StatsScreen(
                 }
             }
 
-            item {
-                AnimatedContent(
-                    targetState = contentTab,
-                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                    label = "content_tab",
-                ) { tab ->
-                    when (tab) {
-                        0 -> TopSongsSection(
-                            songs = topSongsStats,
-                            onSongClick = { song -> onSongClick(song) },
-                        )
-                        1 -> TopArtistsSection(
-                            artists = topArtists,
-                            onArtistClick = { onNavigateToArtist(it.artist.id) },
-                        )
-                        2 -> TopAlbumsSection(
-                            albums = topAlbums,
-                            onAlbumClick = { onNavigateToAlbum(it.album.id) },
-                        )
-                        else -> {}
+            if (contentTab == 0) {
+                topSongItems(
+                    songs = topSongsStats,
+                    onSongClick = onSongClick,
+                )
+            } else {
+                item(key = "stats_content_$contentTab") {
+                    AnimatedContent(
+                        targetState = contentTab,
+                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                        label = "content_tab",
+                    ) { tab ->
+                        when (tab) {
+                            1 -> TopArtistsSection(
+                                artists = topArtists,
+                                onArtistClick = { onNavigateToArtist(it.artist.id) },
+                            )
+                            2 -> TopAlbumsSection(
+                                albums = topAlbums,
+                                onAlbumClick = { onNavigateToAlbum(it.album.id) },
+                            )
+                            else -> {}
+                        }
                     }
                 }
             }
@@ -389,19 +387,34 @@ private fun StatCard(
     }
 }
 
-@Composable
-private fun TopSongsSection(
+private fun LazyListScope.topSongItems(
     songs: List<SongWithStats>,
     onSongClick: (SongWithStats) -> Unit,
 ) {
-    if (songs.isEmpty()) {
-        EmptyState(stringResource(R.string.stat_no_data))
+    val visibleSongs = songs.take(50)
+    if (visibleSongs.isEmpty()) {
+        item(key = "top_songs_empty") {
+            EmptyState(stringResource(R.string.stat_no_data))
+        }
         return
     }
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        songs.take(50).forEachIndexed { index, song ->
+
+    itemsIndexed(
+        items = visibleSongs,
+        key = { _, song -> song.id },
+        contentType = { _, _ -> "top_song" },
+    ) { index, song ->
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(
+                    top = if (index == 0) 8.dp else 0.dp,
+                    bottom = if (index == visibleSongs.lastIndex) 8.dp else 0.dp,
+                ),
+        ) {
             RankedSongRow(rank = index + 1, song = song, onClick = { onSongClick(song) })
-            if (index < songs.size - 1) {
+            if (index < visibleSongs.lastIndex) {
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 72.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),

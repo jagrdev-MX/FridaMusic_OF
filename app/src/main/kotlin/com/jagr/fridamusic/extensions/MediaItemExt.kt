@@ -17,17 +17,25 @@ import java.util.Locale
 val MediaItem.metadata: MediaMetadata?
     get() = localConfiguration?.tag as? MediaMetadata
 
-private fun playbackSeedUri(mediaId: String): String {
+private fun playbackSeedUri(mediaId: String, preferPlayerCache: Boolean = false): String {
     val scheme = mediaId.toUri().scheme?.lowercase(Locale.US)
-    return when (scheme) {
+    val seedUri = when (scheme) {
         "content", "file", "android.resource", "http", "https" -> mediaId
         else -> "https://music.youtube.com/watch?v=${Uri.encode(mediaId)}"
     }
+    return if (preferPlayerCache) {
+        Uri.parse(seedUri).buildUpon()
+            .appendQueryParameter("frida_player_cache", "1")
+            .build()
+            .toString()
+    } else {
+        seedUri
+    }
 }
 
-fun Song.toMediaItem() = MediaItem.Builder()
+fun Song.toMediaItem(preferPlayerCache: Boolean = false) = MediaItem.Builder()
     .setMediaId(song.id)
-    .setUri(playbackSeedUri(song.id))
+    .setUri(playbackSeedUri(song.id, preferPlayerCache))
     .setCustomCacheKey(song.id)
     .setTag(toMediaMetadata())
     .setMediaMetadata(

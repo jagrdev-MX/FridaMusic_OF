@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +60,7 @@ import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.utils.SyncErrorKind
 import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.resize
+import com.jagr.fridamusic.viewmodels.CachePlaylistViewModel
 import com.jagr.fridamusic.viewmodels.LibraryAlbumsViewModel
 import com.jagr.fridamusic.viewmodels.LibraryArtistsViewModel
 import com.jagr.fridamusic.viewmodels.LibraryMixViewModel
@@ -76,12 +78,40 @@ private enum class LibraryFilter(val label: String, val icon: ImageVector) {
     ALBUMS("Álbumes", Icons.Rounded.Album),
 }
 
+private enum class LibrarySongMode(
+    val title: String,
+    val emptyTitle: String,
+    val emptyDescription: String,
+    val icon: ImageVector,
+) {
+    FAVORITES(
+        "Canciones favoritas",
+        "No hay canciones favoritas",
+        "Las canciones que marques como favoritas aparecerán aquí.",
+        Icons.Rounded.Favorite,
+    ),
+    OFFLINE(
+        "Sin conexión",
+        "No hay canciones sin conexión",
+        "Descarga una canción completa para escucharla sin Internet.",
+        Icons.Rounded.CloudDownload,
+    ),
+    CACHED(
+        "En caché",
+        "No hay canciones completas en caché",
+        "Las canciones reproducibles completamente desde la caché aparecerán aquí.",
+        Icons.Rounded.Cached,
+    ),
+}
+
 @SuppressLint("ConfigurationScreenWidthHeight")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
+    onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    onStatsClick: () -> Unit,
     mixViewModel: LibraryMixViewModel = hiltViewModel(),
 ) {
     val filters = LibraryFilter.entries
@@ -91,6 +121,7 @@ fun LibraryScreen(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val currentFilter = filters[pagerState.currentPage]
+    var songMode by rememberSaveable { mutableStateOf(LibrarySongMode.FAVORITES) }
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
@@ -189,17 +220,27 @@ fun LibraryScreen(
                 ) { page ->
                     when (filters[page]) {
                         LibraryFilter.LIBRARY -> LibraryMixTab(
-                            onSongClick = onSongClick,
                             onLocalItemClick = onLocalItemClick,
-                            mixViewModel = mixViewModel,
+                            onStatsClick = onStatsClick,
                             onTabSelected = { filter ->
                                 scope.launch {
                                     pagerState.animateScrollToPage(filters.indexOf(filter))
                                 }
                             },
+                            onSongCollectionSelected = { mode ->
+                                songMode = mode
+                                scope.launch {
+                                    pagerState.animateScrollToPage(filters.indexOf(LibraryFilter.SONGS))
+                                }
+                            },
                         )
                         LibraryFilter.PLAYLISTS -> PlaylistsTab(onLocalItemClick = onLocalItemClick)
-                        LibraryFilter.SONGS -> SongsTab(onSongClick = onSongClick)
+                        LibraryFilter.SONGS -> SongsTab(
+                            mode = songMode,
+                            onModeSelected = { songMode = it },
+                            onSongClick = onSongClick,
+                            onCachedSongClick = onCachedSongClick,
+                        )
                         LibraryFilter.LOCAL -> LocalSongsTab(onSongClick = onSongClick)
                         LibraryFilter.ARTISTS -> ArtistsTab(onLocalItemClick = onLocalItemClick)
                         LibraryFilter.ALBUMS -> AlbumsTab(onLocalItemClick = onLocalItemClick)
@@ -297,19 +338,20 @@ private fun ExpressiveTabChip(
 
 @Composable
 private fun LibraryMixTab(
-    onSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    onStatsClick: () -> Unit,
     onTabSelected: (LibraryFilter) -> Unit,
-    mixViewModel: LibraryMixViewModel = hiltViewModel(),
+    onSongCollectionSelected: (LibrarySongMode) -> Unit,
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
     artistsViewModel: LibraryArtistsViewModel = hiltViewModel(),
     songsViewModel: LibrarySongsViewModel = hiltViewModel(),
+    cacheViewModel: CachePlaylistViewModel = hiltViewModel(),
 ) {
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val artists by artistsViewModel.allArtists.collectAsState()
-    val songs by songsViewModel.allSongs.collectAsState()
-    val topValue by mixViewModel.topValue.collectAsState("")
-    val likedSongs = songs.filter { it.song.liked }
+    val favoriteSongs by songsViewModel.favoriteSongs.collectAsState()
+    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
+    val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -329,21 +371,21 @@ private fun LibraryMixTab(
                 ) {
                     ShortcutCard(
                         title = "Canciones favoritas",
-                        countText = "${likedSongs.size} pistas",
+                        countText = "${favoriteSongs.size} pistas",
                         icon = Icons.Rounded.Favorite,
                         containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.error,
                         modifier = Modifier.weight(1f),
-                        onClick = { },
+                        onClick = { onSongCollectionSelected(LibrarySongMode.FAVORITES) },
                     )
                     ShortcutCard(
                         title = "Sin conexión",
-                        countText = "Descargado",
+                        countText = "${downloadedSongs.size} pistas",
                         icon = Icons.Rounded.CloudDownload,
                         containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
-                        onClick = { },
+                        onClick = { onSongCollectionSelected(LibrarySongMode.OFFLINE) },
                     )
                 }
                 Row(
@@ -352,12 +394,12 @@ private fun LibraryMixTab(
                 ) {
                     ShortcutCard(
                         title = "En caché",
-                        countText = "Repetición instantánea",
+                        countText = "${cachedSongs.size} pistas",
                         icon = Icons.Rounded.Cached,
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.weight(1f),
-                        onClick = { },
+                        onClick = { onSongCollectionSelected(LibrarySongMode.CACHED) },
                     )
                     ShortcutCard(
                         title = "Archivos locales",
@@ -374,15 +416,15 @@ private fun LibraryMixTab(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     ShortcutCard(
-                        title = "Mi top $topValue",
+                        title = "Mi top 50",
                         countText = "Todo el tiempo",
                         icon = Icons.AutoMirrored.Rounded.TrendingUp,
                         containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.weight(1f),
-                        onClick = { },
+                        onClick = onStatsClick,
                     )
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f).aspectRatio(1.45f))
                 }
             }
         }
@@ -463,6 +505,7 @@ private fun ShortcutCard(
 
     Box(
         modifier = modifier
+            .aspectRatio(1.45f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(26.dp))
             .background(containerColor)
@@ -486,9 +529,11 @@ private fun ShortcutCard(
             }
             Column {
                 Text(text = title, style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(text = countText, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -699,10 +744,27 @@ private fun PlaylistListItem(playlist: Playlist, onClick: () -> Unit) {
 
 @Composable
 private fun SongsTab(
+    mode: LibrarySongMode,
+    onModeSelected: (LibrarySongMode) -> Unit,
     onSongClick: (Song, List<Song>) -> Unit,
+    onCachedSongClick: (Song, List<Song>) -> Unit,
     viewModel: LibrarySongsViewModel = hiltViewModel(),
+    cacheViewModel: CachePlaylistViewModel = hiltViewModel(),
 ) {
-    val songs by viewModel.allSongs.collectAsState()
+    val favoriteSongs by viewModel.favoriteSongs.collectAsState()
+    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
+    val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
+    val availabilityLoading by cacheViewModel.isLoading.collectAsState()
+    val availabilityError by cacheViewModel.hasError.collectAsState()
+    val songs = when (mode) {
+        LibrarySongMode.FAVORITES -> favoriteSongs
+        LibrarySongMode.OFFLINE -> downloadedSongs
+        LibrarySongMode.CACHED -> cachedSongs
+    }
+    val isAvailabilityMode = mode == LibrarySongMode.OFFLINE || mode == LibrarySongMode.CACHED
+    val isLoading = isAvailabilityMode && availabilityLoading
+    val hasError = isAvailabilityMode && availabilityError
+    val playSong = if (mode == LibrarySongMode.CACHED) onCachedSongClick else onSongClick
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -711,35 +773,195 @@ private fun SongsTab(
         ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        items(songs, key = { it.song.id }) { song ->
+        item(key = "song_mode_header_${mode.name}") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onSongClick(song, songs) }
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AsyncImage(
-                    model = song.song.thumbnailUrl?.resize(width = 96),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = song.song.title,
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onBackground)
-                    Text(text = song.artists.joinToString(", ") { it.name },
+                Column(
+                    modifier = Modifier
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = mode.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${songs.size} pistas",
                         style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                LibrarySongFilterMenu(
+                    selectedMode = mode,
+                    onModeSelected = onModeSelected,
+                )
             }
         }
+
+        when {
+            isLoading -> item(key = "song_mode_loading") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                }
+            }
+            hasError -> item(key = "song_mode_error") {
+                LibrarySongsEmptyState(
+                    title = "No se pudo comprobar el almacenamiento",
+                    description = "Vuelve a abrir esta sección para intentarlo de nuevo.",
+                    isError = true,
+                )
+            }
+            songs.isEmpty() -> item(key = "song_mode_empty_${mode.name}") {
+                LibrarySongsEmptyState(
+                    title = mode.emptyTitle,
+                    description = mode.emptyDescription,
+                )
+            }
+        }
+
+        if (!isLoading && !hasError) {
+            items(songs, key = { "${mode.name}_${it.song.id}" }) { song ->
+                LibrarySongRow(
+                    song = song,
+                    onClick = { playSong(song, songs) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySongFilterMenu(
+    selectedMode: LibrarySongMode,
+    onModeSelected: (LibrarySongMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.size(40.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.FilterList,
+                contentDescription = "Filtrar canciones",
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            LibrarySongMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = mode.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    onClick = {
+                        onModeSelected(mode)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        Icon(imageVector = mode.icon, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (mode == selectedMode) {
+                            Icon(imageVector = Icons.Rounded.Check, contentDescription = null)
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySongRow(
+    song: Song,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AsyncImage(
+            model = song.song.thumbnailUrl?.resize(width = 96),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.song.title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                text = song.artists.joinToString(", ") { it.name },
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LibrarySongsEmptyState(
+    title: String,
+    description: String,
+    isError: Boolean = false,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

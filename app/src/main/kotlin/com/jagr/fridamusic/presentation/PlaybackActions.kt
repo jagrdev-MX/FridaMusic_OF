@@ -12,11 +12,23 @@ import com.music.innertube.models.YTItem
 
 
 fun PlayerConnection.playSong(song: Song, queue: List<Song> = listOf(song)) {
+    playSong(song, queue, preferPlayerCache = false)
+}
+
+fun PlayerConnection.playCachedSong(song: Song, queue: List<Song> = listOf(song)) {
+    playSong(song, queue, preferPlayerCache = true)
+}
+
+private fun PlayerConnection.playSong(
+    song: Song,
+    queue: List<Song>,
+    preferPlayerCache: Boolean,
+) {
     val startIndex = queue.indexOfFirst { it.song.id == song.song.id }.coerceAtLeast(0)
     playQueue(
         ListQueue(
             title = null,
-            items = queue.map { it.toMediaItem() },
+            items = queue.map { it.toMediaItem(preferPlayerCache) },
             startIndex = startIndex,
         )
     )

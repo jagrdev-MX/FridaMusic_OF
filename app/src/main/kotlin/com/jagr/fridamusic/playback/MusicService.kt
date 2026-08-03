@@ -2693,6 +2693,14 @@ class MusicService :
             val cachedLength = androidx.media3.datasource.cache.ContentMetadata.getContentLength(downloadCache.getContentMetadata(mediaId))
                 .takeIf { it != androidx.media3.common.C.LENGTH_UNSET.toLong() } ?: dbFormat?.contentLength ?: -1L
             val isFullyDownloaded = cachedLength > 0 && downloadCache.isCached(mediaId, 0, cachedLength)
+            val playerCachedLength = androidx.media3.datasource.cache.ContentMetadata.getContentLength(playerCache.getContentMetadata(mediaId))
+                .takeIf { it != androidx.media3.common.C.LENGTH_UNSET.toLong() } ?: dbFormat?.contentLength ?: -1L
+            val isFullyPlayerCached = playerCachedLength > 0 && playerCache.isCached(mediaId, 0, playerCachedLength)
+            val preferPlayerCache = dataSpec.uri.getQueryParameter("frida_player_cache") == "1"
+
+            if (preferPlayerCache && isFullyPlayerCached) {
+                return@Factory dataSpec
+            }
 
             val lockedQuality = if (isCurrentlyPlaying && dbFormat != null) {
                 when {

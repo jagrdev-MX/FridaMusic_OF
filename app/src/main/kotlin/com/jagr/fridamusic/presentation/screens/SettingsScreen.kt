@@ -104,7 +104,6 @@ private data class SettingsGroup(
 private sealed class SettingsPage {
     object None : SettingsPage()
     object Account : SettingsPage()
-    object Stats : SettingsPage()
     object Playback : SettingsPage()
     object Equalizer : SettingsPage()
     object Appearance : SettingsPage()
@@ -133,12 +132,6 @@ fun SettingsScreen(
 
     if (currentPage == SettingsPage.Equalizer) {
         EQScreen(onBack = { currentPage = SettingsPage.None })
-        return
-    }
-
-    if (currentPage == SettingsPage.Stats) {
-        onNavigateToStats()
-        currentPage = SettingsPage.None
         return
     }
 
@@ -173,7 +166,7 @@ fun SettingsScreen(
                 },
                 SettingsItem(Icons.Rounded.BarChart, stringResource(R.string.stats),
                     stringResource(R.string.stats_desc_short), primaryColor) {
-                    currentPage = SettingsPage.Stats
+                    onNavigateToStats()
                 },
             ),
         ),
@@ -387,7 +380,6 @@ private fun SettingsDetailPage(
         ) {
             when (page) {
                 SettingsPage.Account    -> accountItems(onNavigateToLogin)
-                SettingsPage.Stats      -> {}
                 SettingsPage.Playback   -> playbackItems()
                 SettingsPage.Equalizer  -> {}
                 SettingsPage.Appearance -> appearanceItems()
@@ -406,7 +398,6 @@ private fun SettingsDetailPage(
 @Composable
 private fun pageTitle(page: SettingsPage) = when (page) {
     SettingsPage.Account    -> stringResource(R.string.account)
-    SettingsPage.Stats      -> stringResource(R.string.stats)
     SettingsPage.Playback   -> stringResource(R.string.playback)
     SettingsPage.Equalizer  -> stringResource(R.string.equalizer)
     SettingsPage.Appearance -> stringResource(R.string.appearance)

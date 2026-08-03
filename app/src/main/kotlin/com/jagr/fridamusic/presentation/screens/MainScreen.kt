@@ -1,6 +1,12 @@
 package com.jagr.fridamusic.presentation.screens
 
 import android.net.Uri
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +32,7 @@ import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.MiniPlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
+import com.jagr.fridamusic.presentation.playCachedSong
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
 import com.music.innertube.models.AlbumItem
@@ -79,13 +86,47 @@ fun MainScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable("library") {
+            composable(
+                route = "library",
+                exitTransition = {
+                    if (targetState.destination.route == "stats") {
+                        ExitTransition.None
+                    } else {
+                        null
+                    }
+                },
+                popEnterTransition = {
+                    if (initialState.destination.route == "stats") {
+                        EnterTransition.None
+                    } else {
+                        null
+                    }
+                },
+            ) {
                 LibraryScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onCachedSongClick = { song, queue -> playerConnection?.playCachedSong(song, queue) },
                     onLocalItemClick = { item -> navController.navigateToDetail(item) },
+                    onStatsClick = { navController.navigate("stats") },
                 )
             }
-            composable("settings") {
+            composable(
+                route = "settings",
+                exitTransition = {
+                    if (targetState.destination.route == "stats") {
+                        ExitTransition.None
+                    } else {
+                        null
+                    }
+                },
+                popEnterTransition = {
+                    if (initialState.destination.route == "stats") {
+                        EnterTransition.None
+                    } else {
+                        null
+                    }
+                },
+            ) {
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToLogin = { navController.navigate("login") },
@@ -97,7 +138,29 @@ fun MainScreen(
             composable("spotify_import") {
                 SpotifyImportScreen(onBack = { navController.popBackStack() })
             }
-            composable("stats") {
+            composable(
+                route = "stats",
+                enterTransition = {
+                    EnterTransition.None
+                },
+                popEnterTransition = {
+                    EnterTransition.None
+                },
+                popExitTransition = {
+                    fadeOut(
+                        animationSpec = tween(
+                            durationMillis = 160,
+                            easing = FastOutLinearInEasing,
+                        ),
+                    ) + scaleOut(
+                        targetScale = 0.99f,
+                        animationSpec = tween(
+                            durationMillis = 160,
+                            easing = FastOutLinearInEasing,
+                        ),
+                    )
+                },
+            ) {
                 StatsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToArtist = { id -> navController.navigate("artist/${java.net.URLEncoder.encode(id, "UTF-8")}") },

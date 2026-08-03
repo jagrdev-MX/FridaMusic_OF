@@ -100,6 +100,22 @@ constructor(
                 }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val favoriteSongs =
+        context.dataStore.data
+            .map {
+                Triple(
+                    it[SongSortTypeKey].toEnum(SongSortType.CREATE_DATE),
+                    it[SongSortDescendingKey] ?: true,
+                    Pair(it[HideExplicitKey] ?: false, it[HideVideoSongsKey] ?: false),
+                )
+            }.distinctUntilChanged()
+            .flatMapLatest { (sortType, descending, hideConfig) ->
+                val (hideExplicit, hideVideoSongs) = hideConfig
+                database.likedSongs(sortType, descending).map {
+                    it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs)
+                }
+            }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     fun syncLikedSongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
     }
