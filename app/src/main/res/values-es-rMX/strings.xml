@@ -620,6 +620,7 @@
     <string name="preparing_music">Preparando tu música…</string>
     <string name="home_empty_title">Aún no hay nada para mostrar</string>
     <string name="home_empty_desc">Busca y reproduce algunas canciones para ver tus recomendaciones aquí.</string>
+    <string name="recommendation_unavailable">Esta recomendación ya no está disponible</string>
     <string name="search_hint">Canciones, artistas, álbumes…</string>
     <string name="clear_search">Limpiar búsqueda</string>
     <string name="recent_searches">Búsquedas recientes</string>

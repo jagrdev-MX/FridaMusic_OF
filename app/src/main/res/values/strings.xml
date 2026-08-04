@@ -616,6 +616,7 @@
     <string name="preparing_music">Preparing your music…</string>
     <string name="home_empty_title">Nothing to show yet</string>
     <string name="home_empty_desc">Search and play some songs to see your recommendations here.</string>
+    <string name="recommendation_unavailable">This recommendation is no longer available</string>
     <string name="search_hint">Songs, artists, albums…</string>
     <string name="clear_search">Clear search</string>
     <string name="recent_searches">Recent searches</string>

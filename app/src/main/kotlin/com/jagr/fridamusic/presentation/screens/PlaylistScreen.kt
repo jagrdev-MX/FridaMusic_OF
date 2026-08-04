@@ -1,5 +1,10 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.widget.Toast
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.HeartBroken
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -27,7 +35,11 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +64,9 @@ import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 @Composable
@@ -61,6 +76,7 @@ fun LocalPlaylistScreen(
     viewModel: LocalPlaylistViewModel = hiltViewModel(),
     playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
     val playlist by viewModel.playlist.collectAsState()
     val playlistSongs by viewModel.playlistSongs.collectAsState()
@@ -102,6 +118,17 @@ fun LocalPlaylistScreen(
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playFromPlaylist(it, songs) } },
         onShuffle = { songs.shuffled().firstOrNull()?.let { playFromPlaylist(it, songs) } },
+        isSaved = playlist?.playlist?.bookmarkedAt != null,
+        isSaveEnabled = playlist != null,
+        onSaveToggle = {
+            playlist?.let { current ->
+                playlistsViewModel.toggleSavedPlaylist(current) { success ->
+                    if (!success) {
+                        Toast.makeText(context, R.string.playlist_action_failed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        },
         isLoading = false,
         error = null,
         onRetry = {},
@@ -164,6 +191,7 @@ fun OnlinePlaylistScreen(
     viewModel: OnlinePlaylistViewModel = hiltViewModel(),
     playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
     val playlist by viewModel.playlist.collectAsState()
     val songs by viewModel.playlistSongs.collectAsState()
@@ -206,6 +234,24 @@ fun OnlinePlaylistScreen(
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playerConnection?.playYTItem(it) } },
         onShuffle = { songs.shuffled().firstOrNull()?.let { playerConnection?.playYTItem(it) } },
+        isSaved = cachedPlaylist?.playlist?.bookmarkedAt != null,
+        isSaveEnabled = playlist != null || cachedPlaylist != null,
+        onSaveToggle = {
+            val remote = playlist
+            val cached = cachedPlaylist
+            when {
+                remote != null -> playlistsViewModel.toggleSavedOnlinePlaylist(remote, cached) { success ->
+                    if (!success) {
+                        Toast.makeText(context, R.string.playlist_action_failed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                cached != null -> playlistsViewModel.toggleSavedPlaylist(cached) { success ->
+                    if (!success) {
+                        Toast.makeText(context, R.string.playlist_action_failed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        },
         isLoading = isLoading,
         error = error,
         onRetry = { viewModel.retry() },
@@ -319,6 +365,9 @@ private fun PlaylistScaffold(
     onBack: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
+    isSaved: Boolean,
+    isSaveEnabled: Boolean,
+    onSaveToggle: () -> Unit,
     isLoading: Boolean,
     error: String?,
     onRetry: () -> Unit,
@@ -362,6 +411,8 @@ private fun PlaylistScaffold(
                         .fillMaxWidth()
                         .statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -370,6 +421,11 @@ private fun PlaylistScaffold(
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
+                    AnimatedPlaylistSaveButton(
+                        isSaved = isSaved,
+                        enabled = isSaveEnabled,
+                        onClick = onSaveToggle,
+                    )
                 }
             }
 
@@ -567,6 +623,119 @@ private fun PlaylistSongRow(
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
             }
         }
+    }
+}
+
+private enum class PlaylistSaveIconState {
+    EMPTY,
+    SAVED,
+    BROKEN,
+}
+
+@Composable
+private fun AnimatedPlaylistSaveButton(
+    isSaved: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    var previousSaved by remember { mutableStateOf<Boolean?>(null) }
+    var visualState by remember {
+        mutableStateOf(if (isSaved) PlaylistSaveIconState.SAVED else PlaylistSaveIconState.EMPTY)
+    }
+    val scale = remember { Animatable(1f) }
+    val rotation = remember { Animatable(0f) }
+
+    LaunchedEffect(isSaved, enabled) {
+        if (!enabled) return@LaunchedEffect
+        val previous = previousSaved
+        previousSaved = isSaved
+        if (previous == null) {
+            visualState = if (isSaved) PlaylistSaveIconState.SAVED else PlaylistSaveIconState.EMPTY
+            return@LaunchedEffect
+        }
+        if (previous == isSaved) return@LaunchedEffect
+
+        if (isSaved) {
+            visualState = PlaylistSaveIconState.SAVED
+            scale.snapTo(0.65f)
+            rotation.snapTo(-6f)
+            coroutineScope {
+                launch {
+                    scale.animateTo(
+                        targetValue = 1.22f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow,
+                        ),
+                    )
+                    scale.animateTo(1f, animationSpec = spring(stiffness = Spring.StiffnessMedium))
+                }
+                launch {
+                    rotation.animateTo(0f, animationSpec = spring(stiffness = Spring.StiffnessLow))
+                }
+            }
+        } else {
+            visualState = PlaylistSaveIconState.BROKEN
+            scale.snapTo(0.78f)
+            rotation.snapTo(-10f)
+            coroutineScope {
+                launch {
+                    scale.animateTo(
+                        targetValue = 1.12f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    )
+                }
+                launch {
+                    rotation.animateTo(
+                        targetValue = 0f,
+                        animationSpec = keyframes {
+                            durationMillis = 360
+                            -10f at 0
+                            12f at 90
+                            -9f at 180
+                            7f at 270
+                            0f at 360
+                        },
+                    )
+                }
+            }
+            delay(450)
+            visualState = PlaylistSaveIconState.EMPTY
+            scale.snapTo(0.82f)
+            scale.animateTo(1f, animationSpec = spring(stiffness = Spring.StiffnessMedium))
+        }
+    }
+
+    val actionDescription = stringResource(
+        if (isSaved) R.string.remove_from_library_label else R.string.save,
+    )
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.semantics { contentDescription = actionDescription },
+    ) {
+        Icon(
+            imageVector = when (visualState) {
+                PlaylistSaveIconState.EMPTY -> Icons.Rounded.FavoriteBorder
+                PlaylistSaveIconState.SAVED -> Icons.Rounded.Favorite
+                PlaylistSaveIconState.BROKEN -> Icons.Rounded.HeartBroken
+            },
+            contentDescription = null,
+            tint = when (visualState) {
+                PlaylistSaveIconState.EMPTY -> MaterialTheme.colorScheme.onBackground
+                PlaylistSaveIconState.SAVED -> MaterialTheme.colorScheme.primary
+                PlaylistSaveIconState.BROKEN -> MaterialTheme.colorScheme.error
+            },
+            modifier = Modifier.graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                rotationZ = rotation.value
+                alpha = if (enabled) 1f else 0.45f
+            }.size(28.dp),
+        )
     }
 }
 

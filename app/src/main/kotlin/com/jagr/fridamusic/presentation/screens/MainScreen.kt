@@ -1,6 +1,7 @@
 package com.jagr.fridamusic.presentation.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeOut
@@ -17,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -25,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -38,7 +41,9 @@ import com.jagr.fridamusic.presentation.playYTItem
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
+import timber.log.Timber
 
 @Composable
 fun MainScreen(
@@ -47,6 +52,7 @@ fun MainScreen(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
+    val context = LocalContext.current
 
     val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login" && currentRoute != "spotify_import" && currentRoute != "stats" && currentRoute != "about"
 
@@ -61,7 +67,21 @@ fun MainScreen(
             composable("home") {
                 HomeScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
-                    onItemClick = { item -> playerConnection?.playYTItem(item) },
+                    onItemClick = { item ->
+                        navController.handleYTItemClick(
+                            item = item,
+                            playSong = playerConnection?.let { connection ->
+                                { connection.playYTItem(item) }
+                            },
+                            onUnavailable = {
+                                Toast.makeText(
+                                    context,
+                                    R.string.recommendation_unavailable,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    },
                     onSettingsClick = { navController.navigate("settings") },
                 )
             }
@@ -283,12 +303,48 @@ private fun NavHostController.navigateToDetail(item: LocalItem) {
     }
 }
 
-private fun NavHostController.handleYTItemClick(item: YTItem, playSong: (() -> Unit)?) {
-    val encodedId = Uri.encode(item.id)
-    when (item) {
-        is ArtistItem -> navigate("artist/$encodedId")
-        is AlbumItem -> navigate("album/$encodedId")
-        is PlaylistItem -> navigate("playlist/$encodedId")
-        else -> playSong?.invoke()
+private fun NavHostController.handleYTItemClick(
+    item: YTItem,
+    playSong: (() -> Unit)?,
+    onUnavailable: () -> Unit = {},
+) {
+    val contentId = when (item) {
+        is AlbumItem -> item.browseId
+        else -> item.id
+    }.trim()
+
+    if (contentId.isEmpty()) {
+        Timber.tag("RecommendationClick").w(
+            "Ignoring recommendation with an empty id (type=%s)",
+            item.javaClass.simpleName,
+        )
+        onUnavailable()
+        return
+    }
+
+    try {
+        val encodedId = Uri.encode(contentId)
+        when (item) {
+            is ArtistItem -> navigate("artist/$encodedId")
+            is AlbumItem -> navigate("album/$encodedId")
+            is PlaylistItem -> navigate("playlist/$encodedId")
+            is SongItem -> {
+                if (playSong == null) {
+                    Timber.tag("RecommendationClick").w(
+                        "Player unavailable for song recommendation",
+                    )
+                    onUnavailable()
+                } else {
+                    playSong()
+                }
+            }
+        }
+    } catch (error: Exception) {
+        Timber.tag("RecommendationClick").e(
+            error,
+            "Failed to handle recommendation (type=%s)",
+            item.javaClass.simpleName,
+        )
+        onUnavailable()
     }
 }
