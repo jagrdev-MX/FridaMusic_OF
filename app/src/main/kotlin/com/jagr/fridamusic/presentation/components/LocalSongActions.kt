@@ -183,7 +183,7 @@ fun LocalSongListItem(
 }
 
 @Composable
-private fun LocalPlayingBars(
+fun LocalPlayingBars(
     active: Boolean,
     color: Color,
     modifier: Modifier = Modifier,

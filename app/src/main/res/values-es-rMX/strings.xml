@@ -1670,4 +1670,24 @@
     <string name="local_blacklist_empty_description">Las canciones locales que agregues a la lista negra aparecerán aquí.</string>
     <string name="local_song_remove_from_blacklist">Quitar de la lista negra</string>
     <string name="local_song_restored_from_blacklist">Canción restaurada en Música local.</string>
+    <string name="playlist_view_list">Vista de lista</string>
+    <string name="playlist_view_grid">Vista de cuadrícula</string>
+    <string name="playlist_song_count">%1$d canciones</string>
+    <string name="playlist_section_title">Listas de reproducción</string>
+    <string name="playlist_sort_by">Ordenar por</string>
+    <string name="playlist_sort_ascending">ASC</string>
+    <string name="playlist_sort_descending">DESC</string>
+    <string name="playlist_sort_song_count">N.º de canciones</string>
+    <string name="playlist_sort_date_added">Fecha de agregada</string>
+    <string name="playlist_choose_cover">Elegir portada</string>
+    <string name="playlist_rename">Renombrar</string>
+    <string name="playlist_save_file">Guardar como archivo</string>
+    <string name="playlist_created">Lista creada.</string>
+    <string name="playlist_renamed">Lista renombrada.</string>
+    <string name="playlist_cover_updated">Portada de la lista actualizada.</string>
+    <string name="playlist_deleted">Lista eliminada.</string>
+    <string name="playlist_action_failed">No se pudo completar la acción de la lista.</string>
+    <string name="playlist_selected_count">%1$d seleccionadas</string>
+    <string name="playlist_external">Playlist externa</string>
+    <string name="playlist_import">Importar lista</string>
 </resources>

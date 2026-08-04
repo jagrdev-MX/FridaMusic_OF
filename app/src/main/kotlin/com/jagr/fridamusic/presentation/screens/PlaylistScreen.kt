@@ -12,6 +12,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,13 +38,20 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.extensions.toMediaItem
+import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.LocalPlayingBars
+import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalPlaylistViewModel
 import com.jagr.fridamusic.viewmodels.OnlinePlaylistViewModel
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 
 @Composable
@@ -46,36 +59,101 @@ fun LocalPlaylistScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onBack: () -> Unit,
     viewModel: LocalPlaylistViewModel = hiltViewModel(),
+    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     val playerConnection = LocalPlayerConnection.current
     val playlist by viewModel.playlist.collectAsState()
     val playlistSongs by viewModel.playlistSongs.collectAsState()
     val songs = playlistSongs.map { it.song }
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val currentSongIdFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
+    }
+    val isPlayingFlow = remember(playerConnection) {
+        playerConnection?.isEffectivelyPlaying ?: flowOf(false)
+    }
+    val currentSongId by currentSongIdFlow.collectAsState(initial = null)
+    val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    var menuSong by remember { mutableStateOf<Song?>(null) }
+    var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
 
     val thumbnailUrl = playlist?.thumbnails?.firstOrNull()
     val title = playlist?.playlist?.name ?: ""
+
+    fun playFromPlaylist(song: Song, queue: List<Song>) {
+        val connection = playerConnection
+        if (connection == null) {
+            onSongClick(song, queue)
+            return
+        }
+        connection.playQueue(
+            ListQueue(
+                title = title,
+                items = queue.map { it.toMediaItem() },
+                startIndex = queue.indexOfFirst { it.song.id == song.song.id }.coerceAtLeast(0),
+            )
+        )
+    }
 
     PlaylistScaffold(
         title = title,
         artistLine = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
         thumbnailUrl = thumbnailUrl,
         onBack = onBack,
-        onPlay = { songs.firstOrNull()?.let { onSongClick(it, songs) } },
-        onShuffle = { songs.shuffled().firstOrNull()?.let { onSongClick(it, songs) } },
+        onPlay = { songs.firstOrNull()?.let { playFromPlaylist(it, songs) } },
+        onShuffle = { songs.shuffled().firstOrNull()?.let { playFromPlaylist(it, songs) } },
         isLoading = false,
         error = null,
         onRetry = {},
     ) {
-        itemsIndexed(songs, key = { _, it -> it.song.id }) { index, song ->
-            SongRow(
-                index = index + 1,
+        itemsIndexed(songs, key = { index, it -> "${index}_${it.song.id}" }) { _, song ->
+            PlaylistSongRow(
                 title = song.song.title,
                 artist = song.artists.joinToString(", ") { it.name },
                 thumbnailUrl = song.song.thumbnailUrl,
                 duration = song.song.duration,
-                onClick = { onSongClick(song, songs) },
+                isCurrent = currentSongId == song.song.id,
+                isPlaying = isPlaying,
+                onClick = { playFromPlaylist(song, songs) },
+                onMoreClick = { menuSong = song },
             )
         }
+    }
+
+    menuSong?.let { song ->
+        PlaylistSongActionsSheet(
+            title = song.song.title,
+            artist = song.artists.joinToString(", ") { it.name },
+            thumbnailUrl = song.song.thumbnailUrl,
+            onDismiss = { menuSong = null },
+            onPlay = {
+                menuSong = null
+                playFromPlaylist(song, songs)
+            },
+            onPlayNext = {
+                menuSong = null
+                playerConnection?.playNext(song.toMediaItem())
+            },
+            onAddToQueue = {
+                menuSong = null
+                playerConnection?.addToQueue(song.toMediaItem())
+            },
+            onAddToPlaylist = {
+                menuSong = null
+                addToPlaylistSong = song
+            },
+        )
+    }
+
+    addToPlaylistSong?.let { song ->
+        LocalPlaylistPickerDialog(
+            playlists = playlists.filter { it.playlist.isEditable },
+            onDismiss = { addToPlaylistSong = null },
+            onSelect = { target ->
+                addToPlaylistSong = null
+                playlistsViewModel.addSongToPlaylist(target, song)
+            },
+        )
     }
 }
 
@@ -84,6 +162,7 @@ fun LocalPlaylistScreen(
 fun OnlinePlaylistScreen(
     onBack: () -> Unit,
     viewModel: OnlinePlaylistViewModel = hiltViewModel(),
+    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     val playerConnection = LocalPlayerConnection.current
     val playlist by viewModel.playlist.collectAsState()
@@ -93,6 +172,17 @@ fun OnlinePlaylistScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val error by viewModel.error.collectAsState()
     val cachedPlaylist by viewModel.dbPlaylist.collectAsState()
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val currentSongIdFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
+    }
+    val isPlayingFlow = remember(playerConnection) {
+        playerConnection?.isEffectivelyPlaying ?: flowOf(false)
+    }
+    val currentSongId by currentSongIdFlow.collectAsState(initial = null)
+    val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    var menuSong by remember { mutableStateOf<SongItem?>(null) }
+    var addToPlaylistSong by remember { mutableStateOf<SongItem?>(null) }
 
     val hasContinuation = viewModel.continuation != null
     val listState = rememberLazyListState()
@@ -133,14 +223,16 @@ fun OnlinePlaylistScreen(
             }
         }
 
-        itemsIndexed(songs, key = { _, it -> it.id }) { index, song ->
-            SongRow(
-                index = index + 1,
+        itemsIndexed(songs, key = { index, it -> "${index}_${it.id}" }) { _, song ->
+            PlaylistSongRow(
                 title = song.title,
                 artist = song.artists.joinToString(", ") { it.name },
                 thumbnailUrl = song.thumbnail,
-                duration = null,
+                duration = song.duration,
+                isCurrent = currentSongId == song.id,
+                isPlaying = isPlaying,
                 onClick = { playerConnection?.playYTItem(song) },
+                onMoreClick = { menuSong = song },
             )
         }
 
@@ -167,16 +259,54 @@ fun OnlinePlaylistScreen(
             }
             items(relatedItems, key = { "related_${it.id}" }) { item ->
                 val songItem = item as? SongItem ?: return@items
-                SongRow(
-                    index = null,
+                PlaylistSongRow(
                     title = songItem.title,
                     artist = songItem.artists.joinToString(", ") { it.name },
                     thumbnailUrl = songItem.thumbnail,
-                    duration = null,
+                    duration = songItem.duration,
+                    isCurrent = currentSongId == songItem.id,
+                    isPlaying = isPlaying,
                     onClick = { playerConnection?.playYTItem(songItem) },
+                    onMoreClick = { menuSong = songItem },
                 )
             }
         }
+    }
+
+    menuSong?.let { song ->
+        PlaylistSongActionsSheet(
+            title = song.title,
+            artist = song.artists.joinToString(", ") { it.name },
+            thumbnailUrl = song.thumbnail,
+            onDismiss = { menuSong = null },
+            onPlay = {
+                menuSong = null
+                playerConnection?.playYTItem(song)
+            },
+            onPlayNext = {
+                menuSong = null
+                playerConnection?.playNext(song.toMediaItem())
+            },
+            onAddToQueue = {
+                menuSong = null
+                playerConnection?.addToQueue(song.toMediaItem())
+            },
+            onAddToPlaylist = {
+                menuSong = null
+                addToPlaylistSong = song
+            },
+        )
+    }
+
+    addToPlaylistSong?.let { song ->
+        LocalPlaylistPickerDialog(
+            playlists = playlists.filter { it.playlist.isEditable },
+            onDismiss = { addToPlaylistSong = null },
+            onSelect = { target ->
+                addToPlaylistSong = null
+                playlistsViewModel.addSongToPlaylist(target, song)
+            },
+        )
     }
 }
 
@@ -354,67 +484,178 @@ private fun PlaylistScaffold(
 }
 
 @Composable
-private fun SongRow(
-    index: Int?,
+private fun PlaylistSongRow(
     title: String,
     artist: String,
     thumbnailUrl: String?,
     duration: Int?,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isCurrent) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
     ) {
-        if (index != null) {
-            Text(
-                text = "$index",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(24.dp),
-                textAlign = TextAlign.Center,
-            )
-        } else if (thumbnailUrl != null) {
-            AsyncImage(
-                model = thumbnailUrl.resize(width = 96),
-                contentDescription = title,
-                contentScale = ContentScale.Crop,
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(11.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-        }
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (artist.isNotEmpty()) {
+                contentAlignment = Alignment.Center,
+            ) {
+                if (thumbnailUrl != null) {
+                    AsyncImage(
+                        model = thumbnailUrl.resize(width = 112),
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = artist,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (artist.isNotEmpty()) {
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (isCurrent) {
+                LocalPlayingBars(
+                    active = isPlaying,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(25.dp),
+                )
+            } else if (duration != null && duration >= 0) {
+                Text(
+                    text = "%d:%02d".format(duration / 60, duration % 60),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
             }
         }
+    }
+}
 
-        if (duration != null) {
-            Text(
-                text = "%d:%02d".format(duration / 60, duration % 60),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaylistSongActionsSheet(
+    title: String,
+    artist: String,
+    thumbnailUrl: String?,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (thumbnailUrl != null) {
+                        AsyncImage(
+                            model = thumbnailUrl.resize(width = 128),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Icon(Icons.Rounded.MusicNote, contentDescription = null)
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = artist,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Card(
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                PlaylistSongAction(Icons.Rounded.PlayArrow, stringResource(R.string.play), onPlay)
+                PlaylistSongAction(Icons.Rounded.SkipNext, stringResource(R.string.play_next), onPlayNext)
+                PlaylistSongAction(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.add_to_queue), onAddToQueue)
+                PlaylistSongAction(
+                    Icons.AutoMirrored.Rounded.PlaylistAdd,
+                    stringResource(R.string.add_to_playlist),
+                    onAddToPlaylist,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun PlaylistSongAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(23.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
     }
 }

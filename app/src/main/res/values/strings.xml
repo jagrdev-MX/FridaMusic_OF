@@ -1662,4 +1662,24 @@
     <string name="local_blacklist_empty_description">Local songs you add to the blacklist will appear here.</string>
     <string name="local_song_remove_from_blacklist">Remove from blacklist</string>
     <string name="local_song_restored_from_blacklist">Song restored to Local music.</string>
+    <string name="playlist_view_list">List view</string>
+    <string name="playlist_view_grid">Grid view</string>
+    <string name="playlist_song_count">%1$d songs</string>
+    <string name="playlist_section_title">Playlists</string>
+    <string name="playlist_sort_by">Sort by</string>
+    <string name="playlist_sort_ascending">ASC</string>
+    <string name="playlist_sort_descending">DESC</string>
+    <string name="playlist_sort_song_count">Number of songs</string>
+    <string name="playlist_sort_date_added">Date added</string>
+    <string name="playlist_choose_cover">Choose cover</string>
+    <string name="playlist_rename">Rename</string>
+    <string name="playlist_save_file">Save as file</string>
+    <string name="playlist_created">Playlist created.</string>
+    <string name="playlist_renamed">Playlist renamed.</string>
+    <string name="playlist_cover_updated">Playlist cover updated.</string>
+    <string name="playlist_deleted">Playlist deleted.</string>
+    <string name="playlist_action_failed">The playlist action could not be completed.</string>
+    <string name="playlist_selected_count">%1$d selected</string>
+    <string name="playlist_external">External playlist</string>
+    <string name="playlist_import">Import playlist</string>
 </resources>

@@ -108,6 +108,7 @@ fun MainScreen(
                     onCachedSongClick = { song, queue -> playerConnection?.playCachedSong(song, queue) },
                     onLocalItemClick = { item -> navController.navigateToDetail(item) },
                     onStatsClick = { navController.navigate("stats") },
+                    onExternalPlaylistClick = { navController.navigate("spotify_import") },
                 )
             }
             composable(

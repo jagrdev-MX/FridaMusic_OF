@@ -3,6 +3,7 @@ package com.jagr.fridamusic.presentation.screens
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -10,7 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -21,6 +24,10 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -29,6 +36,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Input
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
@@ -42,10 +52,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,6 +72,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
 import com.jagr.fridamusic.constants.MiniPlayerHeight
 import com.jagr.fridamusic.constants.NavigationBarHeight
+import com.jagr.fridamusic.constants.PlaylistSortType
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -70,12 +84,21 @@ import com.jagr.fridamusic.localmedia.LocalSongMetadataUpdate
 import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.DeleteLocalSongDialog
+import com.jagr.fridamusic.presentation.components.DeletePlaylistDialog
+import com.jagr.fridamusic.presentation.components.EmptyPlaylistsState
 import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.LocalSongActionsSheet
 import com.jagr.fridamusic.presentation.components.LocalSongDetailsDialog
 import com.jagr.fridamusic.presentation.components.LocalSongListItem
 import com.jagr.fridamusic.presentation.components.LocalSongLyricsEditorDialog
 import com.jagr.fridamusic.presentation.components.LocalSongMetadataEditorDialog
+import com.jagr.fridamusic.presentation.components.PlaylistLibraryActionsSheet
+import com.jagr.fridamusic.presentation.components.PlaylistLibraryControls
+import com.jagr.fridamusic.presentation.components.PlaylistLibraryGridItem
+import com.jagr.fridamusic.presentation.components.PlaylistLibraryListItem
+import com.jagr.fridamusic.presentation.components.PlaylistLibrarySortSheet
+import com.jagr.fridamusic.presentation.components.PlaylistNameDialog
+import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.utils.openLocalAudioFolder
 import com.jagr.fridamusic.utils.shareLocalAudio
 import com.jagr.fridamusic.utils.SyncErrorKind
@@ -90,6 +113,7 @@ import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
 import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.util.Locale
@@ -154,7 +178,9 @@ fun LibraryScreen(
     onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
     onStatsClick: () -> Unit,
+    onExternalPlaylistClick: () -> Unit,
     mixViewModel: LibraryMixViewModel = hiltViewModel(),
+    playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     val filters = LibraryFilter.entries
     val pagerState = rememberPagerState(initialPage = 0) { filters.size }
@@ -162,9 +188,15 @@ fun LibraryScreen(
     val tabListState = rememberLazyListState()
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    val resources = LocalResources.current
     val currentFilter = filters[pagerState.currentPage]
     var songMode by rememberSaveable { mutableStateOf(LibrarySongMode.FAVORITES) }
     var showLocalBlacklist by rememberSaveable { mutableStateOf(false) }
+    var selectedPlaylistIds by remember { mutableStateOf(emptySet<String>()) }
+    var selectionMenuExpanded by remember { mutableStateOf(false) }
+    var showSelectionPlaylistPicker by remember { mutableStateOf(false) }
+    var pendingSelectionExport by remember { mutableStateOf<List<Playlist>>(emptyList()) }
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
@@ -172,6 +204,30 @@ fun LibraryScreen(
     val isRefreshing by mixViewModel.isRefreshing.collectAsState()
     val syncError = syncState.overallStatus as? SyncStatus.Error
     val snackbarHostState = remember { SnackbarHostState() }
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val playerConnection = LocalPlayerConnection.current
+    val selectedPlaylists = playlists.filter { it.id in selectedPlaylistIds }
+    val emptyPlaylistMessage = stringResource(R.string.playlist_is_empty)
+    val actionFailedMessage = stringResource(R.string.playlist_action_failed)
+    val addedToQueueMessage = stringResource(R.string.added_to_queue)
+    val addedToPlayNextMessage = stringResource(R.string.added_to_play_next)
+    val exportSuccessfulMessage = stringResource(R.string.export_successful)
+
+    fun showLibraryMessage(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    val selectionExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
+    ) { uri ->
+        val playlistsToExport = pendingSelectionExport
+        pendingSelectionExport = emptyList()
+        if (uri != null && playlistsToExport.isNotEmpty()) {
+            playlistsViewModel.exportPlaylists(playlistsToExport, uri) { success ->
+                showLibraryMessage(if (success) exportSuccessfulMessage else actionFailedMessage)
+            }
+        }
+    }
     val syncErrorMessage = when (syncError?.kind) {
         SyncErrorKind.OFFLINE -> stringResource(R.string.library_sync_offline)
         SyncErrorKind.SESSION_EXPIRED -> stringResource(R.string.library_sync_session_expired)
@@ -201,6 +257,18 @@ fun LibraryScreen(
         tabListState.animateScrollToItem(targetPage, scrollOffset = -targetOffsetPx)
     }
 
+    LaunchedEffect(currentFilter) {
+        if (currentFilter != LibraryFilter.PLAYLISTS) selectedPlaylistIds = emptySet()
+    }
+
+    LaunchedEffect(playlists) {
+        selectedPlaylistIds = selectedPlaylistIds.intersect(playlists.mapTo(mutableSetOf()) { it.id })
+    }
+
+    BackHandler(enabled = selectedPlaylistIds.isNotEmpty()) {
+        selectedPlaylistIds = emptySet()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -225,33 +293,113 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .statusBarsPadding(),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "Biblioteca",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                IconButton(
-                    enabled = !isRefreshing,
-                    onClick = mixViewModel::refresh,
+            if (currentFilter == LibraryFilter.PLAYLISTS && selectedPlaylistIds.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = stringResource(R.string.library_refresh),
-                        )
+                    IconButton(onClick = { selectedPlaylistIds = emptySet() }) {
+                        Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.close))
+                    }
+                    Text(
+                        text = stringResource(R.string.playlist_selected_count, selectedPlaylistIds.size),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    IconButton(
+                        onClick = {
+                            playlistsViewModel.loadPlaylistsSongs(selectedPlaylistIds) { songs ->
+                                if (playerConnection != null && songs.isNotEmpty()) {
+                                    playerConnection.playNext(songs.map { it.toMediaItem() })
+                                    showLibraryMessage(addedToPlayNextMessage)
+                                } else showLibraryMessage(emptyPlaylistMessage)
+                            }
+                        },
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, contentDescription = stringResource(R.string.play_next))
+                    }
+                    IconButton(
+                        onClick = {
+                            playlistsViewModel.loadPlaylistsSongs(selectedPlaylistIds) { songs ->
+                                if (playerConnection != null && songs.isNotEmpty()) {
+                                    playerConnection.addToQueue(songs.map { it.toMediaItem() })
+                                    showLibraryMessage(addedToQueueMessage)
+                                } else showLibraryMessage(emptyPlaylistMessage)
+                            }
+                        },
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, contentDescription = stringResource(R.string.add_to_queue))
+                    }
+                    Box {
+                        IconButton(onClick = { selectionMenuExpanded = true }) {
+                            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
+                        }
+                        DropdownMenu(
+                            expanded = selectionMenuExpanded,
+                            onDismissRequest = { selectionMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.add_to_playlist)) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, contentDescription = null) },
+                                onClick = {
+                                    selectionMenuExpanded = false
+                                    showSelectionPlaylistPicker = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.playlist_save_file)) },
+                                leadingIcon = { Icon(Icons.Rounded.SaveAlt, contentDescription = null) },
+                                onClick = {
+                                    selectionMenuExpanded = false
+                                    pendingSelectionExport = selectedPlaylists
+                                    selectionExportLauncher.launch("playlists.m3u")
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.spotify_select_all)) },
+                                leadingIcon = { Icon(Icons.Rounded.SelectAll, contentDescription = null) },
+                                onClick = {
+                                    selectionMenuExpanded = false
+                                    selectedPlaylistIds = playlists.mapTo(mutableSetOf()) { it.id }
+                                },
+                            )
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Biblioteca",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    IconButton(
+                        enabled = !isRefreshing,
+                        onClick = mixViewModel::refresh,
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = stringResource(R.string.library_refresh),
+                            )
+                        }
                     }
                 }
             }
@@ -283,8 +431,15 @@ fun LibraryScreen(
                                     pagerState.animateScrollToPage(filters.indexOf(LibraryFilter.SONGS))
                                 }
                             },
+                            playlistsViewModel = playlistsViewModel,
                         )
-                        LibraryFilter.PLAYLISTS -> PlaylistsTab(onLocalItemClick = onLocalItemClick)
+                        LibraryFilter.PLAYLISTS -> PlaylistsTab(
+                            onLocalItemClick = onLocalItemClick,
+                            onExternalPlaylistClick = onExternalPlaylistClick,
+                            selectedPlaylistIds = selectedPlaylistIds,
+                            onSelectedPlaylistIdsChange = { selectedPlaylistIds = it },
+                            viewModel = playlistsViewModel,
+                        )
                         LibraryFilter.SONGS -> SongsTab(
                             mode = songMode,
                             onModeSelected = { songMode = it },
@@ -338,6 +493,23 @@ fun LibraryScreen(
                     end = 16.dp,
                     bottom = LibrarySnackbarBottomPadding,
                 ),
+        )
+    }
+    if (showSelectionPlaylistPicker) {
+        LocalPlaylistPickerDialog(
+            playlists = playlists.filter {
+                it.id !in selectedPlaylistIds && it.playlist.isEditable
+            },
+            onDismiss = { showSelectionPlaylistPicker = false },
+            onSelect = { target ->
+                showSelectionPlaylistPicker = false
+                playlistsViewModel.addPlaylistsToPlaylist(selectedPlaylists, target) { success ->
+                    showLibraryMessage(
+                        if (success) resources.getString(R.string.added_to_playlist, target.playlist.name)
+                        else actionFailedMessage
+                    )
+                }
+            },
         )
     }
 }
@@ -758,61 +930,478 @@ private fun ArtistMoreCard(onClick: () -> Unit) {
 @Composable
 private fun PlaylistsTab(
     onLocalItemClick: (LocalItem) -> Unit,
+    onExternalPlaylistClick: () -> Unit,
+    selectedPlaylistIds: Set<String>,
+    onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
     val playlists by viewModel.allPlaylists.collectAsState()
+    val preferences by viewModel.preferences.collectAsState()
+    val playerConnection = LocalPlayerConnection.current
+    val queueTitleFlow = remember(playerConnection) { playerConnection?.queueTitle ?: flowOf(null) }
+    val isPlayingFlow = remember(playerConnection) { playerConnection?.isEffectivelyPlaying ?: flowOf(false) }
+    val hasMiniPlayerFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata?.map { it != null } ?: flowOf(false)
+    }
+    val queueTitle by queueTitleFlow.collectAsState(initial = null)
+    val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    val hasMiniPlayer by hasMiniPlayerFlow.collectAsState(initial = false)
+    val snackbarHostState = remember { SnackbarHostState() }
+    var showSortSheet by rememberSaveable { mutableStateOf(false) }
+    var showCreateDialog by rememberSaveable { mutableStateOf(false) }
+    var createMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var menuPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var renamePlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var deletePlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var addToPlaylistSource by remember { mutableStateOf<Playlist?>(null) }
+    var pendingCoverPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var pendingExportPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var activePlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
+    val emptyPlaylistMessage = stringResource(R.string.playlist_is_empty)
+    val addedToQueueMessage = stringResource(R.string.added_to_queue)
+    val addedToPlayNextMessage = stringResource(R.string.added_to_play_next)
+    val createdMessage = stringResource(R.string.playlist_created)
+    val renamedMessage = stringResource(R.string.playlist_renamed)
+    val coverUpdatedMessage = stringResource(R.string.playlist_cover_updated)
+    val deletedMessage = stringResource(R.string.playlist_deleted)
+    val actionFailedMessage = stringResource(R.string.playlist_action_failed)
+    val exportSuccessfulMessage = stringResource(R.string.export_successful)
+    val importedMessage = stringResource(R.string.playlist_imported)
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 16.dp, end = 16.dp, top = 60.dp, bottom = 140.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(playlists, key = { it.id }) { playlist ->
-            PlaylistListItem(playlist = playlist, onClick = { onLocalItemClick(playlist) })
+    fun toggleSelection(playlistId: String) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        onSelectedPlaylistIdsChange(
+            if (playlistId in selectedPlaylistIds) selectedPlaylistIds - playlistId
+            else selectedPlaylistIds + playlistId
+        )
+    }
+
+    fun showMessage(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun playPlaylist(playlist: Playlist) {
+        viewModel.loadPlaylistSongs(playlist.id) { songs ->
+            if (songs.isEmpty()) {
+                showMessage(emptyPlaylistMessage)
+                return@loadPlaylistSongs
+            }
+            val connection = playerConnection
+            if (connection == null) {
+                showMessage(actionFailedMessage)
+                return@loadPlaylistSongs
+            }
+            activePlaylistId = playlist.id
+            connection.playQueue(
+                ListQueue(
+                    title = playlist.playlist.name,
+                    items = songs.map { it.toMediaItem() },
+                )
+            )
         }
     }
+
+    val coverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val playlist = pendingCoverPlaylist
+        pendingCoverPlaylist = null
+        if (uri != null && playlist != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+            viewModel.setPlaylistCover(playlist, uri) { success ->
+                showMessage(if (success) coverUpdatedMessage else actionFailedMessage)
+            }
+        }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
+    ) { uri ->
+        val playlist = pendingExportPlaylist
+        pendingExportPlaylist = null
+        if (uri != null && playlist != null) {
+            viewModel.exportPlaylist(playlist, uri) { success ->
+                showMessage(if (success) exportSuccessfulMessage else actionFailedMessage)
+            }
+        }
+    }
+
+    val importM3uLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importM3u(uri) { success ->
+                showMessage(if (success) importedMessage else actionFailedMessage)
+            }
+        }
+    }
+
+    LaunchedEffect(queueTitle) {
+        val activePlaylist = playlists.firstOrNull { it.id == activePlaylistId }
+        if (activePlaylist != null && queueTitle != activePlaylist.playlist.name) {
+            activePlaylistId = null
+        }
+    }
+
+    val sortLabel = stringResource(
+        when (preferences.sortType) {
+            PlaylistSortType.NAME -> R.string.sort_by_name
+            PlaylistSortType.SONG_COUNT -> R.string.playlist_sort_song_count
+            PlaylistSortType.LAST_UPDATED -> R.string.sort_by_last_updated
+            PlaylistSortType.CREATE_DATE -> R.string.playlist_sort_date_added
+        }
+    )
+    val createFabRotation by animateFloatAsState(
+        targetValue = if (createMenuExpanded) 405f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "playlistCreateFabRotation",
+    )
+    val createFabBottomPadding by animateDpAsState(
+        targetValue = if (hasMiniPlayer) {
+            LibrarySnackbarBottomPadding + 8.dp
+        } else {
+            NavigationBarHeight + MiniPlayerBottomSpacing + 12.dp
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessLow,
+        ),
+        label = "playlistCreateFabBottomPadding",
+    )
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (preferences.gridView) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 156.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 60.dp,
+                    bottom = LibrarySnackbarBottomPadding + 84.dp,
+                ),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "playlist_controls") {
+                    PlaylistLibraryControls(
+                        sortLabel = sortLabel,
+                        descending = preferences.descending,
+                        gridView = true,
+                        onSortClick = { showSortSheet = true },
+                        onGridViewChanged = viewModel::setGridView,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                if (playlists.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "playlists_empty") {
+                        EmptyPlaylistsState()
+                    }
+                }
+                gridItems(playlists, key = { it.id }) { playlist ->
+                    val isCurrent = queueTitle == playlist.playlist.name &&
+                        (activePlaylistId == null || activePlaylistId == playlist.id)
+                    PlaylistLibraryGridItem(
+                        playlist = playlist,
+                        isCurrent = isCurrent,
+                        isPlaying = isPlaying,
+                        selected = playlist.id in selectedPlaylistIds,
+                        selectionMode = selectedPlaylistIds.isNotEmpty(),
+                        onClick = {
+                            if (selectedPlaylistIds.isNotEmpty()) toggleSelection(playlist.id)
+                            else onLocalItemClick(playlist)
+                        },
+                        onLongClick = { toggleSelection(playlist.id) },
+                        onPlay = { playPlaylist(playlist) },
+                        onMoreClick = { menuPlaylist = playlist },
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 60.dp,
+                    bottom = LibrarySnackbarBottomPadding + 84.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item(key = "playlist_controls") {
+                    PlaylistLibraryControls(
+                        sortLabel = sortLabel,
+                        descending = preferences.descending,
+                        gridView = false,
+                        onSortClick = { showSortSheet = true },
+                        onGridViewChanged = viewModel::setGridView,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                if (playlists.isEmpty()) {
+                    item(key = "playlists_empty") { EmptyPlaylistsState() }
+                }
+                items(playlists, key = { it.id }) { playlist ->
+                    val isCurrent = queueTitle == playlist.playlist.name &&
+                        (activePlaylistId == null || activePlaylistId == playlist.id)
+                    PlaylistLibraryListItem(
+                        playlist = playlist,
+                        isCurrent = isCurrent,
+                        isPlaying = isPlaying,
+                        selected = playlist.id in selectedPlaylistIds,
+                        selectionMode = selectedPlaylistIds.isNotEmpty(),
+                        onClick = {
+                            if (selectedPlaylistIds.isNotEmpty()) toggleSelection(playlist.id)
+                            else onLocalItemClick(playlist)
+                        },
+                        onLongClick = { toggleSelection(playlist.id) },
+                        onPlay = { playPlaylist(playlist) },
+                        onMoreClick = { menuPlaylist = playlist },
+                    )
+                }
+            }
+        }
+
+        if (selectedPlaylistIds.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 24.dp, bottom = createFabBottomPadding),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                AnimatedVisibility(visible = createMenuExpanded) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        PlaylistCreateAction(
+                            label = stringResource(R.string.playlist_external),
+                            icon = Icons.Rounded.Public,
+                            onClick = {
+                                createMenuExpanded = false
+                                onExternalPlaylistClick()
+                            },
+                        )
+                        PlaylistCreateAction(
+                            label = stringResource(R.string.playlist_import),
+                            icon = Icons.AutoMirrored.Rounded.Input,
+                            onClick = {
+                                createMenuExpanded = false
+                                importM3uLauncher.launch(arrayOf("audio/x-mpegurl", "audio/mpegurl", "text/plain"))
+                            },
+                        )
+                        PlaylistCreateAction(
+                            label = stringResource(R.string.create_playlist),
+                            icon = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                            onClick = {
+                                createMenuExpanded = false
+                                showCreateDialog = true
+                            },
+                        )
+                    }
+                }
+                FloatingActionButton(onClick = { createMenuExpanded = !createMenuExpanded }) {
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = stringResource(if (createMenuExpanded) R.string.close else R.string.create_playlist),
+                        modifier = Modifier.graphicsLayer { rotationZ = createFabRotation },
+                    )
+                }
+            }
+        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = LibrarySnackbarBottomPadding,
+                ),
+        )
+    }
+
+    if (showSortSheet) {
+        PlaylistLibrarySortSheet(
+            selectedSort = preferences.sortType,
+            descending = preferences.descending,
+            onSortSelected = {
+                viewModel.setSortType(it)
+                showSortSheet = false
+            },
+            onDescendingChanged = viewModel::setSortDescending,
+            onDismiss = { showSortSheet = false },
+        )
+    }
+
+    menuPlaylist?.let { playlist ->
+        val hasSongs = playlist.songCount > 0
+        PlaylistLibraryActionsSheet(
+            playlist = playlist,
+            canEditMetadata = true,
+            onDismiss = { menuPlaylist = null },
+            onPlayNext = if (hasSongs) {
+                {
+                    menuPlaylist = null
+                    viewModel.loadPlaylistSongs(playlist.id) { songs ->
+                        if (playerConnection != null && songs.isNotEmpty()) {
+                            playerConnection.playNext(songs.map { it.toMediaItem() })
+                            showMessage(addedToPlayNextMessage)
+                        } else {
+                            showMessage(actionFailedMessage)
+                        }
+                    }
+                }
+            } else null,
+            onPlay = if (hasSongs) {
+                { menuPlaylist = null; playPlaylist(playlist) }
+            } else null,
+            onAddToQueue = if (hasSongs) {
+                {
+                    menuPlaylist = null
+                    viewModel.loadPlaylistSongs(playlist.id) { songs ->
+                        if (playerConnection != null && songs.isNotEmpty()) {
+                            playerConnection.addToQueue(songs.map { it.toMediaItem() })
+                            showMessage(addedToQueueMessage)
+                        } else {
+                            showMessage(actionFailedMessage)
+                        }
+                    }
+                }
+            } else null,
+            onAddToPlaylist = if (hasSongs) {
+                { menuPlaylist = null; addToPlaylistSource = playlist }
+            } else null,
+            onTogglePinned = {
+                viewModel.togglePinned(playlist)
+                menuPlaylist = null
+            },
+            onChooseCover = {
+                pendingCoverPlaylist = playlist
+                menuPlaylist = null
+                coverPicker.launch(arrayOf("image/*"))
+            },
+            onRename = { renamePlaylist = playlist; menuPlaylist = null },
+            onExport = {
+                pendingExportPlaylist = playlist
+                menuPlaylist = null
+                val safeName = playlist.playlist.name
+                    .replace(Regex("[\\/:*?\"<>|]"), "_")
+                    .ifBlank { "playlist" }
+                exportLauncher.launch("$safeName.m3u")
+            },
+            onDelete = {
+                deletePlaylist = playlist
+                menuPlaylist = null
+            },
+        )
+    }
+
+    if (showCreateDialog) {
+        PlaylistNameDialog(
+            title = stringResource(R.string.create_playlist),
+            confirmLabel = stringResource(R.string.create_playlist),
+            onDismiss = { showCreateDialog = false },
+            onConfirm = { name ->
+                showCreateDialog = false
+                viewModel.createPlaylist(name) { success ->
+                    showMessage(if (success) createdMessage else actionFailedMessage)
+                }
+            },
+        )
+    }
+
+    renamePlaylist?.let { playlist ->
+        PlaylistNameDialog(
+            title = stringResource(R.string.playlist_rename),
+            initialName = playlist.playlist.name,
+            confirmLabel = stringResource(R.string.save),
+            onDismiss = { renamePlaylist = null },
+            onConfirm = { name ->
+                renamePlaylist = null
+                viewModel.renamePlaylist(playlist, name) { success ->
+                    showMessage(if (success) renamedMessage else actionFailedMessage)
+                }
+            },
+        )
+    }
+
+    addToPlaylistSource?.let { source ->
+        LocalPlaylistPickerDialog(
+            playlists = playlists.filter {
+                it.id != source.id && it.playlist.isEditable
+            },
+            onDismiss = { addToPlaylistSource = null },
+            onSelect = { target ->
+                addToPlaylistSource = null
+                viewModel.addPlaylistToPlaylist(source, target) { success ->
+                    showMessage(
+                        if (success) {
+                            resources.getString(R.string.added_to_playlist, target.playlist.name)
+                        } else {
+                            actionFailedMessage
+                        }
+                    )
+                }
+            },
+        )
+    }
+
+    deletePlaylist?.let { playlist ->
+        DeletePlaylistDialog(
+            playlistName = playlist.playlist.name,
+            onDismiss = { deletePlaylist = null },
+            onConfirm = {
+                deletePlaylist = null
+                viewModel.deletePlaylist(playlist) { success ->
+                    showMessage(if (success) deletedMessage else actionFailedMessage)
+                }
+            },
+        )
+    }
+
 }
 
 @Composable
-private fun PlaylistListItem(playlist: Playlist, onClick: () -> Unit) {
+private fun PlaylistCreateAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+        Surface(
+            onClick = onClick,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 6.dp,
         ) {
-            playlist.thumbnails.firstOrNull()?.let { url ->
-                AsyncImage(
-                    model = url.resize(width = 120),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            Text(
+                text = label,
+                modifier = Modifier.widthIn(max = 220.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = playlist.playlist.name,
-                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onBackground)
-            Text(text = "${playlist.songCount} canciones",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SmallFloatingActionButton(onClick = onClick) {
+            Icon(icon, contentDescription = label)
         }
-        Icon(imageVector = Icons.Rounded.ChevronRight, contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
     }
 }
 
