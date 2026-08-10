@@ -203,6 +203,7 @@ fun LibraryScreen(
     val syncState by mixViewModel.syncState.collectAsState()
     val isRefreshing by mixViewModel.isRefreshing.collectAsState()
     val syncError = syncState.overallStatus as? SyncStatus.Error
+    var previousSyncError by remember { mutableStateOf(syncError) }
     val snackbarHostState = remember { SnackbarHostState() }
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val playerConnection = LocalPlayerConnection.current
@@ -235,12 +236,10 @@ fun LibraryScreen(
         null -> null
     }
 
-    LaunchedEffect(Unit) {
-        mixViewModel.syncIfStale()
-    }
-
     LaunchedEffect(syncError) {
-        syncErrorMessage?.let {
+        val isNewError = syncError != null && syncError != previousSyncError
+        previousSyncError = syncError
+        if (isNewError) syncErrorMessage?.let {
             snackbarHostState.showSnackbar(
                 message = it,
                 duration = SnackbarDuration.Short,
