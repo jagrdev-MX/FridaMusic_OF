@@ -78,11 +78,25 @@ import javax.inject.Inject
 class LibrarySongsViewModel
 @Inject
 constructor(
-    @ApplicationContext context: Context,
-    database: MusicDatabase,
+    @ApplicationContext private val context: Context,
+    private val database: MusicDatabase,
     downloadUtil: DownloadUtil,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
+    val preferences =
+        context.dataStore.data
+            .map {
+                SongLibraryPreferences(
+                    sortType = it[SongSortTypeKey].toEnum(SongSortType.CREATE_DATE),
+                    descending = it[SongSortDescendingKey] ?: true,
+                )
+            }.distinctUntilChanged()
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                SongLibraryPreferences(),
+            )
+
     val allSongs =
         context.dataStore.data
             .map {
@@ -131,6 +145,27 @@ constructor(
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLikedSongs() }
     }
 
+    fun setSortType(sortType: SongSortType) {
+        viewModelScope.launch {
+            context.dataStore.edit { it[SongSortTypeKey] = sortType.name }
+        }
+    }
+
+    fun setSortDescending(descending: Boolean) {
+        viewModelScope.launch {
+            context.dataStore.edit { it[SongSortDescendingKey] = descending }
+        }
+    }
+
+    fun toggleFavorite(song: Song) {
+        database.query {
+            update(
+                if (song.song.isLocal) song.song.localToggleLike()
+                else song.song.toggleLike(),
+            )
+        }
+    }
+
     fun syncLibrarySongs() {
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncLibrarySongs() }
     }
@@ -139,6 +174,11 @@ constructor(
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncUploadedSongs() }
     }
 }
+
+data class SongLibraryPreferences(
+    val sortType: SongSortType = SongSortType.CREATE_DATE,
+    val descending: Boolean = true,
+)
 
 @HiltViewModel
 class LibraryArtistsViewModel

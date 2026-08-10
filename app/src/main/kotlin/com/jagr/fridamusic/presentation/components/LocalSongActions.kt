@@ -10,6 +10,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -98,6 +99,8 @@ fun LocalSongListItem(
     onMoreClick: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
+    val artistText = song.artists.joinToString(", ") { it.name }
+        .ifBlank { stringResource(R.string.unknown_artist) }
     val containerColor by animateColorAsState(
         targetValue = if (isCurrent) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
@@ -144,7 +147,7 @@ fun LocalSongListItem(
                 )
                 Text(
                     text = buildString {
-                        append(song.artists.joinToString(", ") { it.name })
+                        append(artistText)
                         song.song.duration.takeIf { it >= 0 }?.let { duration ->
                             if (isNotEmpty()) append("  ·  ")
                             append(formatLocalSongDuration(duration))
@@ -178,6 +181,91 @@ fun LocalSongListItem(
                     )
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun LocalSongGridItem(
+    song: Song,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit,
+) {
+    val artistText = song.artists.joinToString(", ") { it.name }
+        .ifBlank { stringResource(R.string.unknown_artist) }
+    val containerColor by animateColorAsState(
+        targetValue = if (isCurrent) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow
+        },
+        label = "localSongGridContainer",
+    )
+
+    Surface(
+        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onMoreClick),
+        shape = RoundedCornerShape(20.dp),
+        color = containerColor,
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+                AsyncImage(
+                    model = song.thumbnailUrl?.resize(width = 320),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = stringResource(R.string.more_options),
+                            modifier = Modifier.padding(7.dp).size(20.dp),
+                        )
+                    }
+                }
+                if (isCurrent) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        LocalPlayingBars(
+                            active = isPlaying,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(10.dp).size(24.dp),
+                        )
+                    }
+                }
+            }
+            Text(
+                text = song.song.title,
+                modifier = Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = artistText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -230,26 +318,33 @@ fun LocalPlayingBars(
 @Composable
 fun LocalSongActionsSheet(
     song: Song,
-    metadata: LocalSongSortMetadata?,
-    isPinned: Boolean,
     onDismiss: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
-    onTogglePinned: () -> Unit,
-    onGoToAlbum: (() -> Unit)?,
-    onGoToArtist: (() -> Unit)?,
-    onGoToAlbumArtist: (() -> Unit)?,
-    onGoToFolder: (() -> Unit)?,
-    onEditMetadata: () -> Unit,
-    onEditLyrics: () -> Unit,
-    onBlacklist: () -> Unit,
-    onDetails: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit,
+    metadata: LocalSongSortMetadata? = null,
+    isPinned: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
+    onAddToPlaylist: (() -> Unit)? = null,
+    onTogglePinned: (() -> Unit)? = null,
+    onGoToAlbum: (() -> Unit)? = null,
+    onGoToArtist: (() -> Unit)? = null,
+    onGoToAlbumArtist: (() -> Unit)? = null,
+    onGoToFolder: (() -> Unit)? = null,
+    onEditMetadata: (() -> Unit)? = null,
+    onEditLyrics: (() -> Unit)? = null,
+    onBlacklist: (() -> Unit)? = null,
+    onDetails: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val hasQueueActions = onPlayNext != null || onAddToQueue != null ||
+        onAddToPlaylist != null || onTogglePinned != null
+    val hasNavigationActions = onGoToAlbum != null || onGoToArtist != null ||
+        onGoToAlbumArtist != null || onGoToFolder != null
+    val hasEditActions = onEditMetadata != null || onEditLyrics != null
+    val hasOtherActions = onBlacklist != null || onDetails != null ||
+        onShare != null || onDelete != null
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -299,14 +394,16 @@ fun LocalSongActionsSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                FilledTonalIconButton(onClick = onToggleFavorite, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        imageVector = if (song.song.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = stringResource(
-                            if (song.song.liked) R.string.local_song_remove_favorite else R.string.local_song_add_favorite,
-                        ),
-                        tint = if (song.song.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    )
+                if (onToggleFavorite != null) {
+                    FilledTonalIconButton(onClick = onToggleFavorite, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = if (song.song.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = stringResource(
+                                if (song.song.liked) R.string.local_song_remove_favorite else R.string.local_song_add_favorite,
+                            ),
+                            tint = if (song.song.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
             }
 
@@ -315,63 +412,46 @@ fun LocalSongActionsSheet(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                item {
+                if (hasQueueActions) item {
                     LocalSongActionGroup {
-                        LocalSongAction(Icons.Rounded.SkipNext, stringResource(R.string.play_next), onPlayNext)
-                        LocalSongAction(Icons.Rounded.Queue, stringResource(R.string.add_to_queue), onAddToQueue)
-                        LocalSongAction(
-                            Icons.AutoMirrored.Rounded.PlaylistAdd,
-                            stringResource(R.string.add_to_playlist),
-                            onAddToPlaylist,
-                        )
-                        LocalSongAction(
-                            Icons.Rounded.PushPin,
-                            stringResource(if (isPinned) R.string.local_song_unpin else R.string.local_song_pin),
-                            onTogglePinned,
-                        )
+                        onPlayNext?.let { LocalSongAction(Icons.Rounded.SkipNext, stringResource(R.string.play_next), it) }
+                        onAddToQueue?.let { LocalSongAction(Icons.Rounded.Queue, stringResource(R.string.add_to_queue), it) }
+                        onAddToPlaylist?.let {
+                            LocalSongAction(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.add_to_playlist), it)
+                        }
+                        onTogglePinned?.let {
+                            LocalSongAction(
+                                Icons.Rounded.PushPin,
+                                stringResource(if (isPinned) R.string.local_song_unpin else R.string.local_song_pin),
+                                it,
+                            )
+                        }
                     }
                 }
-                item {
+                if (hasNavigationActions) item {
                     LocalSongActionGroup {
-                        LocalSongAction(
-                            Icons.Rounded.Album,
-                            stringResource(R.string.local_song_go_to_album),
-                            onGoToAlbum,
-                        )
-                        LocalSongAction(
-                            Icons.Rounded.Person,
-                            stringResource(R.string.local_song_go_to_artist),
-                            onGoToArtist,
-                        )
-                        LocalSongAction(
-                            Icons.Rounded.SupervisorAccount,
-                            stringResource(R.string.local_song_go_to_album_artist),
-                            onGoToAlbumArtist,
-                        )
-                        LocalSongAction(
-                            Icons.Rounded.FolderOpen,
-                            stringResource(R.string.local_song_go_to_folder),
-                            onGoToFolder,
-                        )
+                        onGoToAlbum?.let { LocalSongAction(Icons.Rounded.Album, stringResource(R.string.local_song_go_to_album), it) }
+                        onGoToArtist?.let { LocalSongAction(Icons.Rounded.Person, stringResource(R.string.local_song_go_to_artist), it) }
+                        onGoToAlbumArtist?.let {
+                            LocalSongAction(Icons.Rounded.SupervisorAccount, stringResource(R.string.local_song_go_to_album_artist), it)
+                        }
+                        onGoToFolder?.let { LocalSongAction(Icons.Rounded.FolderOpen, stringResource(R.string.local_song_go_to_folder), it) }
                     }
                 }
-                item {
+                if (hasEditActions) item {
                     LocalSongActionGroup {
-                        LocalSongAction(Icons.Rounded.Edit, stringResource(R.string.local_song_edit_information), onEditMetadata)
-                        LocalSongAction(Icons.Rounded.Lyrics, stringResource(R.string.edit_lyrics), onEditLyrics)
+                        onEditMetadata?.let { LocalSongAction(Icons.Rounded.Edit, stringResource(R.string.local_song_edit_information), it) }
+                        onEditLyrics?.let { LocalSongAction(Icons.Rounded.Lyrics, stringResource(R.string.edit_lyrics), it) }
                     }
                 }
-                item {
+                if (hasOtherActions) item {
                     LocalSongActionGroup {
-                        LocalSongAction(Icons.Rounded.Block, stringResource(R.string.local_song_blacklist), onBlacklist)
-                        LocalSongAction(Icons.Rounded.Info, stringResource(R.string.details), onDetails)
-                        LocalSongAction(Icons.Rounded.Share, stringResource(R.string.share), onShare)
-                        LocalSongAction(
-                            Icons.Rounded.Delete,
-                            stringResource(R.string.local_song_delete_from_device),
-                            onDelete,
-                            destructive = true,
-                        )
+                        onBlacklist?.let { LocalSongAction(Icons.Rounded.Block, stringResource(R.string.local_song_blacklist), it) }
+                        onDetails?.let { LocalSongAction(Icons.Rounded.Info, stringResource(R.string.details), it) }
+                        onShare?.let { LocalSongAction(Icons.Rounded.Share, stringResource(R.string.share), it) }
+                        onDelete?.let {
+                            LocalSongAction(Icons.Rounded.Delete, stringResource(R.string.local_song_delete_from_device), it, destructive = true)
+                        }
                     }
                 }
             }
@@ -566,7 +646,9 @@ fun LocalSongDetailsDialog(
     val details = listOfNotNull(
         stringResource(R.string.local_song_title_field) to song.song.title,
         stringResource(R.string.sort_by_artist) to song.artists.joinToString(", ") { it.name },
-        metadata?.album?.takeIf(String::isNotBlank)?.let { stringResource(R.string.sort_by_album) to it },
+        (metadata?.album ?: song.song.albumName ?: song.album?.title)
+            ?.takeIf(String::isNotBlank)
+            ?.let { stringResource(R.string.sort_by_album) to it },
         metadata?.albumArtist?.takeIf(String::isNotBlank)?.let {
             stringResource(R.string.sort_by_album_artist) to it
         },
@@ -575,7 +657,7 @@ fun LocalSongDetailsDialog(
         song.song.duration.takeIf { it >= 0 }?.let {
             stringResource(R.string.sort_by_length) to formatLocalSongDuration(it)
         },
-        metadata?.year?.let { stringResource(R.string.sort_by_year) to it.toString() },
+        (metadata?.year ?: song.song.year)?.let { stringResource(R.string.sort_by_year) to it.toString() },
         metadata?.composer?.takeIf(String::isNotBlank)?.let { stringResource(R.string.sort_by_composer) to it },
         metadata?.displayName?.takeIf(String::isNotBlank)?.let {
             stringResource(R.string.local_song_file_name) to it

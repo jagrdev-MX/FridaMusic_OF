@@ -125,24 +125,37 @@ fun PlaylistLibraryControls(
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(26.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            Row(modifier = Modifier.padding(2.dp)) {
-                PlaylistViewModeButton(
-                    selected = !gridView,
-                    icon = Icons.AutoMirrored.Rounded.ViewList,
-                    contentDescription = stringResource(R.string.playlist_view_list),
-                    onClick = { onGridViewChanged(false) },
-                )
-                PlaylistViewModeButton(
-                    selected = gridView,
-                    icon = Icons.Rounded.GridView,
-                    contentDescription = stringResource(R.string.playlist_view_grid),
-                    onClick = { onGridViewChanged(true) },
-                )
-            }
+        LibraryViewModeToggle(
+            gridView = gridView,
+            onGridViewChanged = onGridViewChanged,
+        )
+    }
+}
+
+@Composable
+fun LibraryViewModeToggle(
+    gridView: Boolean,
+    onGridViewChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(modifier = Modifier.padding(2.dp)) {
+            PlaylistViewModeButton(
+                selected = !gridView,
+                icon = Icons.AutoMirrored.Rounded.ViewList,
+                contentDescription = stringResource(R.string.playlist_view_list),
+                onClick = { onGridViewChanged(false) },
+            )
+            PlaylistViewModeButton(
+                selected = gridView,
+                icon = Icons.Rounded.GridView,
+                contentDescription = stringResource(R.string.playlist_view_grid),
+                onClick = { onGridViewChanged(true) },
+            )
         }
     }
 }
