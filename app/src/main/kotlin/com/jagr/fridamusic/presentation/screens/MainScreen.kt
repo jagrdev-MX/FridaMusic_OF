@@ -230,6 +230,21 @@ fun MainScreen(
                 ArtistScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
                     onAlbumClick = { album -> navController.navigateToDetail(album) },
+                    onRemoteItemClick = { item ->
+                        navController.handleYTItemClick(
+                            item = item,
+                            playSong = playerConnection?.let { connection ->
+                                { connection.playYTItem(item) }
+                            },
+                            onUnavailable = {
+                                Toast.makeText(
+                                    context,
+                                    R.string.recommendation_unavailable,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }

@@ -1328,6 +1328,9 @@
     <string name="crash_report_subject">echomusic Crash Report</string>
     <string name="crash_close">Close</string>
     <string name="crash_no_log">No crash log available</string>
+    <string name="crash_send_report">Send report</string>
+    <string name="crash_email_unavailable">No compatible email app was found</string>
+    <string name="crash_report_email_subject">FridaMusic Crash Report - %1$s</string>
     <string name="palette_dynamic">Dynamic</string>
     <string name="palette_crimson">Crimson</string>
     <string name="palette_rose">Rose</string>

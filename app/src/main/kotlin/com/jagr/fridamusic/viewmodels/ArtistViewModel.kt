@@ -47,6 +47,8 @@ class ArtistViewModel @Inject constructor(
 ) : ViewModel() {
     val artistId = savedStateHandle.get<String>("artistId")!!
     var artistPage by mutableStateOf<ArtistPage?>(null)
+    var isLoadingRemote by mutableStateOf(true)
+        private set
     
     private val _artistVideoUrl = MutableStateFlow<String?>(null)
     val artistVideoUrl: StateFlow<String?> = _artistVideoUrl
@@ -91,37 +93,42 @@ class ArtistViewModel @Inject constructor(
 
     fun fetchArtistsFromYTM() {
         viewModelScope.launch {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-            YouTube.artist(artistId)
-                .onSuccess { page ->
-                    val filteredSections = page.sections
-                        .map { section ->
-                            section.copy(items = section.items.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts))
-                        }
-                        .filter { section -> section.items.isNotEmpty() }
+            isLoadingRemote = true
+            try {
+                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                YouTube.artist(artistId)
+                    .onSuccess { page ->
+                        val filteredSections = page.sections
+                            .map { section ->
+                                section.copy(items = section.items.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts))
+                            }
+                            .filter { section -> section.items.isNotEmpty() }
 
-                    artistPage = page.copy(sections = filteredSections)
-                    
-                    
-                    val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
-                    topSongsSection?.items?.forEach { item ->
-                        if (item is com.music.innertube.models.SongItem) {
-                            val canvas = ArtistVideoCanvasProvider.getBySongArtist(
-                                song = item.title,
-                                artist = page.artist?.title ?: ""
-                            )
-                            if (canvas?.preferredAnimationUrl != null) {
-                                _artistVideoUrl.value = canvas.preferredAnimationUrl
-                                _artistVideoSong.value = item
-                                return@forEach
+                        artistPage = page.copy(sections = filteredSections)
+
+
+                        val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
+                        topSongsSection?.items?.forEach { item ->
+                            if (item is com.music.innertube.models.SongItem) {
+                                val canvas = ArtistVideoCanvasProvider.getBySongArtist(
+                                    song = item.title,
+                                    artist = page.artist?.title ?: ""
+                                )
+                                if (canvas?.preferredAnimationUrl != null) {
+                                    _artistVideoUrl.value = canvas.preferredAnimationUrl
+                                    _artistVideoSong.value = item
+                                    return@forEach
+                                }
                             }
                         }
+                    }.onFailure {
+                        reportException(it)
                     }
-                }.onFailure {
-                    reportException(it)
-                }
+            } finally {
+                isLoadingRemote = false
+            }
         }
     }
 }

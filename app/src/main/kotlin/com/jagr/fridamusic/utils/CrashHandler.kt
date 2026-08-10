@@ -27,6 +27,12 @@ class CrashHandler private constructor(
             
             val intent = Intent(applicationContext, CrashActivity::class.java).apply {
                 putExtra(EXTRA_CRASH_LOG, crashLog)
+                putExtra(
+                    EXTRA_EXCEPTION_TYPE,
+                    throwable.javaClass.simpleName.ifBlank {
+                        throwable.javaClass.name.substringAfterLast('.')
+                    },
+                )
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             }
             applicationContext.startActivity(intent)
@@ -65,6 +71,7 @@ class CrashHandler private constructor(
 
     companion object {
         const val EXTRA_CRASH_LOG = "crash_log"
+        const val EXTRA_EXCEPTION_TYPE = "exception_type"
 
         fun install(context: Context) {
             val handler = CrashHandler(context.applicationContext)

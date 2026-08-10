@@ -1334,6 +1334,9 @@
     <string name="crash_report_subject">Reporte de error echomusic</string>
     <string name="crash_close">Cerrar</string>
     <string name="crash_no_log">No hay registro disponible</string>
+    <string name="crash_send_report">Enviar reporte</string>
+    <string name="crash_email_unavailable">No se encontró una aplicación de correo compatible</string>
+    <string name="crash_report_email_subject">FridaMusic Crash Report - %1$s</string>
     <string name="palette_dynamic">Dinámico</string>
     <string name="palette_crimson">Carmesí</string>
     <string name="palette_rose">Rosa</string>

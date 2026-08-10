@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +38,8 @@ import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 
@@ -44,6 +47,7 @@ import com.music.innertube.models.YTItem
 fun ArtistScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onAlbumClick: (Album) -> Unit,
+    onRemoteItemClick: (YTItem) -> Unit,
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel(),
 ) {
@@ -68,7 +72,7 @@ fun ArtistScreen(
         .flatMap { it.items }
         .filterIsInstance<AlbumItem>()
 
-    val isLoadingRemote = artistPage == null
+    val isLoadingRemote = viewModel.isLoadingRemote
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -199,13 +203,13 @@ fun ArtistScreen(
             }
 
 
-            remoteSections.forEach { section ->
+            remoteSections.forEachIndexed { sectionIndex, section ->
                 val songs = section.items.filterIsInstance<SongItem>()
                 val albums = section.items.filterIsInstance<AlbumItem>()
                 val others = section.items.filter { it !is SongItem && it !is AlbumItem }
 
                 if (section.items.isNotEmpty()) {
-                    item(key = "section_title_${section.title}") {
+                    item(key = "section_title_${sectionIndex}_${section.title}") {
                         Text(
                             text = section.title,
                             style = MaterialTheme.typography.titleMedium,
@@ -218,7 +222,12 @@ fun ArtistScreen(
 
 
                 if (songs.isNotEmpty()) {
-                    items(songs, key = { "remote_song_${it.id}" }) { song ->
+                    itemsIndexed(
+                        items = songs,
+                        key = { songIndex, song ->
+                            "remote_song_${sectionIndex}_${section.title}_${song.id}_$songIndex"
+                        },
+                    ) { _, song ->
                         RemoteSongRow(
                             song = song,
                             onClick = { playerConnection?.playYTItem(song) },
@@ -228,16 +237,21 @@ fun ArtistScreen(
 
                 // Albums / playlists row
                 if (albums.isNotEmpty() || others.isNotEmpty()) {
-                    item(key = "section_row_${section.title}") {
+                    item(key = "section_row_${sectionIndex}_${section.title}") {
                         val rowItems: List<YTItem> = albums + others
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            items(rowItems, key = { "remote_item_${it.id}" }) { item ->
+                            itemsIndexed(
+                                items = rowItems,
+                                key = { itemIndex, item ->
+                                    "remote_item_${sectionIndex}_${item.id}_$itemIndex"
+                                },
+                            ) { _, item ->
                                 RemoteItemCard(
                                     item = item,
-                                    onClick = { playerConnection?.playYTItem(item) },
+                                    onClick = { onRemoteItemClick(item) },
                                 )
                             }
                         }
@@ -398,20 +412,11 @@ private fun RemoteItemCard(
     item: YTItem,
     onClick: () -> Unit,
 ) {
-    val thumbnail = when (item) {
-        is AlbumItem -> item.thumbnail
-        is SongItem -> item.thumbnail
-        else -> null
-    }
-    val title = when (item) {
-        is AlbumItem -> item.title
-        is SongItem -> item.title
-        else -> ""
-    }
     val subtitle = when (item) {
         is AlbumItem -> item.year?.toString() ?: ""
         is SongItem -> item.artists.joinToString(", ") { it.name }
-        else -> ""
+        is PlaylistItem -> item.author?.name ?: item.songCountText.orEmpty()
+        is ArtistItem -> ""
     }
 
     Column(
@@ -421,8 +426,8 @@ private fun RemoteItemCard(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         AsyncImage(
-            model = thumbnail?.resize(width = 300),
-            contentDescription = title,
+            model = item.thumbnail?.resize(width = 300),
+            contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(150.dp)
@@ -430,7 +435,7 @@ private fun RemoteItemCard(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
         Text(
-            text = title,
+            text = item.title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground,
