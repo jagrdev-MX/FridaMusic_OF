@@ -43,7 +43,6 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.screens.MainScreen
 import com.jagr.fridamusic.presentation.screens.OnboardingScreen
 import com.jagr.fridamusic.presentation.theme.FridaMusicTheme
-import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
@@ -65,9 +64,6 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var database: MusicDatabase
-
-    @Inject
-    lateinit var syncUtils: SyncUtils
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
 
@@ -178,7 +174,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        syncUtils.tryAutoSync()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
