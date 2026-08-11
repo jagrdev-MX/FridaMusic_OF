@@ -7,8 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,11 +38,16 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
+import com.jagr.fridamusic.db.entities.Album as LocalAlbum
+import com.jagr.fridamusic.db.entities.Artist as LocalArtist
+import com.jagr.fridamusic.db.entities.LocalItem
+import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.Artist as YTArtist
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
@@ -56,10 +63,51 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val quickPicks by viewModel.quickPicks.collectAsState()
+    val dailyDiscover by viewModel.dailyDiscover.collectAsState()
+    val forgottenFavorites by viewModel.forgottenFavorites.collectAsState()
+    val keepListening by viewModel.keepListening.collectAsState()
+    val similarRecommendations by viewModel.similarRecommendations.collectAsState()
+    val accountPlaylists by viewModel.accountPlaylists.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
+    val explorePage by viewModel.explorePage.collectAsState()
+    val communityPlaylists by viewModel.communityPlaylists.collectAsState()
+    val echoBrainPlaylists by viewModel.echoBrainPlaylists.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val selectedChip by viewModel.selectedChip.collectAsState()
     val isLowEnd = rememberIsLowEndDevice()
+    val quickPickItems = quickPicks.orEmpty()
+    val dailyDiscoverItems = dailyDiscover.orEmpty()
+    val forgottenFavoriteItems = forgottenFavorites.orEmpty()
+    val keepListeningItems = keepListening.orEmpty()
+    val similarRecommendationItems = similarRecommendations.orEmpty()
+    val accountPlaylistItems = accountPlaylists.orEmpty()
+    val newReleaseItems = explorePage?.newReleaseAlbums.orEmpty()
+    val communityPlaylistItems = communityPlaylists.orEmpty()
+    val echoBrainPlaylistItems = echoBrainPlaylists.orEmpty()
+    val quickPicksTitle = stringResource(R.string.quick_picks)
+    val quickPicksSubtitle = stringResource(R.string.quick_picks_subtitle)
+    val dailyDiscoverTitle = stringResource(R.string.your_daily_discover)
+    val keepListeningTitle = stringResource(R.string.keep_listening)
+    val forgottenFavoritesTitle = stringResource(R.string.forgotten_favorites)
+    val accountPlaylistsTitle = stringResource(R.string.your_youtube_playlists)
+    val newReleasesTitle = stringResource(R.string.new_release_albums)
+    val similarToTitle = stringResource(R.string.similar_to)
+    val communityTitle = stringResource(R.string.from_the_community)
+    val hasGeneralContent = quickPickItems.isNotEmpty() ||
+            dailyDiscoverItems.isNotEmpty() ||
+            forgottenFavoriteItems.isNotEmpty() ||
+            keepListeningItems.isNotEmpty() ||
+            similarRecommendationItems.isNotEmpty() ||
+            accountPlaylistItems.isNotEmpty() ||
+            !homePage?.sections.isNullOrEmpty() ||
+            newReleaseItems.isNotEmpty() ||
+            communityPlaylistItems.isNotEmpty() ||
+            echoBrainPlaylistItems.isNotEmpty()
+    val hasVisibleContent = if (selectedChip == null) {
+        hasGeneralContent
+    } else {
+        !homePage?.sections.isNullOrEmpty()
+    }
 
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
@@ -93,70 +141,113 @@ fun HomeScreen(
             )
         }
 
-        if (!quickPicks.isNullOrEmpty()) {
-            item(key = "quickpicks_header") {
-                SectionTitle(title = stringResource(R.string.quick_picks), subtitle = stringResource(R.string.quick_picks_subtitle))
-            }
-            item(key = "quickpicks_row") {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(quickPicks!!, key = { it.song.id }) { song ->
-                        WideCard(
-                            title = song.song.title,
-                            subtitle = song.artists.joinToString(", ") { it.name },
-                            imageUrl = (song.song.thumbnailUrl
-                                ?: "https://i.ytimg.com/vi/${song.song.id}/hqdefault.jpg")
-                                .resize(width = if (isLowEnd) 320 else 480),
-                            onClick = { onSongClick(song, quickPicks!!) },
-                        )
-                    }
-                }
+        if (selectedChip == null) {
+            localSongSection(
+                key = "quick_picks",
+                title = quickPicksTitle,
+                subtitle = quickPicksSubtitle,
+                songs = quickPickItems,
+                isLowEnd = isLowEnd,
+                onSongClick = onSongClick,
+            )
+
+            ytSection(
+                key = "daily_discover",
+                title = dailyDiscoverTitle,
+                items = dailyDiscoverItems.map { it.recommendation },
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+            )
+
+            localItemSection(
+                key = "keep_listening",
+                title = keepListeningTitle,
+                items = keepListeningItems,
+                isLowEnd = isLowEnd,
+                onSongClick = onSongClick,
+                onItemClick = onItemClick,
+            )
+
+            localSongSection(
+                key = "forgotten_favorites",
+                title = forgottenFavoritesTitle,
+                songs = forgottenFavoriteItems,
+                isLowEnd = isLowEnd,
+                onSongClick = onSongClick,
+            )
+
+            echoBrainPlaylistItems.forEachIndexed { index, playlist ->
+                ytSection(
+                    key = "echo_brain_${index}_${playlist.playlist.id}",
+                    title = playlist.playlist.title,
+                    items = playlist.songs,
+                    isLowEnd = isLowEnd,
+                    onItemClick = onItemClick,
+                )
             }
         }
 
-        homePage?.sections?.forEach { section ->
-            item(key = "section_header_${section.title}") {
-                SectionTitle(title = section.title, subtitle = section.label)
-            }
-            item(key = "section_row_${section.title}") {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(section.items, key = { it.id }) { ytItem ->
-                        val subtitle = when (ytItem) {
-                            is SongItem -> ytItem.artists.joinToString(", ") { it.name }
-                            is AlbumItem -> ytItem.artists?.joinToString(", ") { it.name } ?: stringResource(R.string.album_text)
-                            is PlaylistItem -> ytItem.author?.name ?: stringResource(R.string.playlists)
-                            is ArtistItem -> stringResource(R.string.artists)
-                            else -> null
-                        }
-                        if (ytItem is ArtistItem) {
-                            ArtistCard(
-                                name = ytItem.title,
-                                imageUrl = ytItem.thumbnail?.resize(width = if (isLowEnd) 200 else 300) ?: "",
-                                onClick = { onItemClick(ytItem) },
-                            )
-                        } else {
-                            WideCard(
-                                title = ytItem.title,
-                                subtitle = subtitle,
-                                imageUrl = ytItem.thumbnail?.resize(width = if (isLowEnd) 320 else 480) ?: "",
-                                onClick = { onItemClick(ytItem) },
-                            )
-                        }
-                    }
+        homePage?.sections.orEmpty().forEachIndexed { index, section ->
+            ytSection(
+                key = "youtube_${index}_${section.title}",
+                title = section.title,
+                subtitle = section.label,
+                items = section.items,
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+            )
+        }
+
+        homePage?.continuation?.let { continuation ->
+            item(key = "continuation_${selectedChip?.title.orEmpty()}_$continuation") {
+                LaunchedEffect(continuation, selectedChip) {
+                    viewModel.loadMoreYouTubeItems(continuation)
                 }
+                Spacer(modifier = Modifier.height(1.dp))
             }
         }
 
-        if (isLoading && quickPicks.isNullOrEmpty() && homePage == null) {
+        if (selectedChip == null) {
+            ytSection(
+                key = "account_playlists",
+                title = accountPlaylistsTitle,
+                items = accountPlaylistItems,
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+            )
+
+            ytSection(
+                key = "new_releases",
+                title = newReleasesTitle,
+                items = newReleaseItems,
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+            )
+
+            similarRecommendationItems.forEachIndexed { index, recommendation ->
+                ytSection(
+                    key = "similar_${index}_${recommendation.title.id}",
+                    title = "$similarToTitle ${recommendation.title.title}",
+                    items = recommendation.items,
+                    isLowEnd = isLowEnd,
+                    onItemClick = onItemClick,
+                )
+            }
+
+            ytSection(
+                key = "community",
+                title = communityTitle,
+                items = communityPlaylistItems.map { it.playlist },
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+            )
+        }
+
+        if (isLoading && !hasVisibleContent) {
             item(key = "loading") { HomeLoadingState() }
         }
 
-        if (!isLoading && quickPicks.isNullOrEmpty() && homePage == null) {
+        if (!isLoading && !hasVisibleContent) {
             item(key = "empty") { HomeEmptyState() }
         }
     }
@@ -332,6 +423,169 @@ private fun MoodChipsRow(
             }
         }
     }
+}
+
+private fun LazyListScope.localSongSection(
+    key: String,
+    title: String,
+    subtitle: String? = null,
+    songs: List<Song>,
+    isLowEnd: Boolean,
+    onSongClick: (Song, List<Song>) -> Unit,
+) {
+    if (songs.isEmpty()) return
+
+    item(key = "${key}_header") {
+        SectionTitle(title = title, subtitle = subtitle)
+    }
+    item(key = "${key}_row") {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(
+                items = songs,
+                key = { index, song -> "${key}_${song.id}_$index" },
+            ) { _, song ->
+                WideCard(
+                    title = song.title,
+                    subtitle = song.artists.joinToString(", ") { it.name },
+                    imageUrl = (song.song.thumbnailUrl
+                        ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg")
+                        .resize(width = if (isLowEnd) 320 else 480),
+                    onClick = { onSongClick(song, songs) },
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.localItemSection(
+    key: String,
+    title: String,
+    items: List<LocalItem>,
+    isLowEnd: Boolean,
+    onSongClick: (Song, List<Song>) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+) {
+    if (items.isEmpty()) return
+    val songQueue = items.filterIsInstance<Song>()
+
+    item(key = "${key}_header") {
+        SectionTitle(title = title, subtitle = null)
+    }
+    item(key = "${key}_row") {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(
+                items = items,
+                key = { index, localItem -> "${key}_${localItem.id}_$index" },
+            ) { _, localItem ->
+                val subtitle = when (localItem) {
+                    is Song -> localItem.artists.joinToString(", ") { it.name }
+                    is LocalAlbum -> localItem.artists.joinToString(", ") { it.name }
+                    is LocalArtist -> stringResource(R.string.artists)
+                    is LocalPlaylist -> stringResource(R.string.playlists)
+                }
+                WideCard(
+                    title = localItem.title,
+                    subtitle = subtitle,
+                    imageUrl = localItem.thumbnailUrl.orEmpty()
+                        .resize(width = if (isLowEnd) 320 else 480),
+                    onClick = {
+                        when (localItem) {
+                            is Song -> onSongClick(localItem, songQueue)
+                            else -> localItem.toYTItemOrNull()?.let(onItemClick)
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.ytSection(
+    key: String,
+    title: String,
+    subtitle: String? = null,
+    items: List<YTItem>,
+    isLowEnd: Boolean,
+    onItemClick: (YTItem) -> Unit,
+) {
+    if (items.isEmpty()) return
+
+    item(key = "${key}_header") {
+        SectionTitle(title = title, subtitle = subtitle)
+    }
+    item(key = "${key}_row") {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(
+                items = items,
+                key = { index, item -> "${key}_${item.id}_$index" },
+            ) { _, item ->
+                YTItemCard(
+                    item = item,
+                    isLowEnd = isLowEnd,
+                    onClick = { onItemClick(item) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun YTItemCard(
+    item: YTItem,
+    isLowEnd: Boolean,
+    onClick: () -> Unit,
+) {
+    val subtitle = when (item) {
+        is SongItem -> item.artists.joinToString(", ") { it.name }
+        is AlbumItem -> item.artists?.joinToString(", ") { it.name }
+            ?: stringResource(R.string.album_text)
+        is PlaylistItem -> item.author?.name ?: stringResource(R.string.playlists)
+        is ArtistItem -> stringResource(R.string.artists)
+    }
+
+    if (item is ArtistItem) {
+        ArtistCard(
+            name = item.title,
+            imageUrl = item.thumbnail?.resize(width = if (isLowEnd) 200 else 300).orEmpty(),
+            onClick = onClick,
+        )
+    } else {
+        WideCard(
+            title = item.title,
+            subtitle = subtitle,
+            imageUrl = item.thumbnail?.resize(width = if (isLowEnd) 320 else 480).orEmpty(),
+            onClick = onClick,
+        )
+    }
+}
+
+private fun LocalItem.toYTItemOrNull(): YTItem? = when (this) {
+    is LocalAlbum -> AlbumItem(
+        browseId = id,
+        playlistId = album.playlistId.orEmpty(),
+        title = title,
+        artists = artists.map { artist -> YTArtist(name = artist.name, id = artist.id) },
+        year = album.year,
+        thumbnail = thumbnailUrl.orEmpty(),
+    )
+    is LocalArtist -> ArtistItem(
+        id = id,
+        title = title,
+        thumbnail = thumbnailUrl,
+        shuffleEndpoint = null,
+        radioEndpoint = null,
+    )
+    is LocalPlaylist -> null
+    is Song -> null
 }
 
 @Composable
