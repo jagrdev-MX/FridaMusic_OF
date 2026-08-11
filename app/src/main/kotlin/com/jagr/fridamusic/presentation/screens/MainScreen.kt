@@ -190,6 +190,18 @@ fun MainScreen(
                         playerConnection?.playQueue(
                             com.jagr.fridamusic.playback.queues.YouTubeQueue(
                                 endpoint = com.music.innertube.models.WatchEndpoint(videoId = song.id),
+                                preloadItem = com.jagr.fridamusic.models.MediaMetadata(
+                                    id = song.id,
+                                    title = song.title,
+                                    artists = listOfNotNull(
+                                        song.artistName?.let {
+                                            com.jagr.fridamusic.models.MediaMetadata.Artist(id = null, name = it)
+                                        },
+                                    ),
+                                    duration = -1,
+                                    thumbnailUrl = song.thumbnailUrl,
+                                    musicVideoType = if (song.isVideo) "MUSIC_VIDEO_TYPE_OMV" else null,
+                                ),
                             )
                         )
                     },

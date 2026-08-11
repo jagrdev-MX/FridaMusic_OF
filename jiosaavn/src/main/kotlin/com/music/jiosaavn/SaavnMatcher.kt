@@ -13,17 +13,25 @@ object SaavnMatcher {
         "minus one",
         "cover",
         "remix",
+        "live",
+        "acoustic",
+        "remaster",
+        "remastered",
         "lo-fi",
         "lofi",
         "sped up",
         "slowed",
-        "reverb"
+        "reverb",
+        "nightcore",
+        "demo",
+        "radio edit",
+        "extended mix"
     )
 
     private val variantMarkers = variantMarkerPhrases.map { " ${normalize(it)} " }
 
     /**
-     * Penalizes Saavn variant titles for issue #561 while preserving explicit variant searches.
+     * Penalizes a version mismatch in either direction while preserving explicit variant searches.
      */
     fun variantPenalty(ytTitle: String, candidateName: String): Int {
         val normalizedYtTitle = searchable(ytTitle)
@@ -31,7 +39,7 @@ object SaavnMatcher {
         var penalty = 0
 
         for (marker in variantMarkers) {
-            if (!normalizedYtTitle.contains(marker) && normalizedCandidateName.contains(marker)) {
+            if (normalizedYtTitle.contains(marker) != normalizedCandidateName.contains(marker)) {
                 penalty += VARIANT_PENALTY
             }
         }

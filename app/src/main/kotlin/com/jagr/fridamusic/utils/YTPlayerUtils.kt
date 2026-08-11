@@ -154,9 +154,18 @@ object YTPlayerUtils {
             Timber.tag(TAG).d("JioSaavn streaming enabled (via SAAVN) — trying Saavn for videoId=$videoId")
             try {
                 saavnAttempt = kotlinx.coroutines.withTimeoutOrNull(15000L) {
-                    val metadata = playerResponseForMetadata(videoId).getOrNull()
-                    val title = knownTitle ?: metadata?.videoDetails?.title.orEmpty()
-                    val artist = knownArtist ?: metadata?.videoDetails?.author?.replace(" - Topic", "").orEmpty()
+                    val needsRemoteMetadata = knownTitle.isNullOrBlank() ||
+                        knownArtist.isNullOrBlank() ||
+                        knownDurationMs == null
+                    val metadata = if (needsRemoteMetadata) {
+                        playerResponseForMetadata(videoId).getOrNull()
+                    } else {
+                        null
+                    }
+                    val title = knownTitle.takeUnless { it.isNullOrBlank() }
+                        ?: metadata?.videoDetails?.title.orEmpty()
+                    val artist = knownArtist.takeUnless { it.isNullOrBlank() }
+                        ?: metadata?.videoDetails?.author?.replace(" - Topic", "").orEmpty()
 
                     if (title.isBlank()) throw Exception("Title is blank")
 
@@ -177,43 +186,68 @@ object YTPlayerUtils {
 
                     fun normalize(s: String): Set<String> =
                         s.lowercase()
-                            .replace(Regex("[^a-z0-9\\s]"), " ")
+                            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
                             .split(Regex("\\s+"))
-                            .filter { it.length > 1 }
+                            .filter { it.isNotBlank() }
                             .toSet()
 
-                    fun wordOverlapScore(a: String, b: String, maxPts: Int): Int {
+                    fun wordOverlapRatio(a: String, b: String): Double {
                         val setA = normalize(a)
                         val setB = normalize(b)
-                        if (setA.isEmpty() || setB.isEmpty()) return 0
+                        if (setA.isEmpty() || setB.isEmpty()) return 0.0
                         val common = setA.intersect(setB).size
-                        val ratio  = common.toDouble() / maxOf(setA.size, setB.size)
-                        return (ratio * maxPts).toInt()
+                        return common.toDouble() / maxOf(setA.size, setB.size)
                     }
 
-                    data class ScoredSong(val song: com.music.jiosaavn.SaavnSong, val score: Int)
+                    data class ScoredSong(
+                        val song: com.music.jiosaavn.SaavnSong,
+                        val score: Int,
+                        val titleRatio: Double,
+                        val artistRatio: Double,
+                        val durationCompatible: Boolean,
+                        val variantsCompatible: Boolean,
+                    )
 
                     val scored = songs.map { candidate ->
-                        var score = 0
-                        score += wordOverlapScore(title, candidate.name, maxPts = 50)
+                        val titleRatio = wordOverlapRatio(title, candidate.name)
+                        val saavnArtists = candidate.artists.primary.joinToString(" ") { it.name }
+                        val artistRatio = wordOverlapRatio(artist, saavnArtists)
                         val saavnDuration = candidate.duration?.toLong() ?: 0L
+                        var durationScore = 0
+                        var durationCompatible = true
                         if (ytDuration > 0 && saavnDuration > 0) {
                             val diff = Math.abs(ytDuration - saavnDuration)
-                            score += when {
+                            durationCompatible = diff <= 15
+                            durationScore = when {
                                 diff <= 5  -> 30
                                 diff <= 15 -> 15
                                 else       -> 0
                             }
                         }
-                        val saavnArtists = candidate.artists.primary.joinToString(" ") { it.name }
-                        score += wordOverlapScore(artist, saavnArtists, maxPts = 20)
-                        if (candidate.explicitContent) score += 5
-                        score += com.music.jiosaavn.SaavnMatcher.variantPenalty(title, candidate.name)
-                        ScoredSong(candidate, score)
+                        val variantPenalty = com.music.jiosaavn.SaavnMatcher.variantPenalty(title, candidate.name)
+                        val score = (titleRatio * 50).toInt() +
+                            (artistRatio * 20).toInt() +
+                            durationScore +
+                            variantPenalty
+                        ScoredSong(
+                            song = candidate,
+                            score = score,
+                            titleRatio = titleRatio,
+                            artistRatio = artistRatio,
+                            durationCompatible = durationCompatible,
+                            variantsCompatible = variantPenalty == 0,
+                        )
                     }
 
-                    val MIN_CONFIDENCE = 40
-                    val bestSong = scored.maxByOrNull { it.score }
+                    val MIN_CONFIDENCE = 65
+                    val bestSong = scored
+                        .filter {
+                            it.titleRatio >= 0.60 &&
+                                it.artistRatio >= 0.50 &&
+                                it.durationCompatible &&
+                                it.variantsCompatible
+                        }
+                        .maxByOrNull { it.score }
                         ?.takeIf { it.score >= MIN_CONFIDENCE }
                         ?.song
 
@@ -290,12 +324,20 @@ object YTPlayerUtils {
         suspend fun tryLossless(): Result<PlaybackData> {
             var qobuzAttempt: Result<PlaybackData>? = null
             var lastException: Exception? = null
-            for (attempt in 1..3) {
-                try {
+            try {
                     qobuzAttempt = kotlinx.coroutines.withTimeoutOrNull(15000L) {
-                        val metadata = playerResponseForMetadata(videoId).getOrNull()
-                        val title = knownTitle ?: metadata?.videoDetails?.title
-                        val author = knownArtist ?: metadata?.videoDetails?.author?.replace(" - Topic", "")
+                        val needsRemoteMetadata = knownTitle.isNullOrBlank() ||
+                            knownArtist.isNullOrBlank() ||
+                            knownDurationMs == null
+                        val metadata = if (needsRemoteMetadata) {
+                            playerResponseForMetadata(videoId).getOrNull()
+                        } else {
+                            null
+                        }
+                        val title = knownTitle.takeUnless { it.isNullOrBlank() }
+                            ?: metadata?.videoDetails?.title
+                        val author = knownArtist.takeUnless { it.isNullOrBlank() }
+                            ?: metadata?.videoDetails?.author?.replace(" - Topic", "")
                         if (title != null && author != null) {
                             val qobuzClient = com.jagr.fridamusic.utils.qobuz.QobuzApiClient()
                             val queryArtist = author
@@ -314,7 +356,7 @@ object YTPlayerUtils {
                                 }
                                 val sorted = validCandidates.sortedByDescending { confidence(queryArtist, queryTitle, durationMs, it) }
                                 for (candidate in sorted) {
-                                    if (confidence(queryArtist, queryTitle, durationMs, candidate) >= 0.5f) {
+                                    if (confidence(queryArtist, queryTitle, durationMs, candidate) >= 0.72f) {
                                         val downloadData = runCatching { qobuzClient.getFileUrl(candidate.id) }.getOrNull()
                                         val url = downloadData?.url
                                         if (url != null) {
@@ -369,13 +411,8 @@ object YTPlayerUtils {
                     if (qobuzAttempt == null) {
                         lastException = Exception("Timeout fetching Qobuz stream")
                     }
-                } catch (e: Exception) {
-                    lastException = e
-                }
-                
-                if (qobuzAttempt != null && qobuzAttempt.isSuccess) {
-                    break
-                }
+            } catch (e: Exception) {
+                lastException = e
             }
             return qobuzAttempt ?: Result.failure(lastException ?: Exception("Qobuz resolution failed"))
         }
@@ -1054,6 +1091,7 @@ private fun artistSimilarity(a: String, b: String): Float {
 
 fun confidence(queryArtist: String, queryTitle: String, queryDuration: Long?, candidate: com.jagr.fridamusic.utils.qobuz.QobuzTrack): Float {
     if (!candidate.streamable) return 0f
+    if (com.music.jiosaavn.SaavnMatcher.variantPenalty(queryTitle, candidate.title) != 0) return 0f
 
     val titleSim = jaccard(normalize(queryTitle), normalize(candidate.title))
     val artistSim = artistSimilarity(

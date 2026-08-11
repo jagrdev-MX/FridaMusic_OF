@@ -9,6 +9,7 @@ package com.jagr.fridamusic.spotify
 
 import com.jagr.fridamusic.spotify.models.SpotifyPlaylist
 import com.jagr.fridamusic.spotify.models.SpotifyTrack
+import java.text.Normalizer
 
 /**
  * Utility object for creating search queries from Spotify track data.
@@ -18,16 +19,40 @@ import com.jagr.fridamusic.spotify.models.SpotifyTrack
 object SpotifyMapper {
 
     // Pre-compiled regex patterns for title normalization (avoids re-creation on each call)
-    private val FEAT_PATTERN = Regex("\\(feat\\..*?\\)")
-    private val FT_PATTERN = Regex("\\(ft\\..*?\\)")
-    private val BRACKET_PATTERN = Regex("\\[.*?]")
-    private val REMASTER_PATTERN = Regex("\\(.*?remaster.*?\\)", RegexOption.IGNORE_CASE)
-    private val REMIX_PATTERN = Regex("\\(.*?remix.*?\\)", RegexOption.IGNORE_CASE)
-    private val NON_ALNUM_PATTERN = Regex("[^a-z0-9\\s]")
+    private val FEAT_PATTERN = Regex("(?:\\(|\\[)\\s*(feat\\.?|ft\\.?|featuring)\\b.*?(?:\\)|\\])", RegexOption.IGNORE_CASE)
+    private val NON_ALNUM_PATTERN = Regex("[^\\p{L}\\p{N}\\s]")
     private val MULTI_SPACE_PATTERN = Regex("\\s+")
+
+    private val strictVariantPatterns = linkedMapOf(
+        "live" to Regex("\\blive\\b"),
+        "remix" to Regex("\\b(remix|rmx)\\b"),
+        "sped_up" to Regex("\\bsped\\s+up\\b"),
+        "slowed" to Regex("\\b(slowed|slowed\\s+down)\\b"),
+        "cover" to Regex("\\bcover\\b"),
+        "karaoke" to Regex("\\b(karaoke|minus\\s+one)\\b"),
+        "instrumental" to Regex("\\binstrumental\\b"),
+        "acoustic" to Regex("\\bacoustic\\b"),
+        "nightcore" to Regex("\\bnightcore\\b"),
+    )
+    private val softVariantPatterns = linkedMapOf(
+        "lyrics" to Regex("\\b(lyric|lyrics|lyric\\s+video)\\b"),
+        "remaster" to Regex("\\b(remaster|remastered)\\b"),
+        "edit" to Regex("\\b(radio\\s+edit|extended\\s+(mix|version))\\b"),
+    )
+    private val neutralEditorialPatterns = listOf(
+        Regex("\\bofficial\\s+(audio|video)\\b"),
+        Regex("\\bmusic\\s+video\\b"),
+    )
+    private val genericArtistTokens = setOf(
+        "the", "and", "with", "feat", "featuring", "ft",
+        "el", "la", "los", "las", "y", "de", "del",
+    )
 
     private const val NORM_CACHE_MAX_SIZE = 256
     private const val EARLY_EXIT_THRESHOLD = 0.95
+    private const val MIN_MATCH_SCORE = 0.72
+    private const val MIN_TITLE_SCORE = 0.68
+    private const val MIN_ARTIST_SCORE = 0.45
 
     /**
      * LRU cache for normalized strings. Avoids re-running 7 regex replacements
@@ -62,7 +87,25 @@ object SpotifyMapper {
         val normalizedArtist: String,
         val artistBigrams: Set<String>,
         val durationMs: Int,
+        val strictVariants: Set<String>,
+        val softVariants: Set<String>,
     )
+
+    data class MatchEvaluation(
+        val score: Double,
+        val titleScore: Double,
+        val artistScore: Double,
+        val durationScore: Double,
+        val variantsCompatible: Boolean,
+        val durationCompatible: Boolean,
+    ) {
+        val isAcceptable: Boolean
+            get() = variantsCompatible &&
+                durationCompatible &&
+                titleScore >= SpotifyMapper.MIN_TITLE_SCORE &&
+                artistScore >= SpotifyMapper.MIN_ARTIST_SCORE &&
+                score >= SpotifyMapper.MIN_MATCH_SCORE
+    }
 
     /**
      * Builds a YouTube search query from a Spotify track.
@@ -104,14 +147,16 @@ object SpotifyMapper {
         artist: String,
         durationMs: Int,
     ): PrecomputedTrack {
-        val normTitle = cachedNormalize(title)
-        val normArtist = cachedNormalize(artist)
+        val normTitle = cachedNormalize(title, stripVariants = true)
+        val normArtist = cachedNormalize(artist, stripVariants = false)
         return PrecomputedTrack(
             normalizedTitle = normTitle,
             titleBigrams = cachedBigrams(normTitle),
             normalizedArtist = normArtist,
             artistBigrams = cachedBigrams(normArtist),
             durationMs = durationMs,
+            strictVariants = variants(title, strictVariantPatterns),
+            softVariants = variants(title, softVariantPatterns),
         )
     }
 
@@ -126,24 +171,28 @@ object SpotifyMapper {
         candidateTitle: String,
         candidateArtist: String,
         candidateDurationSec: Int?,
-    ): Double {
-        val normSpotifyTitle = cachedNormalize(spotifyTitle)
-        val normCandidateTitle = cachedNormalize(candidateTitle)
-        val normSpotifyArtist = cachedNormalize(spotifyArtist)
-        val normCandidateArtist = cachedNormalize(candidateArtist)
+    ): Double = evaluateMatch(
+        spotifyTitle = spotifyTitle,
+        spotifyArtist = spotifyArtist,
+        spotifyDurationMs = spotifyDurationMs,
+        candidateTitle = candidateTitle,
+        candidateArtist = candidateArtist,
+        candidateDurationSec = candidateDurationSec,
+    ).score
 
-        val titleScore = bigramSimilarity(
-            normSpotifyTitle, cachedBigrams(normSpotifyTitle),
-            normCandidateTitle, cachedBigrams(normCandidateTitle),
-        )
-        val artistScore = bigramSimilarity(
-            normSpotifyArtist, cachedBigrams(normSpotifyArtist),
-            normCandidateArtist, cachedBigrams(normCandidateArtist),
-        )
-
-        val durationScore = durationScore(spotifyDurationMs, candidateDurationSec)
-        return titleScore * 0.45 + artistScore * 0.35 + durationScore * 0.20
-    }
+    fun evaluateMatch(
+        spotifyTitle: String,
+        spotifyArtist: String,
+        spotifyDurationMs: Int,
+        candidateTitle: String,
+        candidateArtist: String,
+        candidateDurationSec: Int?,
+    ): MatchEvaluation = evaluatePrecomputed(
+        precomputed = precompute(spotifyTitle, spotifyArtist, spotifyDurationMs),
+        candidateTitle = candidateTitle,
+        candidateArtist = candidateArtist,
+        candidateDurationSec = candidateDurationSec,
+    )
 
     /**
      * Scores a candidate against pre-computed Spotify track data.
@@ -155,21 +204,55 @@ object SpotifyMapper {
         candidateTitle: String,
         candidateArtist: String,
         candidateDurationSec: Int?,
-    ): Double {
-        val normCandidateTitle = cachedNormalize(candidateTitle)
-        val normCandidateArtist = cachedNormalize(candidateArtist)
+    ): Double = evaluatePrecomputed(
+        precomputed = precomputed,
+        candidateTitle = candidateTitle,
+        candidateArtist = candidateArtist,
+        candidateDurationSec = candidateDurationSec,
+    ).score
+
+    fun evaluatePrecomputed(
+        precomputed: PrecomputedTrack,
+        candidateTitle: String,
+        candidateArtist: String,
+        candidateDurationSec: Int?,
+    ): MatchEvaluation {
+        val normCandidateTitle = cachedNormalize(candidateTitle, stripVariants = true)
+        val normCandidateArtist = cachedNormalize(candidateArtist, stripVariants = false)
 
         val titleScore = bigramSimilarity(
             precomputed.normalizedTitle, precomputed.titleBigrams,
             normCandidateTitle, cachedBigrams(normCandidateTitle),
         )
-        val artistScore = bigramSimilarity(
+        val artistScore = artistSimilarity(
             precomputed.normalizedArtist, precomputed.artistBigrams,
             normCandidateArtist, cachedBigrams(normCandidateArtist),
         )
 
         val durationScore = durationScore(precomputed.durationMs, candidateDurationSec)
-        return titleScore * 0.45 + artistScore * 0.35 + durationScore * 0.20
+        val candidateStrictVariants = variants(candidateTitle, strictVariantPatterns)
+        val candidateSoftVariants = variants(candidateTitle, softVariantPatterns)
+        val softVariantDifference =
+            (precomputed.softVariants union candidateSoftVariants) -
+                (precomputed.softVariants intersect candidateSoftVariants)
+        val score = (
+            titleScore * 0.45 + artistScore * 0.35 + durationScore * 0.20 -
+                softVariantDifference.size * 0.08
+            ).coerceIn(0.0, 1.0)
+
+        val durationCompatible = if (candidateDurationSec == null || precomputed.durationMs <= 0) {
+            true
+        } else {
+            kotlin.math.abs(precomputed.durationMs / 1000 - candidateDurationSec) <= 15
+        }
+        return MatchEvaluation(
+            score = score,
+            titleScore = titleScore,
+            artistScore = artistScore,
+            durationScore = durationScore,
+            variantsCompatible = precomputed.strictVariants == candidateStrictVariants,
+            durationCompatible = durationCompatible,
+        )
     }
 
     /** Threshold above which we consider a match good enough to skip remaining candidates. */
@@ -190,10 +273,11 @@ object SpotifyMapper {
     /**
      * Normalizes a title for comparison, with LRU caching.
      */
-    private fun cachedNormalize(title: String): String {
-        normalizeCache[title]?.let { return it }
-        val normalized = normalizeTitle(title)
-        normalizeCache[title] = normalized
+    private fun cachedNormalize(text: String, stripVariants: Boolean): String {
+        val cacheKey = "${if (stripVariants) 't' else 'a'}:$text"
+        normalizeCache[cacheKey]?.let { return it }
+        val normalized = normalize(text, stripVariants)
+        normalizeCache[cacheKey] = normalized
         return normalized
     }
 
@@ -207,16 +291,35 @@ object SpotifyMapper {
         return bigrams
     }
 
-    private fun normalizeTitle(title: String): String {
-        return title.lowercase()
+    private fun normalize(text: String, stripVariants: Boolean): String {
+        var normalized = Normalizer.normalize(text, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
             .replace(FEAT_PATTERN, "")
-            .replace(FT_PATTERN, "")
-            .replace(BRACKET_PATTERN, "")
-            .replace(REMASTER_PATTERN, "")
-            .replace(REMIX_PATTERN, "")
-            .replace(NON_ALNUM_PATTERN, "")
+        val normalizedWithVariants = normalized
+            .replace(NON_ALNUM_PATTERN, " ")
             .replace(MULTI_SPACE_PATTERN, " ")
             .trim()
+        if (stripVariants) {
+            (strictVariantPatterns.values + softVariantPatterns.values + neutralEditorialPatterns)
+                .forEach { pattern -> normalized = normalized.replace(pattern, " ") }
+        }
+        val result = normalized
+            .replace(NON_ALNUM_PATTERN, " ")
+            .replace(MULTI_SPACE_PATTERN, " ")
+            .trim()
+        return result.ifBlank { normalizedWithVariants }
+    }
+
+    private fun variants(text: String, patterns: Map<String, Regex>): Set<String> {
+        val searchable = Normalizer.normalize(text, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
+            .replace(NON_ALNUM_PATTERN, " ")
+            .replace(MULTI_SPACE_PATTERN, " ")
+        return patterns.mapNotNullTo(linkedSetOf()) { (name, pattern) ->
+            name.takeIf { pattern.containsMatchIn(searchable) }
+        }
     }
 
     /**
@@ -230,5 +333,23 @@ object SpotifyMapper {
         if (bigramsA.isEmpty() || bigramsB.isEmpty()) return 0.0
         val intersection = bigramsA.count { it in bigramsB }
         return (2.0 * intersection) / (bigramsA.size + bigramsB.size)
+    }
+
+    private fun artistSimilarity(
+        a: String,
+        bigramsA: Set<String>,
+        b: String,
+        bigramsB: Set<String>,
+    ): Double {
+        val dice = bigramSimilarity(a, bigramsA, b, bigramsB)
+        val tokensA = a.split(' ')
+            .filter { it.isNotBlank() && it !in genericArtistTokens }
+            .toSet()
+        val tokensB = b.split(' ')
+            .filter { it.isNotBlank() && it !in genericArtistTokens }
+            .toSet()
+        if (tokensA.isEmpty() || tokensB.isEmpty()) return dice
+        val coverage = tokensA.intersect(tokensB).size.toDouble() / minOf(tokensA.size, tokensB.size)
+        return maxOf(dice, coverage)
     }
 }

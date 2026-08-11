@@ -33,4 +33,10 @@ class SaavnMatcherTest {
     fun noMarkerCandidateReturnsExactlyZero() {
         assertEquals(0, SaavnMatcher.variantPenalty("Song", "Song"))
     }
+
+    @Test
+    fun missingRequestedVariantIsAlsoPenalized() {
+        assertTrue(SaavnMatcher.variantPenalty("Song (Live)", "Song") < 0)
+        assertTrue(SaavnMatcher.variantPenalty("Song (Remix)", "Song") < 0)
+    }
 }

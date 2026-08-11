@@ -45,6 +45,7 @@ import com.jagr.fridamusic.utils.clearWebAuthSession
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -56,6 +57,8 @@ class SpotifyImportRepository @Inject constructor(
     private val database: MusicDatabase,
 ) {
     private val mapperMutex = Mutex()
+    private val trackMatchCache = ConcurrentHashMap<String, MediaMetadata>()
+    private val trackMatchMutexes = ConcurrentHashMap<String, Mutex>()
 
     suspend fun restoreSession(): SpotifyImportSession =
         withContext(Dispatchers.IO) {
@@ -470,6 +473,22 @@ class SpotifyImportRepository @Inject constructor(
         track: SpotifyTrack,
         index: Int,
     ): MatchedTrack? {
+        val stableTrackId = track.id.takeIf(String::isNotBlank)
+            ?: track.uri?.takeIf(String::isNotBlank)
+        if (stableTrackId == null) {
+            return resolveTrackMetadata(track)?.let { MatchedTrack(index = index, metadata = it) }
+        }
+
+        val metadata = trackMatchMutexes
+            .computeIfAbsent(stableTrackId) { Mutex() }
+            .withLock {
+                trackMatchCache[stableTrackId]
+                    ?: resolveTrackMetadata(track)?.also { trackMatchCache[stableTrackId] = it }
+            }
+        return metadata?.let { MatchedTrack(index = index, metadata = it) }
+    }
+
+    private suspend fun resolveTrackMetadata(track: SpotifyTrack): MediaMetadata? {
         val searchResult = YouTube.search(
             query = SpotifyMapper.buildSearchQuery(track),
             filter = YouTube.SearchFilter.FILTER_SONG,
@@ -484,19 +503,42 @@ class SpotifyImportRepository @Inject constructor(
             .distinctBy { it.id }
 
         val best = mapperMutex.withLock {
-            candidates.maxByOrNull { candidate ->
-                SpotifyMapper.matchScore(
-                    spotifyTitle = track.name,
-                    spotifyArtist = track.artists.joinToString(" ") { it.name },
-                    spotifyDurationMs = track.durationMs,
+            val precomputed = SpotifyMapper.precompute(
+                title = track.name,
+                artist = track.artists.joinToString(" ") { it.name },
+                durationMs = track.durationMs,
+            )
+            candidates.map { candidate ->
+                candidate to SpotifyMapper.evaluatePrecomputed(
+                    precomputed = precomputed,
                     candidateTitle = candidate.title,
                     candidateArtist = candidate.artists.joinToString(" ") { it.name },
                     candidateDurationSec = candidate.duration,
                 )
-            }
+            }.filter { (_, evaluation) -> evaluation.isAcceptable }
+                .maxByOrNull { (_, evaluation) -> evaluation.score }
+                ?.first
         } ?: return null
 
-        return MatchedTrack(index = index, metadata = best.toMediaMetadata())
+        val youtubeMetadata = best.toMediaMetadata()
+        val spotifyArtists = track.artists
+            .filter { it.name.isNotBlank() }
+            .map { MediaMetadata.Artist(id = null, name = it.name) }
+            .ifEmpty { youtubeMetadata.artists }
+        val spotifyThumbnail = SpotifyMapper.getTrackThumbnail(track)
+            ?.takeIf(String::isNotBlank)
+        val spotifyAlbumTitle = track.album?.name?.takeIf(String::isNotBlank)
+        val linkedMetadata = youtubeMetadata.copy(
+            title = track.name,
+            artists = spotifyArtists,
+            duration = track.durationMs.takeIf { it > 0 }?.div(1000) ?: youtubeMetadata.duration,
+            thumbnailUrl = spotifyThumbnail ?: youtubeMetadata.thumbnailUrl,
+            album = youtubeMetadata.album?.let { album ->
+                album.copy(title = spotifyAlbumTitle ?: album.title)
+            },
+            explicit = track.explicit,
+        )
+        return linkedMetadata
     }
 
     private suspend fun mirrorPlaylist(
@@ -529,7 +571,25 @@ class SpotifyImportRepository @Inject constructor(
             }
 
             tracks.forEach { metadata ->
-                insert(metadata)
+                val existingSong = getSongByIdBlocking(metadata.id)
+                if (existingSong == null) {
+                    insert(metadata)
+                } else {
+                    val existingAlbum = existingSong.song.albumId?.let { albumId ->
+                        existingSong.song.albumName?.let { albumTitle ->
+                            MediaMetadata.Album(id = albumId, title = albumTitle)
+                        }
+                    }
+                    update(
+                        existingSong,
+                        metadata.copy(
+                            thumbnailUrl = metadata.thumbnailUrl ?: existingSong.song.thumbnailUrl,
+                            album = metadata.album ?: existingAlbum,
+                            libraryAddToken = existingSong.song.libraryAddToken,
+                            libraryRemoveToken = existingSong.song.libraryRemoveToken,
+                        ),
+                    )
+                }
             }
 
             clearPlaylist(source.localPlaylistId)

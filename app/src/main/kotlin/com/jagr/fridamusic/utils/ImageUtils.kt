@@ -7,7 +7,15 @@ fun String.resize(
     if (width == null && height == null) return this
 
     if (this.contains("i.ytimg.com")) {
-        val targetQuality = if (width != null && width >= 1200) "maxresdefault.jpg" else "hqdefault.jpg"
+        // maxresdefault is optional on YouTube. Promoting a known-good hq/default URL
+        // to maxres can turn working list artwork into a 404 in the player.
+        val targetQuality = if (
+            this.contains("maxresdefault.jpg") && (width ?: 0) >= 1200
+        ) {
+            "maxresdefault.jpg"
+        } else {
+            "hqdefault.jpg"
+        }
         return this.replace(
             Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
             targetQuality

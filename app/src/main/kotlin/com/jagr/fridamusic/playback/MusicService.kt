@@ -75,6 +75,7 @@ import com.jagr.fridamusic.MainActivity
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.AudioNormalizationKey
 import com.jagr.fridamusic.constants.AudioOffload
+import com.jagr.fridamusic.constants.AudioQuality
 import com.jagr.fridamusic.constants.AudioQualityKey
 import com.jagr.fridamusic.constants.AutoDownloadOnLikeKey
 import com.jagr.fridamusic.constants.AutoLoadMoreKey
@@ -194,12 +195,15 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
@@ -376,7 +380,8 @@ class MusicService :
     private var silenceSkipJob: Job? = null
 
 
-    private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    private val songUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    private val streamResolutionMutexes = ConcurrentHashMap<String, Mutex>()
 
 
     private val bypassCacheForQualityChange = mutableSetOf<String>()
@@ -2668,6 +2673,49 @@ class MusicService :
         }
     }
 
+    private data class SharedPlaybackResolution(
+        val playbackData: YTPlayerUtils.PlaybackData?,
+        val streamUrl: String,
+    )
+
+    private suspend fun resolvePlaybackShared(
+        mediaId: String,
+        quality: AudioQuality,
+        knownArtist: String?,
+        knownTitle: String?,
+        knownDurationMs: Long?,
+    ): Result<SharedPlaybackResolution> = runCatching {
+        val cacheKey = "${mediaId}_${quality.name}"
+        val mutex = streamResolutionMutexes.computeIfAbsent(cacheKey) { Mutex() }
+        mutex.withLock {
+            songUrlCache[cacheKey]
+                ?.takeIf { (_, expiresAt) -> expiresAt > System.currentTimeMillis() }
+                ?.let { (url, _) ->
+                    return@withLock SharedPlaybackResolution(
+                        playbackData = null,
+                        streamUrl = url,
+                    )
+                }
+            songUrlCache.remove(cacheKey)
+
+            val playbackData = YTPlayerUtils.playerResponseForPlayback(
+                videoId = mediaId,
+                audioQuality = quality,
+                connectivityManager = connectivityManager,
+                context = this@MusicService,
+                knownArtist = knownArtist,
+                knownTitle = knownTitle,
+                knownDurationMs = knownDurationMs,
+            ).getOrThrow()
+            songUrlCache[cacheKey] = playbackData.streamUrl to
+                (System.currentTimeMillis() + playbackData.streamExpiresInSeconds * 1000L)
+            SharedPlaybackResolution(
+                playbackData = playbackData,
+                streamUrl = playbackData.streamUrl,
+            )
+        }
+    }
+
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(
             DefaultDataSource.Factory(this, createCacheDataSource())
@@ -2766,20 +2814,18 @@ class MusicService :
             }
 
             Timber.tag("MusicService").i("FETCHING STREAM: $mediaId | quality=$lockedQuality")
-            val playbackData = runBlocking(Dispatchers.IO) {
+            val sharedResolution = runBlocking(Dispatchers.IO) {
                 val dbSong = database.song(mediaId).firstOrNull()
                 val knownArtist = dbSong?.artists?.joinToString { it.name }?.replace(" - Topic", "")
                 val knownTitle = dbSong?.song?.title
                 val knownDuration = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
 
-                YTPlayerUtils.playerResponseForPlayback(
-                    mediaId,
-                    audioQuality = lockedQuality,
-                    connectivityManager = connectivityManager,
-                    context = this@MusicService,
+                resolvePlaybackShared(
+                    mediaId = mediaId,
+                    quality = lockedQuality,
                     knownArtist = knownArtist,
                     knownTitle = knownTitle,
-                    knownDurationMs = knownDuration
+                    knownDurationMs = knownDuration,
                 )
             }.getOrElse { throwable ->
                 when (throwable) {
@@ -2809,8 +2855,10 @@ class MusicService :
                 }
             }
 
-            val nonNullPlayback = requireNotNull(playbackData) {
-                getString(R.string.error_unknown)
+            val nonNullPlayback = sharedResolution.playbackData
+            if (nonNullPlayback == null) {
+                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                return@Factory dataSpec.withUri(sharedResolution.streamUrl.toUri())
             }
             run {
                 val format = nonNullPlayback.format
@@ -3389,46 +3437,47 @@ class MusicService :
     private var preloadJob: kotlinx.coroutines.Job? = null
 
     private fun preloadUpcomingItems() {
-        val preloadEnabled = kotlinx.coroutines.runBlocking { dataStore.get(com.jagr.fridamusic.constants.PreloadNextSongEnabledKey, true) }
-        if (!preloadEnabled) return
-
-        val preloadLimit = kotlinx.coroutines.runBlocking { dataStore.get(com.jagr.fridamusic.constants.PreloadNextSongLimitKey, 1) }
-        val preloadLyrics = kotlinx.coroutines.runBlocking { dataStore.get(com.jagr.fridamusic.constants.PreloadLyricsEnabledKey, true) }
-
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex == androidx.media3.common.C.INDEX_UNSET) return
-
-        val limit = kotlin.math.min(preloadLimit, player.mediaItemCount - currentIndex - 1)
-        if (limit <= 0) return
-
-        val upcomingMediaIds = mutableListOf<String>()
-        for (i in 1..limit) {
-            upcomingMediaIds.add(player.getMediaItemAt(currentIndex + i).mediaId)
-        }
-
         preloadJob?.cancel()
         preloadJob = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val preloadEnabled = dataStore.get(com.jagr.fridamusic.constants.PreloadNextSongEnabledKey, true)
+            if (!preloadEnabled) return@launch
+
+            val preloadLimit = dataStore.get(com.jagr.fridamusic.constants.PreloadNextSongLimitKey, 1)
+            val preloadLyrics = dataStore.get(com.jagr.fridamusic.constants.PreloadLyricsEnabledKey, true)
+            val preloadQuality = audioQuality
+            val upcomingMediaIds = withContext(Dispatchers.Main) {
+                val currentIndex = player.currentMediaItemIndex
+                if (currentIndex == androidx.media3.common.C.INDEX_UNSET) {
+                    return@withContext emptyList()
+                }
+                val limit = kotlin.math.min(preloadLimit, player.mediaItemCount - currentIndex - 1)
+                if (limit <= 0) {
+                    return@withContext emptyList()
+                }
+                (1..limit).map { offset ->
+                    player.getMediaItemAt(currentIndex + offset).mediaId
+                }
+            }
+
             for (mediaId in upcomingMediaIds) {
 
                 val isFullyDownloaded = downloadCache.getCachedSpans(mediaId).isNotEmpty()
-                if (!mediaId.isLocalMediaId() && !songUrlCache.containsKey("${mediaId}_${audioQuality.name}") && !isFullyDownloaded) {
+                val cacheKey = "${mediaId}_${preloadQuality.name}"
+                val hasValidCachedUrl = songUrlCache[cacheKey]
+                    ?.let { (_, expiresAt) -> expiresAt > System.currentTimeMillis() } == true
+                if (!mediaId.isLocalMediaId() && !hasValidCachedUrl && !isFullyDownloaded) {
                     Timber.tag(TAG).d("Preloading stream for $mediaId")
                     kotlin.runCatching {
                         val dbSong = database.song(mediaId).firstOrNull()
                         val knownArtist = dbSong?.artists?.joinToString(separator = ", ") { artist -> artist.name }?.replace(" - Topic", "")
 
-                        val playbackData = com.jagr.fridamusic.utils.YTPlayerUtils.playerResponseForPlayback(
-                            videoId = mediaId,
-                            audioQuality = audioQuality,
-                            connectivityManager = connectivityManager,
-                            context = this@MusicService,
+                        resolvePlaybackShared(
+                            mediaId = mediaId,
+                            quality = preloadQuality,
                             knownArtist = knownArtist,
                             knownTitle = dbSong?.song?.title,
-                            knownDurationMs = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null }
-                        )
-
-                        playbackData.getOrNull()?.streamUrl?.let { streamUrl ->
-                            songUrlCache["${mediaId}_${audioQuality.name}"] = Pair(streamUrl, System.currentTimeMillis() + 1000 * 60 * 60)
+                            knownDurationMs = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null },
+                        ).onSuccess {
                             Timber.tag(TAG).d("Preloaded stream for $mediaId")
                         }
                     }

@@ -23,21 +23,30 @@ interface Queue {
     ) {
         fun filterExplicit(enabled: Boolean = true) =
             if (enabled) {
-                copy(
-                    items = items.filterExplicit(),
-                )
+                filterItems { it.metadata?.explicit != true }
             } else {
                 this
             }
 
         fun filterVideoSongs(disableVideos: Boolean = false) =
             if (disableVideos) {
-                copy(
-                    items = items.filterVideoSongs(true),
-                )
+                filterItems { it.metadata?.isVideoSong != true }
             } else {
                 this
             }
+
+        private fun filterItems(predicate: (MediaItem) -> Boolean): Status {
+            val selectedMediaId = items.getOrNull(mediaItemIndex)?.mediaId
+            val filteredItems = items.filter(predicate)
+            val filteredIndex = selectedMediaId
+                ?.let { id -> filteredItems.indexOfFirst { it.mediaId == id } }
+                ?.takeIf { it >= 0 }
+                ?: 0
+            return copy(
+                items = filteredItems,
+                mediaItemIndex = filteredIndex.coerceAtMost((filteredItems.size - 1).coerceAtLeast(0)),
+            )
+        }
     }
 }
 

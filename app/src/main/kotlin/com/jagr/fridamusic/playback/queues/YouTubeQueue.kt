@@ -29,10 +29,27 @@ class YouTubeQueue(
                     endpoint = nextResult.endpoint
                     continuation = nextResult.continuation
                     retryCount = 0
+                    val resolvedItems = nextResult.items.map { it.toMediaItem() }
+                    val preloadMediaItem = preloadItem?.toMediaItem()
+                    val selectedIndex = preloadMediaItem?.let { selected ->
+                        resolvedItems.indexOfFirst { it.mediaId == selected.mediaId }
+                    } ?: -1
+                    val queueItems = when {
+                        preloadMediaItem == null -> resolvedItems
+                        selectedIndex >= 0 -> resolvedItems.toMutableList().apply {
+                            // Keep the exact metadata/artwork from the item the user selected.
+                            this[selectedIndex] = preloadMediaItem
+                        }
+                        else -> listOf(preloadMediaItem) + resolvedItems
+                    }
                     return@withContext Queue.Status(
                         title = nextResult.title,
-                        items = nextResult.items.map { it.toMediaItem() },
-                        mediaItemIndex = nextResult.currentIndex ?: 0,
+                        items = queueItems,
+                        mediaItemIndex = when {
+                            preloadMediaItem == null -> nextResult.currentIndex ?: 0
+                            selectedIndex >= 0 -> selectedIndex
+                            else -> 0
+                        },
                     )
                 } catch (e: Exception) {
                     lastException = e
