@@ -149,6 +149,9 @@ val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
 val PauseListenHistoryKey = booleanPreferencesKey("pauseListenHistory")
 val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
+val MusicRecommendationNotificationsKey = booleanPreferencesKey("musicRecommendationNotifications")
+val LastRecommendationNotificationAtKey = longPreferencesKey("lastRecommendationNotificationAt")
+val LastRecommendationNotificationAlbumIdKey = stringPreferencesKey("lastRecommendationNotificationAlbumId")
 
 
 

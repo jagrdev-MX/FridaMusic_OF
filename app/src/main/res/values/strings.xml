@@ -1606,6 +1606,12 @@
     <string name="login_failed_retry">Could not obtain session. Try again.</string>
     <string name="calendar">Calendar</string>
     <string name="notifications">Notifications</string>
+    <string name="music_recommendation_notifications">Music recommendations</string>
+    <string name="music_recommendation_notifications_desc">A weekly album suggestion from your existing listening history.</string>
+    <string name="recommendation_channel_name">Music recommendations</string>
+    <string name="recommendation_channel_desc">Occasional suggestions based on music already in your listening history.</string>
+    <string name="recommendation_notification_title">Listen again</string>
+    <string name="recommendation_notification_content">%1$s · %2$s</string>
     <string name="error_verifying_account">Error verifying account: %s</string>
     <string name="stat_total_play_time">Total listening time</string>
     <string name="stat_all_time">All time: %s</string>

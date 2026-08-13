@@ -26,6 +26,8 @@ import com.jagr.fridamusic.constants.*
 import com.jagr.fridamusic.di.ApplicationScope
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.extensions.toInetSocketAddress
+import com.jagr.fridamusic.notifications.RecommendationNotificationManager
+import com.jagr.fridamusic.notifications.RecommendationNotificationScheduler
 import com.jagr.fridamusic.utils.CrashHandler
 import com.jagr.fridamusic.utils.cipher.CipherDeobfuscator
 import com.jagr.fridamusic.utils.dataStore
@@ -62,6 +64,11 @@ class App : Application(), SingletonImageLoader.Factory {
         timber.log.Timber.d("Device ID: ${com.music.jiosaavn.DeviceRouter.getDeviceId()} | Assigned JioSaavn Server: ${com.music.jiosaavn.DeviceRouter.getCurrentServer()}")
         
         CrashHandler.install(this)
+
+        RecommendationNotificationManager.createChannel(this)
+        applicationScope.launch(Dispatchers.IO) {
+            RecommendationNotificationScheduler(this@App).observeAndSchedule()
+        }
 
         
         CipherDeobfuscator.initialize(this)

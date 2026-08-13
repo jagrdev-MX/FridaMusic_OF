@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Monitor
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Podcasts
@@ -706,6 +707,17 @@ private fun CacheSection() {
 private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
     onNavigateToSpotifyImport: () -> Unit = {},
 ) {
+    item {
+        SettingGroup(stringResource(R.string.notifications)) {
+            PrefSwitch(
+                Icons.Rounded.Notifications,
+                stringResource(R.string.music_recommendation_notifications),
+                stringResource(R.string.music_recommendation_notifications_desc),
+                MusicRecommendationNotificationsKey,
+                false,
+            )
+        }
+    }
     item {
         SettingGroup(stringResource(R.string.group_lastfm)) { LastFmSection() }
     }

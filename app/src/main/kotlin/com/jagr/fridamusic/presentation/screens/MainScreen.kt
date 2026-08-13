@@ -27,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
@@ -38,6 +39,7 @@ import com.jagr.fridamusic.presentation.components.ModernBottomNav
 import com.jagr.fridamusic.presentation.playCachedSong
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
+import com.jagr.fridamusic.notifications.RecommendationNotificationManager
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
@@ -229,6 +231,11 @@ fun MainScreen(
             composable(
                 route = "album/{albumId}",
                 arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = RecommendationNotificationManager.ALBUM_DEEP_LINK_PATTERN
+                    },
+                ),
             ) {
                 AlbumScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },

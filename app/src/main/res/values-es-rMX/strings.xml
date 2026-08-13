@@ -1614,6 +1614,12 @@
     <string name="login_failed_retry">No se pudo obtener la sesión. Intentá de nuevo.</string>
     <string name="calendar">Calendario</string>
     <string name="notifications">Notificaciones</string>
+    <string name="music_recommendation_notifications">Recomendaciones musicales</string>
+    <string name="music_recommendation_notifications_desc">Una sugerencia semanal de un álbum de tu historial de escucha existente.</string>
+    <string name="recommendation_channel_name">Recomendaciones musicales</string>
+    <string name="recommendation_channel_desc">Sugerencias ocasionales basadas en música que ya está en tu historial de escucha.</string>
+    <string name="recommendation_notification_title">Escúchalo de nuevo</string>
+    <string name="recommendation_notification_content">%1$s · %2$s</string>
     <string name="error_verifying_account">Error al verificar la cuenta: %s</string>
     <string name="stat_total_play_time">Tiempo total de escucha</string>
     <string name="stat_all_time">Total: %s</string>
