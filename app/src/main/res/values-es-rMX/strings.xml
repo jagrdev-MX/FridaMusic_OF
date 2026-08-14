@@ -1615,9 +1615,29 @@
     <string name="calendar">Calendario</string>
     <string name="notifications">Notificaciones</string>
     <string name="music_recommendation_notifications">Recomendaciones musicales</string>
-    <string name="music_recommendation_notifications_desc">Una sugerencia semanal de un álbum de tu historial de escucha existente.</string>
+    <string name="music_recommendation_notifications_desc">Hasta una sugerencia útil al día usando música que Frida ya conoce.</string>
+    <string name="new_release_notifications">Nuevos lanzamientos</string>
+    <string name="new_release_notifications_desc">Avisa cuando ya existe un lanzamiento nuevo fiable en los datos locales.</string>
+    <string name="frida_reminder_notifications">Recordatorios de Frida</string>
+    <string name="frida_reminder_notifications_desc">Recordatorios amigables y ocasionales cuando no hay una sugerencia musical mejor.</string>
+    <string name="internal_notification_test_title">Forzar notificación ahora</string>
+    <string name="internal_notification_test_type">Tipo de notificación a probar</string>
+    <string name="internal_notification_test_desc">Cada toque avanza a otro candidato local válido de ese tipo. Si ninguno cumple, no se inventa contenido.</string>
+    <string name="internal_notification_test_queued">Prueba de notificación %1$s programada</string>
+    <string name="internal_notification_test_unavailable">Disponible únicamente en universalGmsDebug</string>
+    <string-array name="internal_notification_test_type_labels">
+        <item>Nuevo lanzamiento</item>
+        <item>Canción recomendada</item>
+        <item>Daily Discover</item>
+        <item>Favorito olvidado</item>
+        <item>Seguir escuchando</item>
+        <item>Álbum</item>
+        <item>Artista</item>
+        <item>Playlist</item>
+        <item>Retención</item>
+    </string-array>
     <string name="recommendation_channel_name">Recomendaciones musicales</string>
-    <string name="recommendation_channel_desc">Sugerencias ocasionales basadas en música que ya está en tu historial de escucha.</string>
+    <string name="recommendation_channel_desc">Sugerencias contextuales basadas en música que FridaMusic ya conoce.</string>
     <string name="recommendation_notification_title">Escúchalo de nuevo</string>
     <string name="recommendation_notification_content">%1$s · %2$s</string>
     <string name="error_verifying_account">Error al verificar la cuenta: %s</string>
@@ -1700,4 +1720,124 @@
     <string name="playlist_selected_count">%1$d seleccionadas</string>
     <string name="playlist_external">Playlist externa</string>
     <string name="playlist_import">Importar lista</string>
+    <string-array name="notification_recommendation_titles">
+        <item>🎧 Frida encontró música para ti</item>
+        <item>✨ Algo que suena mucho a ti</item>
+        <item>🎶 Una recomendación de Frida</item>
+        <item>👀 Frida estuvo buscando...</item>
+    </string-array>
+    <string-array name="notification_recommendation_bodies">
+        <item>%1$s de %2$s tiene bastante pinta de gustarte.</item>
+        <item>Dale una vuelta a %1$s de %2$s cuando quieras.</item>
+        <item>%1$s podría quedar muy bien en tu próximo momento musical.</item>
+        <item>Frida guardó %1$s de %2$s para ti.</item>
+    </string-array>
+    <string-array name="notification_artist_titles">
+        <item>🎤 Frida encontró un artista para ti</item>
+        <item>🎧 Una voz diferente para tu día</item>
+        <item>✨ Conoce a %1$s</item>
+        <item>🎶 Un artista fuera de tu rotación habitual</item>
+    </string-array>
+    <string-array name="notification_artist_bodies">
+        <item>%1$s apareció cerca de música que disfrutas, pero aún no ha sonado aquí.</item>
+        <item>Prueba %1$s cuando quieras salir de lo conocido.</item>
+        <item>Frida conectó tus gustos con %1$s.</item>
+        <item>%1$s podría agregar algo nuevo a tu rotación.</item>
+    </string-array>
+    <string-array name="notification_album_titles">
+        <item>💿 Un álbum que todavía no escuchas</item>
+        <item>🎧 Frida encontró %1$s</item>
+        <item>✨ Un álbum diferente para tu biblioteca</item>
+        <item>🎶 Algo fuera de tu rotación habitual</item>
+    </string-array>
+    <string-array name="notification_album_bodies">
+        <item>%1$s conecta con tus gustos y todavía no ha sonado aquí.</item>
+        <item>Dale una primera vuelta a %1$s de %2$s.</item>
+        <item>Frida guardó %1$s como una dirección nueva para explorar.</item>
+        <item>%1$s podría sorprender tu próxima sesión musical.</item>
+    </string-array>
+    <string-array name="notification_playlist_titles">
+        <item>🎶 Una playlist que todavía no abres</item>
+        <item>🎧 Una mezcla diferente para tu día</item>
+        <item>✨ Frida encontró una playlist nueva</item>
+        <item>👀 Esta mezcla apareció fuera de tu biblioteca</item>
+    </string-array>
+    <string-array name="notification_playlist_bodies">
+        <item>%1$s viene de resultados de descubrimiento, no de tus playlists guardadas.</item>
+        <item>Abre %1$s cuando quieras una mezcla menos familiar.</item>
+        <item>Frida guardó %1$s como un camino nuevo para explorar.</item>
+        <item>%1$s podría cambiar el ritmo de tu rotación habitual.</item>
+    </string-array>
+    <string-array name="notification_forgotten_titles">
+        <item>👀 ¿Te acuerdas de esta?</item>
+        <item>🎧 Un viejo favorito pasó a saludar</item>
+        <item>✨ Frida encontró una canción de tu historial</item>
+        <item>🎶 Una de esas que escuchabas mucho</item>
+    </string-array>
+    <string-array name="notification_forgotten_bodies">
+        <item>Hace tiempo que no escuchas %1$s de %2$s.</item>
+        <item>%1$s sigue aquí para cuando quieras volver.</item>
+        <item>Tu historial nos recordó %1$s de %2$s.</item>
+        <item>Tal vez hoy sea un buen día para %1$s.</item>
+    </string-array>
+    <string-array name="notification_keep_listening_titles">
+        <item>▶️ ¿Seguimos donde quedamos?</item>
+        <item>🎧 Tu música sigue aquí</item>
+        <item>🎶 ¿Lista otra canción?</item>
+        <item>✨ Frida guardó tu lugar</item>
+    </string-array>
+    <string-array name="notification_keep_listening_bodies">
+        <item>%1$s de %2$s puede retomar el hilo.</item>
+        <item>Tu música reciente está lista cuando tú lo estés.</item>
+        <item>Continúa con %1$s cuando se sienta bien.</item>
+        <item>Frida se acordó de dónde se quedó la música.</item>
+    </string-array>
+    <string-array name="notification_retention_titles">
+        <item>💛 Nos encanta tenerte por aquí</item>
+        <item>🎧 Tus audífonos preguntaron por ti</item>
+        <item>👀 Frida estuvo buscando...</item>
+        <item>🎶 Música para cuando quieras volver</item>
+    </string-array>
+    <string-array name="notification_retention_bodies">
+        <item>Frida guardó música basada en lo que has disfrutado últimamente.</item>
+        <item>Nosotros solo transmitimos el mensaje.</item>
+        <item>Hay música esperando, sin ninguna prisa.</item>
+        <item>%1$s y más están listos cuando quieras escuchar.</item>
+    </string-array>
+    <string-array name="notification_release_titles">
+        <item>🔥 Hay algo nuevo de %2$s</item>
+        <item>🎵 Acaba de llegar música nueva</item>
+        <item>✨ Frida encontró un lanzamiento</item>
+        <item>🎧 Música fresca de %2$s</item>
+    </string-array>
+    <string-array name="notification_release_bodies">
+        <item>%1$s ya está listo para escuchar.</item>
+        <item>%2$s tiene algo nuevo: %1$s.</item>
+        <item>Frida encontró %1$s entre tus recomendaciones locales.</item>
+        <item>%1$s podría ser tu próxima escucha.</item>
+    </string-array>
+    <string-array name="notification_discover_titles">
+        <item>✨ Frida encontró algo nuevo</item>
+        <item>🎧 Tu descubrimiento de hoy</item>
+        <item>🎶 Una elección fresca para ti</item>
+        <item>👀 Esta canción llamó la atención de Frida</item>
+    </string-array>
+    <string-array name="notification_discover_bodies">
+        <item>%1$s de %2$s podría ser un gran descubrimiento.</item>
+        <item>Prueba %1$s cuando quieras algo diferente.</item>
+        <item>Frida guardó %1$s para un momento musical curioso.</item>
+        <item>%1$s tiene buenas posibilidades de encajar con tus gustos.</item>
+    </string-array>
+    <string-array name="notification_time_titles">
+        <item>☀️ Música para empezar el día</item>
+        <item>🎧 Algo para acompañar la tarde</item>
+        <item>🌙 Música para tu noche</item>
+        <item>✨ Una idea musical para más tarde</item>
+    </string-array>
+    <string-array name="notification_time_bodies">
+        <item>%1$s podría quedar muy bien esta mañana.</item>
+        <item>Frida tiene %1$s listo para la tarde.</item>
+        <item>%1$s podría sonar justo como necesitas esta noche.</item>
+        <item>%1$s está aquí por si quieres una canción más.</item>
+    </string-array>
 </resources>

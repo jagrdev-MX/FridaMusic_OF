@@ -152,6 +152,14 @@ val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 val MusicRecommendationNotificationsKey = booleanPreferencesKey("musicRecommendationNotifications")
 val LastRecommendationNotificationAtKey = longPreferencesKey("lastRecommendationNotificationAt")
 val LastRecommendationNotificationAlbumIdKey = stringPreferencesKey("lastRecommendationNotificationAlbumId")
+val NewReleaseNotificationsKey = booleanPreferencesKey("newReleaseNotifications")
+val FridaReminderNotificationsKey = booleanPreferencesKey("fridaReminderNotifications")
+val LastAppOpenAtKey = longPreferencesKey("lastAppOpenAt")
+val RecentNotificationContentHistoryKey = stringPreferencesKey("recentNotificationContentHistory")
+val RecentNotificationTemplateIdsKey = stringPreferencesKey("recentNotificationTemplateIds")
+val NotificationCategoryLastSentKey = stringPreferencesKey("notificationCategoryLastSent")
+val InternalNotificationTestCursorKey = stringPreferencesKey("internalNotificationTestCursor")
+val InternalNotificationTestContentHistoryKey = stringPreferencesKey("internalNotificationTestContentHistory")
 
 
 

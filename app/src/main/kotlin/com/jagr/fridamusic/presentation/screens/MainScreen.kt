@@ -66,7 +66,14 @@ fun MainScreen(
             startDestination = "home",
             modifier = Modifier.fillMaxSize(),
         ) {
-            composable("home") {
+            composable(
+                route = "home",
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = RecommendationNotificationManager.HOME_DEEP_LINK_PATTERN
+                    },
+                ),
+            ) {
                 HomeScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
                     onItemClick = { item ->
@@ -245,6 +252,11 @@ fun MainScreen(
             composable(
                 route = "artist/{artistId}",
                 arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = RecommendationNotificationManager.ARTIST_DEEP_LINK_PATTERN
+                    },
+                ),
             ) {
                 ArtistScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
@@ -270,6 +282,11 @@ fun MainScreen(
             composable(
                 route = "playlist/{playlistId}",
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = RecommendationNotificationManager.PLAYLIST_DEEP_LINK_PATTERN
+                    },
+                ),
             ) {
                 OnlinePlaylistScreen(
                     onBack = { navController.popBackStack() },
@@ -278,6 +295,11 @@ fun MainScreen(
             composable(
                 route = "local_playlist/{playlistId}",
                 arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = RecommendationNotificationManager.LOCAL_PLAYLIST_DEEP_LINK_PATTERN
+                    },
+                ),
             ) {
                 LocalPlaylistScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },

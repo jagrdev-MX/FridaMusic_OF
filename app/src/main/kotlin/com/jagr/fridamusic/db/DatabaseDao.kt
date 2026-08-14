@@ -16,6 +16,9 @@ import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.YTItem
 import com.music.innertube.pages.AlbumPage
 import com.music.innertube.pages.ArtistPage
 import com.jagr.fridamusic.constants.AlbumSortType
@@ -285,10 +288,182 @@ interface DatabaseDao {
                                ORDER BY totalPlayTime DESC
                                LIMIT 10))
         ORDER BY referredCount DESC
-        LIMIT 100
+        LIMIT :limit
     """,
     )
-    fun quickPicks(now: Long = System.currentTimeMillis()): Flow<List<Song>>
+    fun quickPicks(now: Long = System.currentTimeMillis(), limit: Int = 100): Flow<List<Song>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM (SELECT relatedSongId, COUNT(1) AS referredCount
+              FROM related_song_map
+              GROUP BY relatedSongId) map
+                 JOIN song ON song.id = map.relatedSongId
+        WHERE NOT EXISTS (SELECT 1 FROM event WHERE event.songId = song.id)
+          AND song.totalPlayTime = 0
+          AND song.isLocal = 0
+          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
+          AND map.relatedSongId IN (
+              SELECT relatedSongId
+              FROM related_song_map
+              WHERE songId IN (
+                  SELECT songId FROM event ORDER BY rowId DESC LIMIT 20
+              )
+          )
+        ORDER BY referredCount DESC, song.rowId DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationUnplayedRecommendations(limit: Int = 40): Flow<List<Song>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+        WHERE song.isLocal = 0
+          AND song.totalPlayTime = 0
+          AND NOT EXISTS (SELECT 1 FROM event WHERE event.songId = song.id)
+          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
+        ORDER BY song.rowId DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationUnplayedCachedSongs(limit: Int = 80): Flow<List<Song>>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query(
+        """
+        SELECT album.*
+        FROM album
+        WHERE album.isLocal = 0
+          AND album.year >= :minimumYear
+          AND album.lastUpdateTime >= :cachedAfter
+          AND EXISTS (
+              SELECT 1
+              FROM song_album_map release_song_map
+              JOIN song release_song ON release_song.id = release_song_map.songId
+              WHERE release_song_map.albumId = album.id
+                AND release_song.isLocal = 0
+                AND NOT EXISTS (
+                    SELECT 1 FROM event WHERE event.songId = release_song.id
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM song_album_map listened_song_map
+              JOIN event listened_event ON listened_event.songId = listened_song_map.songId
+              WHERE listened_song_map.albumId = album.id
+          )
+          AND EXISTS (
+              SELECT 1
+              FROM album_artist_map release_artist
+              JOIN song_artist_map familiar_song ON familiar_song.artistId = release_artist.artistId
+              JOIN event familiar_event ON familiar_event.songId = familiar_song.songId
+              WHERE release_artist.albumId = album.id
+                AND familiar_event.timestamp >= :familiarSince
+          )
+        ORDER BY album.lastUpdateTime DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationNewReleaseAlbums(
+        minimumYear: Int,
+        cachedAfter: LocalDateTime,
+        familiarSince: Long,
+        limit: Int = 10,
+    ): Flow<List<Album>>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query(
+        """
+        SELECT album.*, 0 AS songCountListened, 0 AS timeListened
+        FROM album
+        WHERE album.isLocal = 0
+          AND EXISTS (
+              SELECT 1
+              FROM song_album_map candidate_album_song
+              JOIN related_song_map candidate_relation
+                ON candidate_relation.relatedSongId = candidate_album_song.songId
+              WHERE candidate_album_song.albumId = album.id
+                AND NOT EXISTS (
+                    SELECT 1 FROM event WHERE event.songId = candidate_album_song.songId
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM song_album_map heard_album_song
+              JOIN event heard_album_event ON heard_album_event.songId = heard_album_song.songId
+              WHERE heard_album_song.albumId = album.id
+          )
+        ORDER BY album.lastUpdateTime DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationDiscoveryAlbums(limit: Int = 20): Flow<List<Album>>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query(
+        """
+        SELECT album.*, 0 AS songCountListened, 0 AS timeListened
+        FROM album
+        WHERE album.isLocal = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM song_album_map cached_album_song
+              JOIN event cached_album_event ON cached_album_event.songId = cached_album_song.songId
+              WHERE cached_album_song.albumId = album.id
+          )
+        ORDER BY album.lastUpdateTime DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationUnplayedCachedAlbums(limit: Int = 40): Flow<List<Album>>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query(
+        """
+        SELECT artist.*,
+               COUNT(DISTINCT candidate_artist_song.songId) AS songCount,
+               0 AS timeListened
+        FROM artist
+        JOIN song_artist_map candidate_artist_song ON candidate_artist_song.artistId = artist.id
+        JOIN related_song_map candidate_relation
+          ON candidate_relation.relatedSongId = candidate_artist_song.songId
+        WHERE artist.isLocal = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM song_artist_map heard_artist_song
+              JOIN event heard_artist_event ON heard_artist_event.songId = heard_artist_song.songId
+              WHERE heard_artist_song.artistId = artist.id
+          )
+        GROUP BY artist.id
+        ORDER BY artist.lastUpdateTime DESC, songCount DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationDiscoveryArtists(limit: Int = 20): Flow<List<Artist>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT *,
+               (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount
+        FROM playlist
+        WHERE browseId IS NOT NULL
+          AND bookmarkedAt IS NULL
+          AND isLocal = 0
+        ORDER BY lastUpdateTime DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationDiscoveryPlaylists(limit: Int = 20): Flow<List<Playlist>>
 
     @Transaction
     @Query(
@@ -534,10 +709,79 @@ interface DatabaseDao {
               ORDER BY oldPlayTime) AS t
                  JOIN song on song.id = t.eid
         WHERE 0.2 * t.oldPlayTime > t.newPlayTime
-        LIMIT 100
+        LIMIT :limit
     """
     )
-    fun forgottenFavorites(now: Long = System.currentTimeMillis()): Flow<List<Song>>
+    fun forgottenFavorites(now: Long = System.currentTimeMillis(), limit: Int = 100): Flow<List<Song>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+        WHERE song.isLocal = 0
+          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
+          AND EXISTS (
+              SELECT 1 FROM event old_event
+              WHERE old_event.songId = song.id
+                AND old_event.timestamp < :recentCutoff
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM event recent_event
+              WHERE recent_event.songId = song.id
+                AND recent_event.timestamp >= :recentCutoff
+          )
+          AND (
+              song.liked = 1 OR
+              (SELECT COUNT(1) FROM event WHERE event.songId = song.id) >= 2
+          )
+        ORDER BY (
+            SELECT COALESCE(SUM(playTime), 0) FROM event WHERE event.songId = song.id
+        ) DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationForgottenFavorites(
+        recentCutoff: Long,
+        limit: Int = 20,
+    ): Flow<List<Song>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+        WHERE song.isLocal = 0
+          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
+          AND (song.liked = 1 OR (SELECT COUNT(1) FROM event WHERE event.songId = song.id) >= 2)
+          AND (SELECT MAX(timestamp) FROM event WHERE event.songId = song.id) < :staleBefore
+        ORDER BY (SELECT MAX(timestamp) FROM event WHERE event.songId = song.id) ASC,
+                 (SELECT COALESCE(SUM(playTime), 0) FROM event WHERE event.songId = song.id) DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationLeastRecentFavorites(
+        staleBefore: Long,
+        limit: Int = 20,
+    ): Flow<List<Song>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+        JOIN (
+            SELECT songId, MAX(rowId) AS lastEventRowId
+            FROM event
+            GROUP BY songId
+        ) notification_history ON notification_history.songId = song.id
+        WHERE song.isLocal = 0
+          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
+        ORDER BY notification_history.lastEventRowId DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationRecentlyPlayedSongs(limit: Int = 40): Flow<List<Song>>
 
     @Transaction
     @Query(
@@ -1005,6 +1249,20 @@ interface DatabaseDao {
     fun allRemotePlaylists(): Flow<List<Playlist>>
 
     @Transaction
+    @Query(
+        """
+        SELECT *,
+               (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount
+        FROM playlist
+        WHERE bookmarkedAt IS NOT NULL
+          AND (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) > 0
+        ORDER BY lastUpdateTime DESC
+        LIMIT :limit
+        """,
+    )
+    fun notificationPlaylists(limit: Int = 20): Flow<List<Playlist>>
+
+    @Transaction
     @Query("SELECT COUNT(*) from playlist_song_map WHERE playlistId = :playlistId AND songId = :songId LIMIT 1")
     fun checkInPlaylist(
         playlistId: String,
@@ -1157,6 +1415,10 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId DESC")
     fun events(): Flow<List<EventWithSong>>
+
+    @Transaction
+    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT :limit")
+    fun recentEvents(limit: Int = 20): Flow<List<EventWithSong>>
 
     @Transaction
     @Query("SELECT * FROM event ORDER BY rowId ASC LIMIT 1")
@@ -1330,6 +1592,115 @@ interface DatabaseDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(map: RelatedSongMap)
+
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM related_song_map WHERE songId = :songId AND relatedSongId = :relatedSongId)",
+    )
+    fun hasRelatedSongMap(songId: String, relatedSongId: String): Boolean
+
+    @Transaction
+    fun cacheNotificationCandidates(seedSongId: String?, items: List<YTItem>) {
+        items.forEach { item ->
+            when (item) {
+                is SongItem -> {
+                    val metadata = item.toMediaMetadata()
+                    insert(metadata)
+                    metadata.artists.forEach { artist ->
+                        artist.id?.let { artistId ->
+                            insert(
+                                ArtistEntity(
+                                    id = artistId,
+                                    name = artist.name,
+                                    channelId = artistId,
+                                ),
+                            )
+                        }
+                    }
+                    metadata.album?.let { album ->
+                        insert(
+                            AlbumEntity(
+                                id = album.id,
+                                title = album.title,
+                                thumbnailUrl = metadata.thumbnailUrl,
+                                songCount = 1,
+                                duration = metadata.duration.coerceAtLeast(0),
+                                explicit = metadata.explicit,
+                            ),
+                        )
+                        upsert(SongAlbumMap(metadata.id, album.id, 0))
+                        metadata.artists.forEachIndexed { index, artist ->
+                            artist.id?.let { artistId ->
+                                insert(AlbumArtistMap(album.id, artistId, index))
+                            }
+                        }
+                    }
+                    if (
+                        !seedSongId.isNullOrBlank() &&
+                        getSongByIdBlocking(seedSongId) != null &&
+                        !hasRelatedSongMap(seedSongId, metadata.id)
+                    ) {
+                        insert(RelatedSongMap(songId = seedSongId, relatedSongId = metadata.id))
+                    }
+                }
+                is AlbumItem -> {
+                    insert(
+                        AlbumEntity(
+                            id = item.browseId,
+                            playlistId = item.playlistId,
+                            title = item.title,
+                            year = item.year,
+                            thumbnailUrl = item.thumbnail,
+                            songCount = 0,
+                            duration = 0,
+                            explicit = item.explicit,
+                            description = item.description,
+                        ),
+                    )
+                    item.artists.orEmpty().forEachIndexed { index, artist ->
+                        artist.id?.let { artistId ->
+                            insert(ArtistEntity(id = artistId, name = artist.name, channelId = artistId))
+                            insert(AlbumArtistMap(item.browseId, artistId, index))
+                        }
+                    }
+                }
+                is ArtistItem -> {
+                    val existingArtist = getArtistById(item.id)
+                    if (existingArtist == null) {
+                        insert(
+                            ArtistEntity(
+                                id = item.id,
+                                name = item.title,
+                                thumbnailUrl = item.thumbnail,
+                                channelId = item.channelId,
+                            ),
+                        )
+                    } else if (!item.thumbnail.isNullOrBlank()) {
+                        update(
+                            existingArtist.copy(
+                                name = item.title,
+                                thumbnailUrl = item.thumbnail,
+                                channelId = item.channelId ?: existingArtist.channelId,
+                                lastUpdateTime = LocalDateTime.now(),
+                            ),
+                        )
+                    }
+                }
+                is PlaylistItem -> insert(
+                    PlaylistEntity(
+                        id = item.id,
+                        name = item.title,
+                        browseId = item.id,
+                        isEditable = item.isEditable,
+                        remoteSongCount = item.songCountText
+                            ?.filter(Char::isDigit)
+                            ?.toIntOrNull(),
+                        thumbnailUrl = item.thumbnail,
+                        isLocal = false,
+                    ),
+                )
+            }
+        }
+    }
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(playCountEntity: PlayCountEntity): Long

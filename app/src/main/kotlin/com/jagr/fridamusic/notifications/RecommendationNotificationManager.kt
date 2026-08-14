@@ -15,15 +15,12 @@ import androidx.core.content.ContextCompat
 import com.jagr.fridamusic.MainActivity
 import com.jagr.fridamusic.R
 
-internal data class RecommendationAlbumCandidate(
-    val id: String,
-    val title: String,
-    val artist: String,
-    val artworkUrl: String,
-)
-
 internal object RecommendationNotificationManager {
+    const val HOME_DEEP_LINK_PATTERN = "fridamusic://home"
     const val ALBUM_DEEP_LINK_PATTERN = "fridamusic://album/{albumId}"
+    const val ARTIST_DEEP_LINK_PATTERN = "fridamusic://artist/{artistId}"
+    const val PLAYLIST_DEEP_LINK_PATTERN = "fridamusic://playlist/{playlistId}"
+    const val LOCAL_PLAYLIST_DEEP_LINK_PATTERN = "fridamusic://local-playlist/{playlistId}"
 
     private const val CHANNEL_ID = "music_recommendations"
     private const val NOTIFICATION_ID = 2_101
@@ -42,30 +39,36 @@ internal object RecommendationNotificationManager {
         notificationManager.createNotificationChannel(channel)
     }
 
-    fun show(
-        context: Context,
-        candidate: RecommendationAlbumCandidate,
-        artwork: Bitmap,
-    ): Boolean {
+    fun canPost(context: Context): Boolean {
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
-        ) {
-            return false
-        }
+        ) return false
 
         createChannel(context)
         val notificationManager = NotificationManagerCompat.from(context)
         if (!notificationManager.areNotificationsEnabled()) return false
 
         val systemNotificationManager = context.getSystemService(NotificationManager::class.java)
-        if (systemNotificationManager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) {
-            return false
-        }
+        return systemNotificationManager.getNotificationChannel(CHANNEL_ID)?.importance !=
+            NotificationManager.IMPORTANCE_NONE
+    }
 
-        val deepLink = Uri.parse("fridamusic://album/${Uri.encode(candidate.id)}")
-        val intent = Intent(Intent.ACTION_VIEW, deepLink, context, MainActivity::class.java)
+    fun show(
+        context: Context,
+        candidate: NotificationCandidate,
+        message: GeneratedNotificationMessage,
+        artwork: Bitmap?,
+    ): Boolean {
+        if (!canPost(context)) return false
+
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse(candidate.deepLink),
+            context,
+            MainActivity::class.java,
+        )
         val pendingIntent = PendingIntent.getActivity(
             context,
             candidate.id.hashCode(),
@@ -73,29 +76,34 @@ internal object RecommendationNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val content = if (candidate.artist.isBlank()) {
-            candidate.title
-        } else {
-            context.getString(
-                R.string.recommendation_notification_content,
-                candidate.title,
-                candidate.artist,
-            )
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_name)
-            .setLargeIcon(artwork)
-            .setContentTitle(context.getString(R.string.recommendation_notification_title))
-            .setContentText(content)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentTitle(message.title)
+            .setContentText(message.body)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .build()
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        if (artwork == null) {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(message.body))
+        } else {
+            builder
+                .setLargeIcon(artwork)
+                .setStyle(
+                    NotificationCompat.BigPictureStyle()
+                        .bigPicture(artwork)
+                        .setSummaryText(message.body),
+                )
+        }
+
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return false
+
+        NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())
         return true
     }
 }

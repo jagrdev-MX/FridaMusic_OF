@@ -44,6 +44,10 @@
                 <data
                     android:host="album"
                     android:scheme="fridamusic" />
+                <data android:host="artist" />
+                <data android:host="playlist" />
+                <data android:host="local-playlist" />
+                <data android:host="home" />
             </intent-filter>
         </activity>
 

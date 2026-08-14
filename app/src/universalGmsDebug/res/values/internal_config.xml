@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="internal_notification_test_enabled">true</bool>
+</resources>

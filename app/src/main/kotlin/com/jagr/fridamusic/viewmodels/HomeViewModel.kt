@@ -265,8 +265,12 @@ class HomeViewModel @Inject constructor(
                                 }
                                 .shuffled()
 
-                            
-                            val recommendation = recommendations.firstOrNull { rec ->
+                            val freshCandidates = recommendations
+                                .filter { rec -> rec.id != seed.id }
+                                .take(NOTIFICATION_RECOMMENDATIONS_PER_SEED)
+                            database.cacheNotificationCandidates(seed.id, freshCandidates)
+
+                            val recommendation = freshCandidates.firstOrNull { rec ->
                                 rec.id != seed.id
                             }
 
@@ -304,8 +308,11 @@ class HomeViewModel @Inject constructor(
                     val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id)).getOrNull()?.relatedEndpoint
                     if (endpoint != null) {
                         YouTube.related(endpoint).onSuccess { page ->
-                            
-                            page.songs.take(10).forEach { ytSong ->
+                            val freshCandidates = page.songs
+                                .filter { ytSong -> !hideVideoSongs || !ytSong.isVideoSong }
+                                .take(NOTIFICATION_RECOMMENDATIONS_PER_SEED)
+                            database.cacheNotificationCandidates(recentSong.id, freshCandidates)
+                            freshCandidates.take(10).forEach { ytSong ->
                                 database.song(ytSong.id).first()?.let { localSong ->
                                     if (!hideVideoSongs || !localSong.song.isVideo) {
                                         ytSimilarSongs.add(localSong)
@@ -481,6 +488,10 @@ class HomeViewModel @Inject constructor(
                         YouTube.artist(artist.id).onSuccess { page ->
                             page.sections.takeLast(3).forEach { section -> items += section.items }
                         }
+                        database.cacheNotificationCandidates(
+                            seedSongId = null,
+                            items = items.take(NOTIFICATION_ITEMS_PER_REMOTE_SOURCE),
+                        )
                         SimilarRecommendation(
                             title = artist,
                             items = items
@@ -502,13 +513,19 @@ class HomeViewModel @Inject constructor(
                         val endpoint = YouTube.next(WatchEndpoint(videoId = song.id)).getOrNull()?.relatedEndpoint
                             ?: return@async null
                         val page = YouTube.related(endpoint).getOrNull() ?: return@async null
+                        val relatedItems = (
+                            page.songs.shuffled().take(16) +
+                                page.albums.shuffled().take(6) +
+                                page.artists.shuffled().take(6) +
+                                page.playlists.shuffled().take(6)
+                            ).distinctBy { item -> item.id }
+                        database.cacheNotificationCandidates(
+                            seedSongId = song.id,
+                            items = relatedItems.take(NOTIFICATION_ITEMS_PER_REMOTE_SOURCE),
+                        )
                         SimilarRecommendation(
                             title = song,
-                            items = (page.songs.shuffled().take(10) +
-                                    page.albums.shuffled().take(5) +
-                                    page.artists.shuffled().take(3) +
-                                    page.playlists.shuffled().take(3))
-                                .distinctBy { it.id }
+                            items = relatedItems
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
                                 .shuffled()
@@ -531,6 +548,10 @@ class HomeViewModel @Inject constructor(
                                 page.sections.lastOrNull()?.items?.let { items += it }
                             }
                         }
+                        database.cacheNotificationCandidates(
+                            seedSongId = null,
+                            items = items.take(NOTIFICATION_ITEMS_PER_REMOTE_SOURCE),
+                        )
                         SimilarRecommendation(
                             title = album,
                             items = items
@@ -562,7 +583,7 @@ class HomeViewModel @Inject constructor(
             launch(Dispatchers.IO) { loadSimilarRecommendations() }
             launch(Dispatchers.IO) {
                 YouTube.home().onSuccess { page ->
-                    homePage.value = page.copy(
+                    val filteredPage = page.copy(
                         sections = page.sections.mapNotNull { section ->
                             val filteredItems = section.items
                                 .filterExplicit(hideExplicit)
@@ -571,12 +592,23 @@ class HomeViewModel @Inject constructor(
                             if (filteredItems.isEmpty()) null else section.copy(items = filteredItems)
                         }
                     )
+                    homePage.value = filteredPage
+                    database.cacheNotificationCandidates(
+                        seedSongId = null,
+                        items = filteredPage.sections
+                            .flatMap { section -> section.items }
+                            .distinctBy { item -> item.id }
+                            .take(NOTIFICATION_HOME_CACHE_LIMIT),
+                    )
                 }.onFailure { reportException(it) }
             }
             launch(Dispatchers.IO) {
                 YouTube.explore().onSuccess { page ->
-                    explorePage.value = page.copy(
-                        newReleaseAlbums = page.newReleaseAlbums.filterExplicit(hideExplicit)
+                    val releases = page.newReleaseAlbums.filterExplicit(hideExplicit)
+                    explorePage.value = page.copy(newReleaseAlbums = releases)
+                    database.cacheNotificationCandidates(
+                        seedSongId = null,
+                        items = releases.take(NOTIFICATION_ITEMS_PER_REMOTE_SOURCE),
                     )
                 }.onFailure { reportException(it) }
             }
@@ -637,6 +669,13 @@ class HomeViewModel @Inject constructor(
 
                     if (newSections.isNotEmpty()) {
                         hasNewItems = true
+                        database.cacheNotificationCandidates(
+                            seedSongId = null,
+                            items = newSections
+                                .flatMap { section -> section.items }
+                                .distinctBy { item -> item.id }
+                                .take(NOTIFICATION_HOME_CACHE_LIMIT),
+                        )
                     }
 
                     homePage.value = nextSections.copy(
@@ -649,6 +688,12 @@ class HomeViewModel @Inject constructor(
                 _isLoadingMore.value = false
             }
         }
+    }
+
+    private companion object {
+        const val NOTIFICATION_RECOMMENDATIONS_PER_SEED = 20
+        const val NOTIFICATION_ITEMS_PER_REMOTE_SOURCE = 30
+        const val NOTIFICATION_HOME_CACHE_LIMIT = 80
     }
 
     fun toggleChip(chip: HomePage.Chip?) {
@@ -687,15 +732,23 @@ class HomeViewModel @Inject constructor(
 
             if (selectedChip.value != chip) return@launch
 
+            val filteredSections = nextSections.sections.mapNotNull { section ->
+                val filteredItems = section.items
+                    .filterExplicit(hideExplicit)
+                    .filterVideoSongs(hideVideoSongs)
+                    .filterYoutubeShorts(hideYoutubeShorts)
+                if (filteredItems.isEmpty()) null else section.copy(items = filteredItems)
+            }
             homePage.value = nextSections.copy(
                 chips = homePage.value?.chips,
-                sections = nextSections.sections.mapNotNull { section ->
-                    val filteredItems = section.items
-                        .filterExplicit(hideExplicit)
-                        .filterVideoSongs(hideVideoSongs)
-                        .filterYoutubeShorts(hideYoutubeShorts)
-                    if (filteredItems.isEmpty()) null else section.copy(items = filteredItems)
-                }
+                sections = filteredSections,
+            )
+            database.cacheNotificationCandidates(
+                seedSongId = null,
+                items = filteredSections
+                    .flatMap { section -> section.items }
+                    .distinctBy { item -> item.id }
+                    .take(NOTIFICATION_HOME_CACHE_LIMIT),
             )
         }
     }

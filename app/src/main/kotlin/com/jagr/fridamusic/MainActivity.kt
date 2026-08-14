@@ -28,11 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
 import com.jagr.fridamusic.constants.DisableScreenshotKey
 import com.jagr.fridamusic.constants.DarkModeKey
 import com.jagr.fridamusic.constants.DynamicThemeKey
 import com.jagr.fridamusic.constants.KeepScreenOn
+import com.jagr.fridamusic.constants.LastAppOpenAtKey
 import com.jagr.fridamusic.constants.PureBlackKey
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.jagr.fridamusic.db.MusicDatabase
@@ -45,6 +47,7 @@ import com.jagr.fridamusic.presentation.screens.OnboardingScreen
 import com.jagr.fridamusic.presentation.theme.FridaMusicTheme
 import com.jagr.fridamusic.utils.dataStore
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -174,6 +177,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            dataStore.edit { settings ->
+                settings[LastAppOpenAtKey] = System.currentTimeMillis()
+            }
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {

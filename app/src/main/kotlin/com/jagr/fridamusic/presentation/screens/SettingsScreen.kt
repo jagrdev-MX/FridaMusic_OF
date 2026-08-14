@@ -1,5 +1,6 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -74,6 +75,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -81,9 +83,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.*
 import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
+import com.jagr.fridamusic.notifications.NotificationCandidateType
+import com.jagr.fridamusic.notifications.RecommendationNotificationScheduler
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
 import com.jagr.fridamusic.viewmodels.AccountSettingsViewModel
@@ -716,6 +721,28 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
                 MusicRecommendationNotificationsKey,
                 false,
             )
+            PrefSwitch(
+                Icons.Rounded.MusicNote,
+                stringResource(R.string.new_release_notifications),
+                stringResource(R.string.new_release_notifications_desc),
+                NewReleaseNotificationsKey,
+                true,
+            )
+            PrefSwitch(
+                Icons.Rounded.Favorite,
+                stringResource(R.string.frida_reminder_notifications),
+                stringResource(R.string.frida_reminder_notifications_desc),
+                FridaReminderNotificationsKey,
+                true,
+            )
+            if (
+                BuildConfig.DEBUG &&
+                BuildConfig.FLAVOR_abi == "universal" &&
+                BuildConfig.FLAVOR_variant == "gms" &&
+                booleanResource(R.bool.internal_notification_test_enabled)
+            ) {
+                InternalNotificationTestAction()
+            }
         }
     }
     item {
@@ -760,6 +787,54 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
             PrefSwitch(Icons.Rounded.AutoAwesome, stringResource(R.string.enable_echobrain),
                 stringResource(R.string.enable_echobrain_desc), EchoBrainEnabledKey, false)
         }
+    }
+}
+
+@Composable
+private fun InternalNotificationTestAction() {
+    val context = LocalContext.current
+    val types = remember { NotificationCandidateType.entries.toList() }
+    val labels = context.resources.getStringArray(R.array.internal_notification_test_type_labels)
+    val options = types.mapIndexed { index, type -> type.name to labels[index] }
+    var selectedType by remember { mutableStateOf(NotificationCandidateType.RECOMMENDED_SONG) }
+    val selectedLabel = options.first { it.first == selectedType.name }.second
+    val queuedMessage = stringResource(R.string.internal_notification_test_queued, selectedLabel)
+    val unavailableMessage = stringResource(R.string.internal_notification_test_unavailable)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SettingDropdown(
+            icon = Icons.Rounded.Tune,
+            title = stringResource(R.string.internal_notification_test_type),
+            options = options,
+            selectedKey = selectedType.name,
+            onSelect = { value -> selectedType = NotificationCandidateType.valueOf(value) },
+        )
+        Button(
+            onClick = {
+                val queued = RecommendationNotificationScheduler(context)
+                    .enqueueInternalTestNotification(selectedType)
+                Toast.makeText(
+                    context,
+                    if (queued) queuedMessage else unavailableMessage,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Icon(Icons.Rounded.Notifications, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.internal_notification_test_title),
+            )
+        }
+        Text(
+            text = stringResource(R.string.internal_notification_test_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        )
     }
 }
 
