@@ -21,6 +21,7 @@ import android.media.audiofx.LoudnessEnhancer
 import android.net.ConnectivityManager
 import android.os.Binder
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
@@ -41,6 +42,7 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -124,6 +126,7 @@ import com.jagr.fridamusic.constants.SkipSilenceKey
 import com.jagr.fridamusic.constants.IpVersionKey
 import com.music.innertube.models.IpVersion
 import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.InetAddress
 import java.net.Inet4Address
 import java.net.Inet6Address
@@ -165,6 +168,7 @@ import com.jagr.fridamusic.discord.DiscordPresenceManager
 import com.jagr.fridamusic.utils.NetworkConnectivityObserver
 import com.jagr.fridamusic.utils.ScrobbleManager
 import com.jagr.fridamusic.utils.SyncUtils
+import com.jagr.fridamusic.utils.StreamClientUtils
 import com.jagr.fridamusic.utils.YTPlayerUtils
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
@@ -920,7 +924,9 @@ class MusicService :
             .setRenderersFactory(createRenderersFactory(eqProcessor, silenceProcessor))
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(50_000, 50_000, 750, 2_000)
+                    // Seeking already opens a valid ranged stream; resume as soon as a small
+                    // safety buffer is available instead of imposing a visible two-second wait.
+                    .setBufferDurationsMs(50_000, 50_000, 750, 250)
                     .build()
             )
             .setHandleAudioBecomingNoisy(true)
@@ -1307,6 +1313,10 @@ class MusicService :
                 val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
             }
+
+            // onMediaItemTransition can run while only preloadItem is in the player. Start the
+            // actual queue prefetch again after the remaining MediaItems have been attached.
+            preloadUpcomingItems()
         }
     }
 
@@ -1887,6 +1897,10 @@ class MusicService :
         }
 
         if (playbackState == Player.STATE_READY) {
+            Log.i(
+                "RemotePlayback",
+                "player.state=READY mediaId=${player.currentMediaItem?.mediaId} playWhenReady=${player.playWhenReady}",
+            )
             consecutivePlaybackErr = 0
             retryCount = 0
             waitingForNetworkConnection.value = false
@@ -2187,6 +2201,11 @@ class MusicService :
 
         val mediaId = player.currentMediaItem?.mediaId
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}")
+        val httpStatusCode = getHttpResponseCode(error)
+        Log.e(
+            "RemotePlayback",
+            "player.error mediaId=$mediaId errorCode=${error.errorCode} http=${httpStatusCode ?: "none"} message=${error.message}",
+        )
         val isFallbackError = error.message?.contains("fallback", ignoreCase = true) == true
         if (!isFallbackError) {
             reportException(error)
@@ -2202,6 +2221,13 @@ class MusicService :
 
 
         if (mediaId != null) {
+            val failingClient = songUrlCache.entries
+                .firstOrNull { it.key.startsWith("${mediaId}_") }
+                ?.value
+                ?.first
+                ?.toHttpUrlOrNull()
+                ?.queryParameter("c")
+            YTPlayerUtils.markStreamClientFailed(mediaId, failingClient, httpStatusCode)
             performAggressiveCacheClear(mediaId)
         }
 
@@ -2268,7 +2294,7 @@ class MusicService :
         Timber.tag(TAG).d("Performing aggressive cache clear for $mediaId")
 
 
-        songUrlCache.remove("${mediaId}_${audioQuality.name}")
+        songUrlCache.keys.removeIf { it.startsWith("${mediaId}_") }
 
 
         try {
@@ -2436,7 +2462,7 @@ class MusicService :
         incrementRetryCount(mediaId)
 
 
-        songUrlCache.remove("${mediaId}_${audioQuality.name}")
+        songUrlCache.keys.removeIf { it.startsWith("${mediaId}_") }
         Timber.tag(TAG).d("Cleared cached URL for $mediaId")
 
 
@@ -2512,6 +2538,47 @@ class MusicService :
         }
     }
 
+    private val mediaOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(object : Dns {
+                override fun lookup(hostname: String): List<InetAddress> {
+                    val addresses = Dns.SYSTEM.lookup(hostname)
+                    return when (this@MusicService.ipVersion) {
+                        IpVersion.IPV4 -> addresses.filter { it is Inet4Address }.ifEmpty { addresses }
+                        IpVersion.IPV6 -> addresses.filter { it is Inet6Address }.ifEmpty { addresses }
+                        IpVersion.AUTO -> addresses
+                    }
+                }
+            })
+            .proxy(YouTube.proxy)
+            .proxyAuthenticator { _, response ->
+                YouTube.proxyAuth?.let { auth ->
+                    response.request.newBuilder()
+                        .header("Proxy-Authorization", auth)
+                        .build()
+                } ?: response.request
+            }
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                if (!StreamClientUtils.isYouTubeMediaHost(request.url.host)) {
+                    return@addInterceptor chain.proceed(request)
+                }
+
+                val profile = StreamClientUtils.resolveRequestProfile(request.url)
+                val profiledRequest = StreamClientUtils
+                    .applyRequestProfile(request.newBuilder(), profile)
+                    .build()
+                Log.i(
+                    "RemotePlayback",
+                    "datasource.open host=${request.url.host} client=${profile.clientKey} range=${profiledRequest.header("Range") ?: "none"}",
+                )
+                chain.proceed(profiledRequest)
+            }
+            .build()
+    }
+
     private fun createCacheDataSource(): CacheDataSource.Factory =
         CacheDataSource
             .Factory()
@@ -2521,30 +2588,12 @@ class MusicService :
                     .Factory()
                     .setCache(playerCache)
                     .setUpstreamDataSourceFactory(
-                        OkHttpDataSource.Factory(
-                            OkHttpClient
-                                .Builder()
-                                .dns(object : Dns {
-                                    override fun lookup(hostname: String): List<InetAddress> {
-                                        val addresses = Dns.SYSTEM.lookup(hostname)
-                                        return when (this@MusicService.ipVersion) {
-                                            IpVersion.IPV4 -> addresses.filter { it is Inet4Address }.ifEmpty { addresses }
-                                            IpVersion.IPV6 -> addresses.filter { it is Inet6Address }.ifEmpty { addresses }
-                                            IpVersion.AUTO -> addresses
-                                        }
-                                    }
-                                })
-                                .proxy(YouTube.proxy)
-                                .proxyAuthenticator { _, response ->
-                                    YouTube.proxyAuth?.let { auth ->
-                                        response.request.newBuilder()
-                                            .header("Proxy-Authorization", auth)
-                                            .build()
-                                    } ?: response.request
-                                }
-                                .build()
+                        DefaultDataSource.Factory(
+                            this,
+                            OkHttpDataSource.Factory(mediaOkHttpClient),
                         )
                     )
+                    .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
             ).setCacheWriteDataSinkFactory(null)
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
 
@@ -2716,10 +2765,29 @@ class MusicService :
         }
     }
 
+    private fun resolveRemoteDataSpec(
+        dataSpec: DataSpec,
+        streamUrl: String,
+        contentLength: Long? = null,
+    ): DataSpec {
+        val resolvedDataSpec = dataSpec.withUri(streamUrl.toUri())
+        if (dataSpec.length >= 0) return resolvedDataSpec
+
+        val totalLength = contentLength
+            ?.takeIf { it > 0 }
+            ?: streamUrl.toHttpUrlOrNull()?.queryParameter("clen")?.toLongOrNull()?.takeIf { it > 0 }
+        val remainingLength = totalLength
+            ?.minus(dataSpec.position)
+            ?.takeIf { it > 0 }
+            ?: return resolvedDataSpec
+
+        // A bounded request ending at the real EOF keeps YouTube's fast partial-response path
+        // without manufacturing intermediate boundaries that interrupt playback.
+        return resolvedDataSpec.buildUpon().setLength(remainingLength).build()
+    }
+
     private fun createDataSourceFactory(): DataSource.Factory {
-        return ResolvingDataSource.Factory(
-            DefaultDataSource.Factory(this, createCacheDataSource())
-        ) { dataSpec ->
+        return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
             if (mediaId.isLocalMediaId()) {
                 val localUri = android.net.Uri.parse(mediaId)
@@ -2791,7 +2859,7 @@ class MusicService :
                 ) {
                     songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                        return@Factory dataSpec.withUri(it.first.toUri())
+                        return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
                     }
                     // Fall through to fetch real URL since it's only partially downloaded
                 }
@@ -2799,7 +2867,7 @@ class MusicService :
                 if (playerCache.isCached(mediaId, dataSpec.position, CHUNK_LENGTH)) {
                     songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                        return@Factory dataSpec.withUri(it.first.toUri())
+                        return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
                     }
                     Timber.tag(TAG).w("Ghost cache entry for $mediaId, re-fetching")
                     playerCache.removeResource(mediaId)
@@ -2807,7 +2875,7 @@ class MusicService :
 
                 songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                     scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                    return@Factory dataSpec.withUri(it.first.toUri())
+                    return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
                 }
             } else {
                 Timber.tag("MusicService").i("BYPASSING CACHE for $mediaId due to quality change")
@@ -2858,7 +2926,7 @@ class MusicService :
             val nonNullPlayback = sharedResolution.playbackData
             if (nonNullPlayback == null) {
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                return@Factory dataSpec.withUri(sharedResolution.streamUrl.toUri())
+                return@Factory resolveRemoteDataSpec(dataSpec, sharedResolution.streamUrl, dbFormat?.contentLength)
             }
             run {
                 val format = nonNullPlayback.format
@@ -2922,7 +2990,7 @@ class MusicService :
                 songUrlCache["${mediaId}_${lockedQuality.name}"] =
                     streamUrl to System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L)
 
-                return@Factory dataSpec.withUri(streamUrl.toUri())
+                return@Factory resolveRemoteDataSpec(dataSpec, streamUrl, format.contentLength)
             }
         }
     }

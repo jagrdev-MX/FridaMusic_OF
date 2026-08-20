@@ -100,6 +100,7 @@ val SelectedYtmPlaylistsKey = stringPreferencesKey("selectedYtmPlaylists")
 val ShowAudioFallbackToastKey = booleanPreferencesKey("show_audio_fallback_toast")
 val AudioQualityKey = stringPreferencesKey("audioQuality")
 val IpVersionKey = stringPreferencesKey("ipVersion")
+val LastSuccessfulStreamClientKey = stringPreferencesKey("last_successful_stream_client")
 
 const val LOSSLESS_ENABLED = true
 

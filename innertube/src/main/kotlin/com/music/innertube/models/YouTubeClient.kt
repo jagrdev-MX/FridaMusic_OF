@@ -1,6 +1,13 @@
+/*
+ * Playback client profiles adapted from OpenTune Project Original (2026)
+ * Arturo254 (github.com/Arturo254)
+ * Licensed under GPL-3.0 | see git history for contributors
+ */
+
 package com.music.innertube.models
 
 import kotlinx.serialization.Serializable
+import java.util.Locale
 
 @Serializable
 data class YouTubeClient(
@@ -41,12 +48,27 @@ data class YouTubeClient(
         ),
     )
 
+    fun requestOrigin(): String =
+        when (clientName.uppercase(Locale.US)) {
+            "TVHTML5", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "TVHTML5_SIMPLY" -> ORIGIN_YOUTUBE
+            else -> ORIGIN_YOUTUBE_MUSIC
+        }
+
+    fun requestReferer(): String =
+        when (clientName.uppercase(Locale.US)) {
+            "TVHTML5", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "TVHTML5_SIMPLY" -> REFERER_YOUTUBE_TV
+            else -> REFERER_YOUTUBE_MUSIC
+        }
+
     companion object {
         const val USER_AGENT_WEB = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
 
         const val ORIGIN_YOUTUBE_MUSIC = "https://music.youtube.com"
         const val REFERER_YOUTUBE_MUSIC = "$ORIGIN_YOUTUBE_MUSIC/"
         const val API_URL_YOUTUBE_MUSIC = "$ORIGIN_YOUTUBE_MUSIC/youtubei/v1/"
+
+        const val ORIGIN_YOUTUBE = "https://www.youtube.com"
+        const val REFERER_YOUTUBE_TV = "$ORIGIN_YOUTUBE/tv"
 
         val WEB = YouTubeClient(
             clientName = "WEB",
@@ -135,11 +157,16 @@ data class YouTubeClient(
 
         val ANDROID_VR_NO_AUTH = YouTubeClient(
             clientName = "ANDROID_VR",
-            clientVersion = "1.61.48",
+            clientVersion = "1.37",
             clientId = "28",
-            userAgent = "com.google.android.apps.youtube.vr.oculus/1.61.48 (Linux; U; Android 12; en_US; Oculus Quest 3; Build/SQ3A.220605.009.A1; Cronet/132.0.6808.3)",
+            userAgent = "com.google.android.apps.youtube.vr.oculus/1.37 (Linux; U; Android 12; en_US; Quest 3; Build/SQ3A.220605.009.A1; Cronet/107.0.5284.2)",
+            osName = "Android",
+            osVersion = "12",
+            deviceMake = "Oculus",
+            deviceModel = "Quest 3",
+            androidSdkVersion = "32",
             loginSupported = false,
-            useSignatureTimestamp = false
+            useSignatureTimestamp = false,
         )
 
         /**
@@ -241,6 +268,85 @@ data class YouTubeClient(
             loginSupported = false,
             useSignatureTimestamp = false,
             packageName = "com.google.ios.youtube"
+        )
+
+        val MWEB = YouTubeClient(
+            clientName = "MWEB",
+            clientVersion = "2.20260114.00.00",
+            clientId = "2",
+            userAgent = "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
+            friendlyName = "Mobile Web",
+        )
+
+        val WEB_EMBEDDED = YouTubeClient(
+            clientName = "WEB_EMBEDDED_PLAYER",
+            clientVersion = "1.20260114.00.00",
+            clientId = "56",
+            userAgent = USER_AGENT_WEB,
+            friendlyName = "Web Embedded Player",
+            isEmbedded = true,
+        )
+
+        val ANDROID_MUSIC = YouTubeClient(
+            clientName = "ANDROID_MUSIC",
+            clientVersion = "7.27.52",
+            clientId = "21",
+            userAgent = "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 15; en_US; Pixel 9 Pro; Build/AP4A.250205.002; Cronet/132.0.6834.79) gzip",
+            osName = "Android",
+            osVersion = "15",
+            deviceMake = "Google",
+            deviceModel = "Pixel 9 Pro",
+            androidSdkVersion = "35",
+            buildId = "AP4A.250205.002",
+            cronetVersion = "132.0.6834.79",
+            packageName = "com.google.android.apps.youtube.music",
+            friendlyName = "Android Music",
+            loginSupported = true,
+            useSignatureTimestamp = true,
+        )
+
+        val ANDROID_TESTSUITE = YouTubeClient(
+            clientName = "ANDROID_TESTSUITE",
+            clientVersion = "1.9",
+            clientId = "30",
+            userAgent = "com.google.android.youtube/1.9 (Linux; U; Android 15; en_US; Pixel 9 Pro; Build/AP4A.250205.002) gzip",
+            osName = "Android",
+            osVersion = "15",
+            deviceMake = "Google",
+            deviceModel = "Pixel 9 Pro",
+            androidSdkVersion = "35",
+            friendlyName = "Android TestSuite",
+            loginSupported = false,
+            useSignatureTimestamp = false,
+        )
+
+        val ANDROID_UNPLUGGED = YouTubeClient(
+            clientName = "ANDROID_UNPLUGGED",
+            clientVersion = "8.49.0",
+            clientId = "29",
+            userAgent = "com.google.android.apps.youtube.unplugged/8.49.0 (Linux; U; Android 15; en_US; Pixel 9 Pro; Build/AP4A.250205.002; Cronet/132.0.6834.79) gzip",
+            osName = "Android",
+            osVersion = "15",
+            deviceMake = "Google",
+            deviceModel = "Pixel 9 Pro",
+            androidSdkVersion = "35",
+            friendlyName = "Android TV",
+            loginSupported = true,
+            useSignatureTimestamp = true,
+        )
+
+        val IOS_MUSIC = YouTubeClient(
+            clientName = "IOS_MUSIC",
+            clientVersion = "7.27.0",
+            clientId = "26",
+            userAgent = "com.google.ios.youtubemusic/7.27.0 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
+            osName = "iOS",
+            osVersion = "17.5.1.21F90",
+            deviceMake = "Apple",
+            deviceModel = "iPhone16,2",
+            friendlyName = "iOS Music",
+            loginSupported = false,
+            useSignatureTimestamp = false,
         )
     }
 }

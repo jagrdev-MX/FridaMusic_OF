@@ -23,7 +23,9 @@ import java.net.InetAddress
 import java.net.Proxy
 import java.net.ProxySelector
 import java.net.SocketAddress
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.util.concurrent.TimeUnit
 
 class NewPipeDownloaderImpl(
     proxy: Proxy?,
@@ -52,6 +54,11 @@ class NewPipeDownloaderImpl(
                         .build()
                 } ?: response.request
             }
+            .retryOnConnectionFailure(true)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
             .build()
 
     @Throws(IOException::class, ReCaptchaException::class)
@@ -110,7 +117,7 @@ class NewPipeUtils(
     ): String? =
         try {
             val url =
-                format.url ?: format.signatureCipher?.let { signatureCipher ->
+                format.url ?: (format.signatureCipher ?: format.cipher)?.let { signatureCipher ->
                     val params = parseQueryString(signatureCipher)
                     val obfuscatedSignature =
                         params["s"]
@@ -129,14 +136,39 @@ class NewPipeUtils(
                     url.toString()
                 } ?: throw ParsingException("Could not find format url")
 
-            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
-                videoId,
-                url,
-            )
+            runCatching {
+                retryWithBackoff {
+                    YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
+                        videoId,
+                        url,
+                    )
+                }
+            }.getOrElse { url }
         } catch (e: Exception) {
             // Don't print stack trace - caller handles errors
             null
         }
+
+    private inline fun <T> retryWithBackoff(block: () -> T): T {
+        var delayMs = 250L
+        var lastError: Throwable? = null
+        repeat(3) { attempt ->
+            try {
+                return block()
+            } catch (error: Throwable) {
+                val retryable =
+                    error is SocketTimeoutException ||
+                        error is IOException ||
+                        error.cause is SocketTimeoutException ||
+                        error.cause is IOException
+                if (!retryable || attempt == 2) throw error
+                lastError = error
+                Thread.sleep(delayMs)
+                delayMs = (delayMs * 2).coerceAtMost(2_000L)
+            }
+        }
+        throw lastError ?: IllegalStateException("Retry attempts exhausted")
+    }
 }
 
 object NewPipeExtractor {

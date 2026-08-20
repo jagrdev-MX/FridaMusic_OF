@@ -1,4 +1,8 @@
-
+/*
+ * YouTube resolver path adapted from OpenTune Project Original (2026)
+ * Arturo254 (github.com/Arturo254)
+ * Licensed under GPL-3.0 | see git history for contributors
+ */
 
 package com.jagr.fridamusic.utils
 
@@ -24,6 +28,7 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import com.jagr.fridamusic.constants.AudioQuality
+import com.jagr.fridamusic.constants.LastSuccessfulStreamClientKey
 import com.jagr.fridamusic.constants.VisitorDataKey
 import com.jagr.fridamusic.utils.cipher.CipherDeobfuscator
 import com.jagr.fridamusic.utils.YTPlayerUtils.MAIN_CLIENT
@@ -53,6 +58,7 @@ import kotlinx.coroutines.sync.withLock
 object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
     private const val TAG = "YTPlayerUtils"
+    private const val STREAM_VALIDATION_RANGE = "bytes=0-1"
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .dns(object : Dns {
@@ -113,6 +119,12 @@ object YTPlayerUtils {
         val streamExpiresInSeconds: Int,
         val isSaavnStream: Boolean = false,
     )
+
+    fun invalidateCachedStreamUrls(videoId: String) =
+        RemoteStreamResolver.invalidateCachedStreamUrls(videoId)
+
+    fun markStreamClientFailed(videoId: String, clientKey: String?, httpStatusCode: Int?) =
+        RemoteStreamResolver.markStreamClientFailed(videoId, clientKey, httpStatusCode)
     
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -125,21 +137,44 @@ object YTPlayerUtils {
         knownDurationMs: Long? = null,
         isDownload: Boolean = false
     ): Result<PlaybackData> {
-        val showFallbackToast = context?.let { 
-            it.dataStore.data.first()[com.jagr.fridamusic.constants.ShowAudioFallbackToastKey] 
-        } ?: true
+        val playbackPreferences = context?.dataStore?.data?.first()
+        val showFallbackToast = playbackPreferences
+            ?.get(com.jagr.fridamusic.constants.ShowAudioFallbackToastKey)
+            ?: true
+        val persistedStreamClientKey = playbackPreferences?.get(LastSuccessfulStreamClientKey)
 
         var hasShownLosslessToast = false
         var hasShownSaavnToast = false
         var hasShownOpusToast = false
 
         suspend fun tryOpus(): Result<PlaybackData> {
-            val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, context)
+            suspend fun resolveRemote(): Result<PlaybackData> {
+                val remote = RemoteStreamResolver
+                    .resolve(videoId, playlistId, persistedStreamClientKey)
+                    .getOrElse { return Result.failure(it) }
+                if (context != null && remote.streamClientKey != persistedStreamClientKey) {
+                    context.dataStore.edit { preferences ->
+                        preferences[LastSuccessfulStreamClientKey] = remote.streamClientKey
+                    }
+                }
+                return Result.success(
+                    PlaybackData(
+                        audioConfig = remote.audioConfig,
+                        videoDetails = remote.videoDetails,
+                        playbackTracking = remote.playbackTracking,
+                        format = remote.format,
+                        streamUrl = remote.streamUrl,
+                        streamExpiresInSeconds = remote.streamExpiresInSeconds,
+                    )
+                )
+            }
+
+            val firstAttempt = resolveRemote()
             if (firstAttempt.isFailure && YouTube.cookie == null) {
                 Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
                 PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
                 BotDetectionMitigator.rotateGuestSession()
-                val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, context)
+                val retryResult = resolveRemote()
                 retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
                 return retryResult
             }
@@ -476,7 +511,9 @@ object YTPlayerUtils {
         }
     }
 
-    private suspend fun resolvePlaybackData(
+    /** Inactive legacy resolver retained temporarily for Frida-specific age-restriction diagnostics. */
+    @Suppress("unused")
+    private suspend fun resolvePlaybackDataLegacy(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
@@ -895,20 +932,21 @@ object YTPlayerUtils {
     private fun validateStatus(url: String): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
         try {
-            val requestBuilder = okhttp3.Request.Builder()
-                .head()
+            val probeRequest = okhttp3.Request.Builder()
+                .get()
                 .url(url)
-                .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+                .header("Range", STREAM_VALIDATION_RANGE)
+                .build()
+            val request = StreamClientUtils.applyRequestProfile(probeRequest.newBuilder(), probeRequest.url)
+                .build()
 
-            
-            YouTube.cookie?.let { cookie ->
-                requestBuilder.addHeader("Cookie", cookie)
+            httpClient.newCall(request).execute().use { response ->
+                val isSuccessful = response.isSuccessful || response.code == 416
+                Timber.tag(logTag).d(
+                    "Stream range validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})"
+                )
+                return isSuccessful
             }
-
-            val response = httpClient.newCall(requestBuilder.build()).execute()
-            val isSuccessful = response.isSuccessful
-            Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})")
-            return isSuccessful
         } catch (e: Exception) {
             Timber.tag(logTag).e(e, "Stream URL validation failed with exception")
             reportException(e)
@@ -1011,6 +1049,7 @@ object YTPlayerUtils {
 
     fun forceRefreshForVideo(videoId: String) {
         Timber.tag(logTag).d("Force refreshing for videoId: $videoId")
+        RemoteStreamResolver.invalidateCachedStreamUrls(videoId)
     }
 }
 
