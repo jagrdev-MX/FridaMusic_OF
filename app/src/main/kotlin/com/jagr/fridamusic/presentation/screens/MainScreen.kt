@@ -14,11 +14,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -34,6 +44,8 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.FabMenuAction
+import com.jagr.fridamusic.presentation.components.FabOverflowMenu
 import com.jagr.fridamusic.presentation.components.MiniPlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
 import com.jagr.fridamusic.presentation.playCachedSong
@@ -55,12 +67,19 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
+    val density = LocalDensity.current
 
-    val showOverlay = currentRoute != "now_playing" && currentRoute != "settings" && currentRoute != "login" && currentRoute != "spotify_import" && currentRoute != "stats" && currentRoute != "about"
+    val showOverlay = currentRoute != "now_playing" &&
+            currentRoute != "settings" &&
+            currentRoute != "login" &&
+            currentRoute != "spotify_import" &&
+            currentRoute != "stats" &&
+            currentRoute != "about"
+
+    var bottomBarHeight by remember { mutableStateOf(0.dp) }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Contenido principal (ocupa toda la pantalla) ──────────────────
         NavHost(
             navController = navController,
             startDestination = "home",
@@ -100,7 +119,10 @@ fun MainScreen(
                         navController.navigate("search_result/${Uri.encode(query)}")
                     },
                     onItemClick = { item ->
-                        navController.handleYTItemClick(item, playerConnection?.let { pc -> { pc.playYTItem(item) } })
+                        navController.handleYTItemClick(
+                            item,
+                            playerConnection?.let { pc -> { pc.playYTItem(item) } },
+                        )
                     },
                 )
             }
@@ -110,7 +132,10 @@ fun MainScreen(
             ) {
                 SearchResultScreen(
                     onItemClick = { item ->
-                        navController.handleYTItemClick(item, playerConnection?.let { pc -> { pc.playYTItem(item) } })
+                        navController.handleYTItemClick(
+                            item,
+                            playerConnection?.let { pc -> { pc.playYTItem(item) } },
+                        )
                     },
                     onBack = { navController.popBackStack() },
                 )
@@ -118,18 +143,10 @@ fun MainScreen(
             composable(
                 route = "library",
                 exitTransition = {
-                    if (targetState.destination.route == "stats") {
-                        ExitTransition.None
-                    } else {
-                        null
-                    }
+                    if (targetState.destination.route == "stats") ExitTransition.None else null
                 },
                 popEnterTransition = {
-                    if (initialState.destination.route == "stats") {
-                        EnterTransition.None
-                    } else {
-                        null
-                    }
+                    if (initialState.destination.route == "stats") EnterTransition.None else null
                 },
             ) {
                 LibraryScreen(
@@ -143,18 +160,10 @@ fun MainScreen(
             composable(
                 route = "settings",
                 exitTransition = {
-                    if (targetState.destination.route == "stats") {
-                        ExitTransition.None
-                    } else {
-                        null
-                    }
+                    if (targetState.destination.route == "stats") ExitTransition.None else null
                 },
                 popEnterTransition = {
-                    if (initialState.destination.route == "stats") {
-                        EnterTransition.None
-                    } else {
-                        null
-                    }
+                    if (initialState.destination.route == "stats") EnterTransition.None else null
                 },
             ) {
                 SettingsScreen(
@@ -170,12 +179,8 @@ fun MainScreen(
             }
             composable(
                 route = "stats",
-                enterTransition = {
-                    EnterTransition.None
-                },
-                popEnterTransition = {
-                    EnterTransition.None
-                },
+                enterTransition = { EnterTransition.None },
+                popEnterTransition = { EnterTransition.None },
                 popExitTransition = {
                     fadeOut(
                         animationSpec = tween(
@@ -193,8 +198,12 @@ fun MainScreen(
             ) {
                 StatsScreen(
                     onBack = { navController.popBackStack() },
-                    onNavigateToArtist = { id -> navController.navigate("artist/${java.net.URLEncoder.encode(id, "UTF-8")}") },
-                    onNavigateToAlbum = { id -> navController.navigate("album/${java.net.URLEncoder.encode(id, "UTF-8")}") },
+                    onNavigateToArtist = { id ->
+                        navController.navigate("artist/${java.net.URLEncoder.encode(id, "UTF-8")}")
+                    },
+                    onNavigateToAlbum = { id ->
+                        navController.navigate("album/${java.net.URLEncoder.encode(id, "UTF-8")}")
+                    },
                     onSongClick = { song ->
                         playerConnection?.playQueue(
                             com.jagr.fridamusic.playback.queues.YouTubeQueue(
@@ -204,7 +213,10 @@ fun MainScreen(
                                     title = song.title,
                                     artists = listOfNotNull(
                                         song.artistName?.let {
-                                            com.jagr.fridamusic.models.MediaMetadata.Artist(id = null, name = it)
+                                            com.jagr.fridamusic.models.MediaMetadata.Artist(
+                                                id = null,
+                                                name = it,
+                                            )
                                         },
                                     ),
                                     duration = -1,
@@ -288,9 +300,7 @@ fun MainScreen(
                     },
                 ),
             ) {
-                OnlinePlaylistScreen(
-                    onBack = { navController.popBackStack() },
-                )
+                OnlinePlaylistScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 route = "local_playlist/{playlistId}",
@@ -306,15 +316,34 @@ fun MainScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
-
         }
 
         if (showOverlay) {
+            FabOverflowMenu(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                menuIcon = Icons.Rounded.MoreHoriz,
+                menuContentDescription = "Actions",
+                actions = listOf(
+                    FabMenuAction(
+                        label = "Aleatorio",
+                        icon = Icons.Rounded.Shuffle,
+                        onClick = { /* TODO */ },
+                    ),
+                    FabMenuAction(
+                        label = "Reconocer música",
+                        icon = Icons.Rounded.Mic,
+                        onClick = { /* TODO */ },
+                    ),
+                ),
+            )
+
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
             ) {
                 if (playerConnection != null) {
                     MiniPlayer(
@@ -326,18 +355,23 @@ fun MainScreen(
                             .padding(bottom = 4.dp),
                     )
                 }
-                ModernBottomNav(
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        if (route != currentRoute) {
-                            navController.navigate(route) {
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ModernBottomNav(
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            if (route != currentRoute) {
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
-                        }
-                    },
-                )
+                        },
+                        modifier = Modifier.padding(end = 96.dp),
+                    )
+                }
             }
         }
     }
@@ -355,7 +389,7 @@ private fun NavHostController.navigateToDetail(item: LocalItem) {
                 navigate("local_playlist/${Uri.encode(item.id)}")
             }
         }
-        else -> { /* type not supported yet */ }
+        else -> {}
     }
 }
 
@@ -386,9 +420,7 @@ private fun NavHostController.handleYTItemClick(
             is PlaylistItem -> navigate("playlist/$encodedId")
             is SongItem -> {
                 if (playSong == null) {
-                    Timber.tag("RecommendationClick").w(
-                        "Player unavailable for song recommendation",
-                    )
+                    Timber.tag("RecommendationClick").w("Player unavailable for song recommendation")
                     onUnavailable()
                 } else {
                     playSong()

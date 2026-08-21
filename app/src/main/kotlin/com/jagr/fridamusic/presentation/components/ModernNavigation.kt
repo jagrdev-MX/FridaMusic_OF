@@ -55,6 +55,7 @@ private data class FloatingNavigationItem(
 fun ModernBottomNav(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val items = remember {
         listOf(
@@ -71,7 +72,7 @@ fun ModernBottomNav(
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .padding(top = 4.dp, bottom = 12.dp),
