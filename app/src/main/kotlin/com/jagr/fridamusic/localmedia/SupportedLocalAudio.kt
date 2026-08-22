@@ -61,6 +61,7 @@ object SupportedLocalAudio {
         "audio/x-mpeg",
         "audio/x-wav",
         "application/ogg",
+        "application/x-ogg",
         "video/mp4",
         "video/webm",
         "video/3gpp",

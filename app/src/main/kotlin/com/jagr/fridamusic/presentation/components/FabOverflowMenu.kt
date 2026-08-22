@@ -58,7 +58,7 @@ fun FabOverflowMenu(
             shape = RoundedCornerShape(18.dp),
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.size(width = 56.dp, height = 56.dp),
+            modifier = Modifier.size(width = 64.dp, height = 64.dp),
             elevation = FloatingActionButtonDefaults.elevation(
                 defaultElevation = 6.dp,
                 pressedElevation = 2.dp

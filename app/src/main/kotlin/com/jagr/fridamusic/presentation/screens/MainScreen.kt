@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Mic
@@ -22,13 +23,9 @@ import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -67,7 +64,6 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
-    val density = LocalDensity.current
 
     val showOverlay = currentRoute != "now_playing" &&
             currentRoute != "settings" &&
@@ -75,8 +71,6 @@ fun MainScreen(
             currentRoute != "spotify_import" &&
             currentRoute != "stats" &&
             currentRoute != "about"
-
-    var bottomBarHeight by remember { mutableStateOf(0.dp) }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -319,26 +313,6 @@ fun MainScreen(
         }
 
         if (showOverlay) {
-            FabOverflowMenu(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp),
-                menuIcon = Icons.Rounded.MoreHoriz,
-                menuContentDescription = "Actions",
-                actions = listOf(
-                    FabMenuAction(
-                        label = "Aleatorio",
-                        icon = Icons.Rounded.Shuffle,
-                        onClick = { /* TODO */ },
-                    ),
-                    FabMenuAction(
-                        label = "Reconocer música",
-                        icon = Icons.Rounded.Mic,
-                        onClick = { /* TODO */ },
-                    ),
-                ),
-            )
-
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -355,8 +329,9 @@ fun MainScreen(
                             .padding(bottom = 4.dp),
                     )
                 }
-                Box(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
                 ) {
                     ModernBottomNav(
                         currentRoute = currentRoute,
@@ -369,7 +344,24 @@ fun MainScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.padding(end = 96.dp),
+                        modifier = Modifier.weight(1f),
+                    )
+                    FabOverflowMenu(
+                        modifier = Modifier.padding(top = 4.dp, end = 16.dp),
+                        menuIcon = Icons.Rounded.MoreHoriz,
+                        menuContentDescription = "Actions",
+                        actions = listOf(
+                            FabMenuAction(
+                                label = "Aleatorio",
+                                icon = Icons.Rounded.Shuffle,
+                                onClick = { /* TODO */ },
+                            ),
+                            FabMenuAction(
+                                label = "Reconocer música",
+                                icon = Icons.Rounded.Mic,
+                                onClick = { /* TODO */ },
+                            ),
+                        ),
                     )
                 }
             }

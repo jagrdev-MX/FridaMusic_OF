@@ -74,9 +74,9 @@ fun ModernBottomNav(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(start = 16.dp, end = 8.dp)
             .padding(top = 4.dp, bottom = 12.dp),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterEnd,
     ) {
         Surface(
             shape = RoundedCornerShape(32.dp),
