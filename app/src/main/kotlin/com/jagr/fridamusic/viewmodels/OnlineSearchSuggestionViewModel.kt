@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -48,41 +50,47 @@ constructor(
                 .flatMapLatest { query ->
                     if (query.isEmpty()) {
                         database.searchHistory().map { history ->
-                            SearchSuggestionViewState(
-                                history = history,
-                            )
+                            SearchSuggestionViewState(history = history)
                         }
                     } else {
                         val parsedUrl = YouTubeUrlParser.parse(query)
                         val parsedItem = if (parsedUrl != null) fetchParsedUrlItem(parsedUrl) else null
-                        
-                        val result = if (parsedUrl != null) null else YouTube.searchSuggestions(query).getOrNull()
-                        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
 
-                        database
-                            .searchHistory(query)
-                            .map { it.take(3) }
-                            .map { history ->
-                                SearchSuggestionViewState(
-                                    history = history,
-                                    suggestions =
-                                    result
-                                        ?.queries
-                                        ?.filter { suggestionQuery ->
-                                            history.none { it.query == suggestionQuery }
-                                        }.orEmpty(),
-                                    items = listOfNotNull(parsedItem) +
-                                    result
-                                        ?.recommendedItems
-                                        ?.distinctBy { it.id }
-                                        ?.filter { it.id != parsedItem?.id }
-                                        ?.filterExplicit(hideExplicit)
-                                        ?.filterVideoSongs(hideVideoSongs)
-                                        .orEmpty(),
-                                    isFromLink = parsedUrl != null
-                                )
-                            }
+                        flow {
+                            val result =
+                                if (parsedUrl != null) {
+                                    null
+                                } else {
+                                    YouTube.searchSuggestions(query).getOrNull()
+                                }
+                            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+
+                            emitAll(
+                                database.searchHistory(query).map { history ->
+                                    SearchSuggestionViewState(
+                                        history = history.take(3),
+                                        suggestions =
+                                            result
+                                                ?.queries
+                                                ?.filter { suggestionQuery ->
+                                                    history.none { it.query == suggestionQuery }
+                                                }
+                                                .orEmpty(),
+                                        items =
+                                            listOfNotNull(parsedItem) +
+                                                result
+                                                    ?.recommendedItems
+                                                    ?.distinctBy { it.id }
+                                                    ?.filter { it.id != parsedItem?.id }
+                                                    ?.filterExplicit(hideExplicit)
+                                                    ?.filterVideoSongs(hideVideoSongs)
+                                                    .orEmpty(),
+                                        isFromLink = parsedUrl != null,
+                                    )
+                                }
+                            )
+                        }
                     }
                 }.collect {
                     _viewState.value = it

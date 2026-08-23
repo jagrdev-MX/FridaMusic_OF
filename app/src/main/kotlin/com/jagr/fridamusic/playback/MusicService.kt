@@ -124,6 +124,7 @@ import com.jagr.fridamusic.constants.SimilarContent
 import com.jagr.fridamusic.constants.SkipSilenceInstantKey
 import com.jagr.fridamusic.constants.SkipSilenceKey
 import com.jagr.fridamusic.constants.IpVersionKey
+import com.jagr.fridamusic.constants.PreloadLyricsEnabledKey
 import com.music.innertube.models.IpVersion
 import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -721,22 +722,27 @@ class MusicService :
 
         combine(
             currentMediaMetadata.distinctUntilChangedBy { it?.id },
-            dataStore.data.map { it[ShowLyricsKey] ?: false }.distinctUntilChanged(),
+            dataStore.data.map { it[PreloadLyricsEnabledKey] ?: true }.distinctUntilChanged(),
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(scope) { (mediaMetadata, showLyrics) ->
-            if (showLyrics && mediaMetadata != null && database.lyrics(mediaMetadata.id)
-                    .first() == null
+            val existingLyrics = mediaMetadata?.let { database.lyrics(it.id).first() }
+            if (
+                showLyrics &&
+                mediaMetadata != null &&
+                (existingLyrics == null || existingLyrics.lyrics == LyricsEntity.LYRICS_NOT_FOUND)
             ) {
                 val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
-                database.query {
-                    upsert(
-                        LyricsEntity(
-                            id = mediaMetadata.id,
-                            lyrics = lyricsWithProvider.lyrics,
-                            provider = lyricsWithProvider.provider,
-                        ),
-                    )
+                if (lyricsWithProvider.lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
+                    database.query {
+                        upsert(
+                            LyricsEntity(
+                                id = mediaMetadata.id,
+                                lyrics = lyricsWithProvider.lyrics,
+                                provider = lyricsWithProvider.provider,
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -1614,6 +1620,29 @@ class MusicService :
         }
 
         player.addMediaItems(items)
+        if (player.shuffleModeEnabled) {
+            val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
+            applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
+        }
+        player.prepare()
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        if (fromIndex !in 0 until player.mediaItemCount) return
+        if (toIndex !in 0 until player.mediaItemCount) return
+
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex == androidx.media3.common.C.INDEX_UNSET) return
+        if (fromIndex == currentIndex) return
+
+        val item = player.getMediaItemAt(fromIndex)
+        val removedBeforeTarget = fromIndex < toIndex
+        val adjustedTarget = if (removedBeforeTarget) (toIndex - 1).coerceAtLeast(0) else toIndex
+
+        player.removeMediaItem(fromIndex)
+        player.addMediaItem(adjustedTarget.coerceIn(0, player.mediaItemCount), item)
+
         if (player.shuffleModeEnabled) {
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.jagr.fridamusic.lyrics.LyricsHelper
 import com.jagr.fridamusic.lyrics.LyricsResult
 import com.jagr.fridamusic.models.MediaMetadata
@@ -96,7 +97,9 @@ constructor(
                 runBlocking {
                     lyricsHelper.getLyrics(mediaMetadata)
                 }
-            upsert(LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider))
+            if (lyricsWithProvider.lyrics != LYRICS_NOT_FOUND) {
+                upsert(LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider))
+            }
         }
     }
 }

@@ -37,9 +37,19 @@ val ThumbnailCornerRadius = 6.dp
 
 val PlayerHorizontalPadding = 32.dp
 
-val NavigationBarAnimationSpec = spring<Dp>(
+val FastAnimationSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium
+)
+
+val MediumAnimationSpec = spring<Float>(
     dampingRatio = Spring.DampingRatioNoBouncy,
     stiffness = Spring.StiffnessLow
+)
+
+val NavigationBarAnimationSpec = spring<Dp>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMediumLow
 )
 
 val BottomSheetAnimationSpec = spring<Dp>(
@@ -49,5 +59,5 @@ val BottomSheetAnimationSpec = spring<Dp>(
 
 val BottomSheetSoftAnimationSpec = spring<Dp>(
     dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessLow
+    stiffness = Spring.StiffnessMedium
 )

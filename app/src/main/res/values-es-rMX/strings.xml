@@ -696,6 +696,7 @@
     <string name="top_artists">Mejores artistas</string>
     <string name="page_indicator">%1$d de %2$d</string>
     <string name="top_result">Mejor resultado</string>
+    <string name="top_results">Mejores resultados</string>
     <string name="other_results">Otros</string>
     <string name="parsed_from_link">Desde enlace</string>
     <string name="album_text">Álbum</string>

@@ -6,7 +6,6 @@ import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -66,6 +65,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
+import com.jagr.fridamusic.constants.FastAnimationSpec
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
@@ -187,15 +187,14 @@ fun NowPlayingScreen(
 
     val artworkScale by animateFloatAsState(
         targetValue = if (showLyricsView) 0f else 1f,
-        animationSpec = tween(350),
+        animationSpec = tween(220),
         label = "artwork_scale"
     )
 
-    // --- LÓGICA DE GESTO SWIPE-TO-DISMISS ---
     var swipeOffsetY by remember { mutableFloatStateOf(0f) }
     val animatedSwipeOffsetY by animateFloatAsState(
         targetValue = swipeOffsetY,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        animationSpec = FastAnimationSpec,
         label = "swipe_animation"
     )
 
@@ -204,28 +203,25 @@ fun NowPlayingScreen(
             .fillMaxSize()
             .offset { IntOffset(0, animatedSwipeOffsetY.roundToInt()) }
             .pointerInput(showQueuePanel, showLyricsView) {
-                // Solo activamos el gesto de deslizar cuando los paneles están cerrados
-                // para no interferir con el scroll de la Cola o las Letras.
                 if (!showQueuePanel && !showLyricsView) {
                     detectVerticalDragGestures(
                         onDragEnd = {
-                            if (swipeOffsetY > 300f) { // Umbral para cerrar
+                            if (swipeOffsetY > 300f) {
                                 onBack()
                             } else {
-                                swipeOffsetY = 0f // Rebote al lugar original
+                                swipeOffsetY = 0f
                             }
                         },
                         onDragCancel = { swipeOffsetY = 0f }
                     ) { change, dragAmount ->
                         change.consume()
-                        if (swipeOffsetY + dragAmount > 0) { // Solo permite arrastrar hacia abajo
+                        if (swipeOffsetY + dragAmount > 0) {
                             swipeOffsetY += dragAmount
                         }
                     }
                 }
             }
     ) {
-        // Fondo súper desenfocado
         AsyncImage(
             model = song.thumbnailUrl?.resize(width = 400),
             contentDescription = null,
@@ -235,7 +231,6 @@ fun NowPlayingScreen(
                 .blur(80.dp)
         )
 
-        // Capa oscura para contraste global
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -250,12 +245,11 @@ fun NowPlayingScreen(
                 Column(
                     modifier = Modifier.fillMaxSize().padding(scaffoldPadding).statusBarsPadding().padding(horizontal = 20.dp),
                 ) {
-                    // --- HEADER DE PANELES MODERNIZADO (Píldora arrastrable visualmente) ---
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
-                            .clickable { // Cierra el panel al tocar el encabezado
+                            .clickable {
                                 showQueuePanel = false
                                 showLyricsView = false
                             },
@@ -275,11 +269,10 @@ fun NowPlayingScreen(
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
-                    // -----------------------------------------------------------------------
 
                     Box(Modifier.weight(1f)) {
                         if (showQueuePanel) {
-                            AppleMusicQueueView(song, queueWindows, currentMediaItemIndex, shuffleEnabled,
+                            MusicQueueView(song, queueWindows, currentMediaItemIndex, shuffleEnabled,
                                 { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }, repeatMode,
                                 { playerConnection.player.repeatMode = when (repeatMode) {
                                     Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
@@ -304,7 +297,6 @@ fun NowPlayingScreen(
                                 .drawWithContent {
                                     drawContent()
 
-                                    // Gradiente que actúa como borrador: difumina el 15% inferior de la carátula
                                     drawRect(
                                         brush = Brush.verticalGradient(
                                             0.85f to Color.Transparent,
@@ -331,7 +323,6 @@ fun NowPlayingScreen(
                             )
                         }
 
-                        // --- INDICADOR DE GESTO SWIPE-TO-DISMISS (Píldora superior) ---
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -342,7 +333,6 @@ fun NowPlayingScreen(
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.4f))
                         )
-                        // --------------------------------------------------------------
 
                         Row(
                             modifier = Modifier
@@ -573,7 +563,7 @@ private fun KaraokeLyricsOnly(
 }
 
 @Composable
-private fun AppleMusicQueueView(
+private fun MusicQueueView(
     currentSong: MediaMetadata?,
     windows: List<androidx.media3.common.Timeline.Window>,
     currentIndex: Int,
@@ -583,7 +573,12 @@ private fun AppleMusicQueueView(
     onToggleRepeat: () -> Unit,
     onItemClick: (Int) -> Unit,
 ) {
+    val upcoming = remember(windows, currentIndex) {
+        windows.withIndex().filter { it.index > currentIndex }
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
     ) {
@@ -646,7 +641,6 @@ private fun AppleMusicQueueView(
             Spacer(modifier = Modifier.height(32.dp))
         }
 
-        val upcoming = windows.withIndex().filter { it.index > currentIndex }
         if (upcoming.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -655,7 +649,10 @@ private fun AppleMusicQueueView(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-            items(upcoming.size) { index ->
+            items(
+                count = upcoming.size,
+                key = { index -> "queue_${upcoming[index].index}" },
+            ) { index ->
                 val indexedWindow = upcoming[index]
                 val window = indexedWindow.value
                 val metadata = window.mediaItem.metadata

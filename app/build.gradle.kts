@@ -265,6 +265,8 @@ dependencies {
     implementation(libs.viewmodel.compose)
     implementation(libs.lifecycle.process)
 
+    implementation(libs.compose.shimmer.v130)
+
     implementation(libs.material3)
     implementation(libs.androidx.adaptive)
     implementation(libs.androidx.adaptive.layout)

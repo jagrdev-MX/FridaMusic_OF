@@ -109,6 +109,7 @@ fun MainScreen(
             }
             composable("search") {
                 SearchScreen(
+                    navController = navController,
                     onSearchSubmit = { query ->
                         navController.navigate("search_result/${Uri.encode(query)}")
                     },
@@ -118,6 +119,13 @@ fun MainScreen(
                             playerConnection?.let { pc -> { pc.playYTItem(item) } },
                         )
                     },
+                )
+            }
+            composable("local_search") {
+                LocalSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onToggleToOnlineSearch = { navController.popBackStack("search", inclusive = false) },
+                    onLocalItemClick = { item -> navController.navigateToDetail(item) },
                 )
             }
             composable(
@@ -147,6 +155,7 @@ fun MainScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
                     onCachedSongClick = { song, queue -> playerConnection?.playCachedSong(song, queue) },
                     onLocalItemClick = { item -> navController.navigateToDetail(item) },
+                    onLocalSearchClick = { navController.navigate("local_search") },
                     onStatsClick = { navController.navigate("stats") },
                     onExternalPlaylistClick = { navController.navigate("spotify_import") },
                 )

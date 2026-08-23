@@ -75,6 +75,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
 import com.jagr.fridamusic.constants.MiniPlayerHeight
 import com.jagr.fridamusic.constants.NavigationBarHeight
+import com.jagr.fridamusic.constants.MediumAnimationSpec
 import com.jagr.fridamusic.constants.PlaylistSortType
 import com.jagr.fridamusic.constants.SongSortType
 import com.jagr.fridamusic.db.entities.Album
@@ -193,6 +194,7 @@ fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    onLocalSearchClick: () -> Unit,
     onStatsClick: () -> Unit,
     onExternalPlaylistClick: () -> Unit,
     mixViewModel: LibraryMixViewModel = hiltViewModel(),
@@ -476,6 +478,7 @@ fun LibraryScreen(
                     LibraryFilter.PLAYLISTS -> PlaylistsTab(
                         onLocalItemClick = onLocalItemClick,
                         onExternalPlaylistClick = onExternalPlaylistClick,
+                        onLocalSearchClick = onLocalSearchClick,
                         selectedPlaylistIds = selectedPlaylistIds,
                         onSelectedPlaylistIdsChange = { selectedPlaylistIds = it },
                         viewModel = playlistsViewModel,
@@ -541,7 +544,7 @@ private fun ExpressiveTabChip(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else if (selected) 1.05f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = MediumAnimationSpec,
         label = "chip_scale",
     )
     val bgColor by animateColorAsState(
@@ -761,7 +764,7 @@ private fun ShortcutCard(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = MediumAnimationSpec,
         label = "shortcut_scale",
     )
 
@@ -832,7 +835,7 @@ private fun PlaylistCompactCard(playlist: Playlist, onClick: () -> Unit) {
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.97f else 1.0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        animationSpec = MediumAnimationSpec,
         label = "playlist_scale",
     )
 
@@ -947,6 +950,7 @@ private fun ArtistMoreCard(onClick: () -> Unit) {
 private fun PlaylistsTab(
     onLocalItemClick: (LocalItem) -> Unit,
     onExternalPlaylistClick: () -> Unit,
+    onLocalSearchClick: () -> Unit,
     selectedPlaylistIds: Set<String>,
     onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
@@ -1078,7 +1082,7 @@ private fun PlaylistsTab(
     )
     val createFabRotation by animateFloatAsState(
         targetValue = if (createMenuExpanded) 405f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "playlistCreateFabRotation",
     )
     val createFabBottomPadding by animateDpAsState(
@@ -1089,7 +1093,7 @@ private fun PlaylistsTab(
         },
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessLow,
+            stiffness = Spring.StiffnessMediumLow,
         ),
         label = "playlistCreateFabBottomPadding",
     )
@@ -1115,6 +1119,7 @@ private fun PlaylistsTab(
                         gridView = true,
                         onSortClick = { showSortSheet = true },
                         onGridViewChanged = viewModel::setGridView,
+                        onSearchClick = onLocalSearchClick,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
@@ -1160,6 +1165,7 @@ private fun PlaylistsTab(
                         gridView = false,
                         onSortClick = { showSortSheet = true },
                         onGridViewChanged = viewModel::setGridView,
+                        onSearchClick = onLocalSearchClick,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }

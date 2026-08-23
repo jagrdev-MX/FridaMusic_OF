@@ -290,6 +290,19 @@ class PlayerConnection(
         }
     }
 
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (shouldBlockPlaybackChanges?.invoke() == true) {
+            Timber.tag(TAG).d("moveQueueItem blocked - Listen Together guest")
+            return
+        }
+        try {
+            service.moveQueueItem(fromIndex, toIndex)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Error in moveQueueItem")
+            throw e
+        }
+    }
+
     fun toggleLike() {
         try {
             service.toggleLike()

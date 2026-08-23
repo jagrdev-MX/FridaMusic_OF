@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.AlertDialog
@@ -84,6 +85,7 @@ fun PlaylistLibraryControls(
     gridView: Boolean,
     onSortClick: () -> Unit,
     onGridViewChanged: (Boolean) -> Unit,
+    onSearchClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val locale = LocalConfiguration.current.locales[0]
@@ -129,6 +131,20 @@ fun PlaylistLibraryControls(
             gridView = gridView,
             onGridViewChanged = onGridViewChanged,
         )
+
+        if (onSearchClick != null) {
+            Surface(
+                onClick = onSearchClick,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = stringResource(R.string.search_library),
+                    modifier = Modifier.padding(14.dp).size(22.dp),
+                )
+            }
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 [versions]
+composeShimmer = "1.3.0"
 materialIconsExtended = "1.7.8"
 retrofit = "2.11.0"
 haze = "1.0.2"
@@ -56,6 +57,7 @@ navigation-compose = "2.8.9"
 [libraries]
 androidx-material-icons-extended-v178 = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+compose-shimmer-v130 = { module = "com.valentinilk.shimmer:compose-shimmer", version.ref = "composeShimmer" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "retrofit" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
