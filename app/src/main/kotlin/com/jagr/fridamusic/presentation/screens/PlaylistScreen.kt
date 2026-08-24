@@ -53,6 +53,8 @@ import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.LocalPlayingBars
 import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.playYTItem
@@ -284,12 +286,10 @@ fun OnlinePlaylistScreen(
 
         if (isLoadingMore) {
             item {
-                Box(
+                FridaLoadingIndicator(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                }
+                    indicatorSize = FridaLoadingDefaults.SmallIndicatorSize,
+                )
             }
         }
 
@@ -499,10 +499,10 @@ private fun PlaylistScaffold(
 
             if (isLoading) {
                 item {
-                    Box(
+                    FridaLoadingIndicator(
                         modifier = Modifier.fillMaxWidth().padding(48.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { CircularProgressIndicator() }
+                        indicatorSize = FridaLoadingDefaults.LargeIndicatorSize,
+                    )
                 }
                 return@LazyColumn
             }

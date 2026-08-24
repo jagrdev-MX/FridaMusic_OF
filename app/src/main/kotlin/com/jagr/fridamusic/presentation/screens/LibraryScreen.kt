@@ -90,6 +90,8 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.DeleteLocalSongDialog
 import com.jagr.fridamusic.presentation.components.DeletePlaylistDialog
 import com.jagr.fridamusic.presentation.components.EmptyPlaylistsState
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.LocalSongActionsSheet
 import com.jagr.fridamusic.presentation.components.LocalSongDetailsDialog
@@ -406,9 +408,8 @@ fun LibraryScreen(
                         onClick = mixViewModel::refresh,
                     ) {
                         if (isRefreshing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp,
+                            FridaLoadingIndicator(
+                                indicatorSize = FridaLoadingDefaults.ActionIndicatorSize,
                             )
                         } else {
                             Icon(
@@ -1541,14 +1542,12 @@ private fun SongsTab(
 
         when {
             isLoading -> item(key = "song_mode_loading", span = { GridItemSpan(maxLineSpan) }) {
-                Box(
+                FridaLoadingIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                }
+                    indicatorSize = FridaLoadingDefaults.SmallIndicatorSize,
+                )
             }
             hasError -> item(key = "song_mode_error", span = { GridItemSpan(maxLineSpan) }) {
                 LibrarySongsEmptyState(
@@ -2091,9 +2090,8 @@ private fun LocalSongsTab(
                             },
                         ) {
                             if (scanState.isScanning) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
+                                FridaLoadingIndicator(
+                                    indicatorSize = FridaLoadingDefaults.InlineIndicatorSize,
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
@@ -2910,6 +2908,18 @@ private fun AlbumsTab(
     viewModel: LibraryAlbumsViewModel = hiltViewModel(),
 ) {
     val albums by viewModel.allAlbums.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    if (isLoading) {
+        FridaLoadingIndicator(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = LibraryContentTopPadding + 32.dp),
+            indicatorSize = FridaLoadingDefaults.SmallIndicatorSize,
+            contentAlignment = Alignment.TopCenter,
+        )
+        return
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),

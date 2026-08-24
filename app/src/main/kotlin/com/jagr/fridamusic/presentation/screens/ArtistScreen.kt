@@ -34,6 +34,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
@@ -191,12 +192,9 @@ fun ArtistScreen(
                     enter = fadeIn(),
                     exit = fadeOut(),
                 ) {
-                    Box(
+                    FridaLoadingIndicator(
                         modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                    }
+                    )
                 }
             }
 

@@ -43,6 +43,7 @@ import com.jagr.fridamusic.db.entities.Artist as LocalArtist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
@@ -244,7 +245,13 @@ fun HomeScreen(
         }
 
         if (isLoading && !hasVisibleContent) {
-            item(key = "loading") { HomeLoadingState() }
+            item(key = "loading") {
+                FridaLoadingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                )
+            }
         }
 
         if (!isLoading && !hasVisibleContent) {
@@ -702,22 +709,6 @@ private fun ArtistCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun HomeLoadingState() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(200.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(32.dp),
-            strokeWidth = 3.dp,
         )
     }
 }

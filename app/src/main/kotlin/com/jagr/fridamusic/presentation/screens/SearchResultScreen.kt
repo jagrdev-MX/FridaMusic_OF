@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.viewmodels.OnlineSearchViewModel
 import com.music.innertube.YouTube
 import com.music.innertube.models.YTItem
@@ -134,7 +136,12 @@ private fun SearchSummaryContent(viewModel: OnlineSearchViewModel, onItemClick: 
     val summaryPage = viewModel.summaryPage
 
     if (summaryPage == null) {
-        LoadingIndicator()
+        FridaLoadingIndicator(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 80.dp),
+            contentAlignment = Alignment.TopCenter,
+        )
         return
     }
     if (summaryPage.summaries.isEmpty()) {
@@ -173,7 +180,12 @@ private fun SearchFilteredContent(
     val listState = rememberLazyListState()
 
     if (viewState == null) {
-        LoadingIndicator()
+        FridaLoadingIndicator(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 80.dp),
+            contentAlignment = Alignment.TopCenter,
+        )
         return
     }
     if (viewState.items.isEmpty()) {
@@ -197,32 +209,14 @@ private fun SearchFilteredContent(
                 LaunchedEffect(Unit) {
                     viewModel.loadMore()
                 }
-                Box(
+                FridaLoadingIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(32.dp),
-                        color = MaterialTheme.colorScheme.primary, // o EchoLavender
-                        strokeWidth = 3.dp
-                    )
-                }
+                    indicatorSize = FridaLoadingDefaults.MediumIndicatorSize,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun LoadingIndicator() {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(top = 80.dp),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        CircularProgressIndicator(
-            color = MaterialTheme.colorScheme.primary
-        )
     }
 }
 

@@ -12,6 +12,7 @@ import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,6 +29,8 @@ constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val albumId = savedStateHandle.get<String>("albumId")!!
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading = _isLoading.asStateFlow()
     val playlistId = MutableStateFlow("")
     val albumWithSongs =
         database
@@ -118,6 +121,8 @@ constructor(
                         }
                     }
                 }
+        }.invokeOnCompletion {
+            _isLoading.value = false
         }
     }
 }

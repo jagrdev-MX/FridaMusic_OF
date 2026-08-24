@@ -29,6 +29,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
@@ -43,16 +45,18 @@ fun AlbumScreen(
 ) {
     val playerConnection = LocalPlayerConnection.current
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     val description by viewModel.description.collectAsState()
     val otherVersions by viewModel.otherVersions.collectAsState()
     val releasesForYou by viewModel.releasesForYou.collectAsState()
 
     val album = albumWithSongs
 
-    if (album == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+    if (album == null || (isLoading && album.songs.isEmpty())) {
+        FridaLoadingIndicator(
+            modifier = Modifier.fillMaxSize(),
+            indicatorSize = FridaLoadingDefaults.LargeIndicatorSize,
+        )
         return
     }
 
@@ -68,14 +72,12 @@ fun AlbumScreen(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(380.dp)
+                    .matchParentSize()
                     .blur(60.dp),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(380.dp)
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
