@@ -381,14 +381,12 @@ private fun PlaylistScaffold(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(340.dp)
+                    .matchParentSize()
                     .blur(60.dp),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(340.dp)
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(

@@ -59,6 +59,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -134,12 +135,16 @@ class MainActivity : ComponentActivity() {
                 }
             }.collectAsState(initial = Triple("SYSTEM_DEFAULT", false, true))
 
-            val (darkModePref, pureBlack, _) = themePrefs
+            val (darkModePref, pureBlack, dynamicTheme) = themePrefs
             val isDark = when (darkModePref) {
                 "ON"  -> true
                 "OFF" -> false
                 else  -> systemDark
             }
+            val artworkUrlFlow = remember(playerConnection) {
+                playerConnection?.mediaMetadata?.map { it?.thumbnailUrl } ?: flowOf(null)
+            }
+            val artworkUrl by artworkUrlFlow.collectAsState(initial = null)
 
             val isFirstRunFlow = remember {
                 dataStore.data.map { preferences ->
@@ -148,7 +153,12 @@ class MainActivity : ComponentActivity() {
             }
             val isFirstRun by isFirstRunFlow.collectAsState(initial = null)
 
-            FridaMusicTheme(darkTheme = isDark, pureBlack = pureBlack) {
+            FridaMusicTheme(
+                darkTheme = isDark,
+                pureBlack = pureBlack,
+                dynamicTheme = dynamicTheme,
+                artworkUrl = artworkUrl,
+            ) {
                 CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
                     when (isFirstRun) {
                         null -> {

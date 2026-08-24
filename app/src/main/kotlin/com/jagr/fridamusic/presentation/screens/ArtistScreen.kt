@@ -82,14 +82,12 @@ fun ArtistScreen(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
+                    .matchParentSize()
                     .blur(60.dp),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(

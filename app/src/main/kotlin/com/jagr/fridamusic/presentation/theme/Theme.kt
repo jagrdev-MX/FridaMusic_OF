@@ -6,11 +6,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.toBitmap
+import com.materialkolor.PaletteStyle
+import com.materialkolor.ktx.themeColor
+import com.materialkolor.rememberDynamicColorScheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val DarkColorScheme = darkColorScheme(
     primary = FridaPink,
@@ -69,9 +85,30 @@ private val LightColorScheme = lightColorScheme(
 fun FridaMusicTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     pureBlack: Boolean = false,
+    dynamicTheme: Boolean = false,
+    artworkUrl: String? = null,
     content: @Composable () -> Unit,
 ) {
+    val dynamicSeed = rememberArtworkSeedColor(
+        enabled = dynamicTheme,
+        artworkUrl = artworkUrl,
+    )
+    val dynamicColorScheme = if (dynamicTheme) {
+        rememberDynamicColorScheme(
+            seedColor = dynamicSeed,
+            isDark = darkTheme,
+            isAmoled = darkTheme && pureBlack,
+            style = PaletteStyle.Content,
+        )
+    } else {
+        null
+    }
     val colorScheme = when {
+        dynamicColorScheme != null && darkTheme -> dynamicColorScheme.copy(
+            onBackground = DarkTextPrimary,
+            onSurface = DarkTextPrimary,
+        )
+        dynamicColorScheme != null -> dynamicColorScheme
         darkTheme && pureBlack -> DarkColorScheme.copy(
             background = Color.Black,
             surface = Color(0xFF0A0A0A),
@@ -98,4 +135,36 @@ fun FridaMusicTheme(
         typography = LiquidTypography,
         content = content,
     )
+}
+
+@Composable
+private fun rememberArtworkSeedColor(
+    enabled: Boolean,
+    artworkUrl: String?,
+): Color {
+    val context = LocalContext.current
+    var seedColor by remember { mutableStateOf(FridaPink) }
+
+    LaunchedEffect(enabled, artworkUrl) {
+        if (!enabled || artworkUrl.isNullOrBlank()) {
+            seedColor = FridaPink
+            return@LaunchedEffect
+        }
+
+        seedColor = withContext(Dispatchers.IO) {
+            runCatching {
+                val request = ImageRequest.Builder(context)
+                    .data(artworkUrl)
+                    .size(192)
+                    .allowHardware(false)
+                    .build()
+                context.imageLoader.execute(request).image
+                    ?.toBitmap()
+                    ?.asImageBitmap()
+                    ?.themeColor(fallback = FridaPink)
+            }.getOrNull()
+        } ?: FridaPink
+    }
+
+    return seedColor
 }
