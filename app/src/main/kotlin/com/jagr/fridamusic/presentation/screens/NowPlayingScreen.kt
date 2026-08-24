@@ -25,10 +25,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.LibraryAdd
-import androidx.compose.material.icons.rounded.LibraryAddCheck
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -61,7 +57,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.Format
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
@@ -71,8 +69,14 @@ import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
+import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.SongActionsSheet
+import com.jagr.fridamusic.presentation.components.SongMenuActions
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.toSongMenuPresentation
 import com.jagr.fridamusic.utils.resize
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -83,6 +87,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun NowPlayingScreen(
     playerConnection: PlayerConnection,
     onBack: () -> Unit,
+    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
 
@@ -99,6 +104,7 @@ fun NowPlayingScreen(
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentMediaItemIndex by playerConnection.currentMediaItemIndex.collectAsState()
+    val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val sleepTimer = playerConnection.service.sleepTimer
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -131,7 +137,8 @@ fun NowPlayingScreen(
     var showQueuePanel by remember { mutableStateOf(false) }
     var showLyricsView by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var showOverflowMenu by remember { mutableStateOf(false) }
+    var queueMenuSelection by remember { mutableStateOf<QueueMenuSelection?>(null) }
+    var addToPlaylistMediaItem by remember { mutableStateOf<MediaItem?>(null) }
 
     val hasLyrics = currentLyrics != null
     val audioQualityLabel = remember(currentFormat, liveAudioFormat) {
@@ -279,13 +286,16 @@ fun NowPlayingScreen(
 
                     Box(Modifier.weight(1f)) {
                         if (showQueuePanel) {
-                            AppleMusicQueueView(song, queueWindows, currentMediaItemIndex, shuffleEnabled,
+                            AppleMusicQueueView(song, playerConnection.player.currentMediaItem, queueWindows, currentMediaItemIndex, shuffleEnabled,
                                 { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }, repeatMode,
                                 { playerConnection.player.repeatMode = when (repeatMode) {
                                     Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                                     Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                                     else -> Player.REPEAT_MODE_OFF
-                                } }, { playerConnection.player.seekTo(it, 0) })
+                                } }, { playerConnection.player.seekTo(it, 0) },
+                                onMoreClick = { mediaItem, index, isCurrent ->
+                                    queueMenuSelection = QueueMenuSelection(mediaItem, index, isCurrent)
+                                })
                         } else {
                             KaraokeLyricsOnly(currentLyrics?.lyrics.orEmpty(), karaokePositionMs,
                                 currentSong?.song?.lyricsOffset?.toLong() ?: 0L, { playerConnection.player.seekTo(it) })
@@ -365,38 +375,16 @@ fun NowPlayingScreen(
                                     color = Color.White.copy(alpha = 0.88f),
                                 )
                             }
-                            Box {
-                                NowPlayingRoundButton({ showOverflowMenu = true }, Icons.Rounded.MoreVert, stringResource(R.string.more_options))
-                                MaterialTheme(
-                                    shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp))
-                                ) {
-                                    DropdownMenu(
-                                        expanded = showOverflowMenu,
-                                        onDismissRequest = { showOverflowMenu = false },
-                                        modifier = Modifier.background(Color(0xFF252525))
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = if (currentSong?.song?.inLibrary != null) stringResource(R.string.remove_from_library_label) else stringResource(R.string.add_to_library_label),
-                                                    color = Color.White
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = if (currentSong?.song?.inLibrary != null) Icons.Rounded.LibraryAddCheck else Icons.Rounded.LibraryAdd,
-                                                    contentDescription = null,
-                                                    tint = Color.White
-                                                )
-                                            },
-                                            onClick = {
-                                                playerConnection.toggleLibrary()
-                                                showOverflowMenu = false
-                                            },
-                                        )
+                            NowPlayingRoundButton(
+                                onClick = {
+                                    playerConnection.player.currentMediaItem?.let { mediaItem ->
+                                        queueMenuSelection = QueueMenuSelection(mediaItem, currentMediaItemIndex, isCurrent = true)
                                     }
-                                }
-                            }
+                                },
+                                icon = Icons.Rounded.MoreVert,
+                                contentDescription = stringResource(R.string.more_options),
+                                enabled = playerConnection.player.currentMediaItem != null,
+                            )
                             Spacer(Modifier.width(12.dp))
                             NowPlayingRoundButton({ playerConnection.toggleLike() }, if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.action_like))
                         }
@@ -514,6 +502,58 @@ fun NowPlayingScreen(
         }
     }
 
+    queueMenuSelection?.let { selection ->
+        val isCurrentItem = selection.isCurrent
+        val presentation = selection.mediaItem.toSongMenuPresentation().let { itemPresentation ->
+            if (isCurrentItem) {
+                itemPresentation.copy(
+                    isFavorite = currentSong?.song?.liked ?: itemPresentation.isFavorite,
+                    isInLibrary = currentSong?.song?.inLibrary != null,
+                )
+            } else {
+                itemPresentation
+            }
+        }
+        SongActionsSheet(
+            mediaItem = selection.mediaItem,
+            presentation = presentation,
+            onDismiss = { queueMenuSelection = null },
+            actions = SongMenuActions(
+                onPlay = if (!isCurrentItem) {
+                    {
+                        playerConnection.player.seekTo(selection.index, 0)
+                        queueMenuSelection = null
+                    }
+                } else {
+                    null
+                },
+                onToggleLibrary = if (isCurrentItem) {
+                    {
+                        playerConnection.toggleLibrary()
+                        queueMenuSelection = null
+                    }
+                } else {
+                    null
+                },
+                onAddToPlaylist = {
+                    addToPlaylistMediaItem = selection.mediaItem
+                    queueMenuSelection = null
+                },
+            ),
+        )
+    }
+
+    addToPlaylistMediaItem?.let { mediaItem ->
+        LocalPlaylistPickerDialog(
+            playlists = playlists.filter { it.playlist.isEditable },
+            onDismiss = { addToPlaylistMediaItem = null },
+            onSelect = { playlist ->
+                playlistsViewModel.addSongToPlaylist(playlist, mediaItem)
+                addToPlaylistMediaItem = null
+            },
+        )
+    }
+
     if (showSleepTimerDialog) {
         SleepTimerDialog(
             isActive = sleepTimer.isActive,
@@ -575,6 +615,7 @@ private fun KaraokeLyricsOnly(
 @Composable
 private fun AppleMusicQueueView(
     currentSong: MediaMetadata?,
+    currentMediaItem: MediaItem?,
     windows: List<androidx.media3.common.Timeline.Window>,
     currentIndex: Int,
     shuffleEnabled: Boolean,
@@ -582,6 +623,7 @@ private fun AppleMusicQueueView(
     repeatMode: Int,
     onToggleRepeat: () -> Unit,
     onItemClick: (Int) -> Unit,
+    onMoreClick: (MediaItem, Int, Boolean) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -622,9 +664,11 @@ private fun AppleMusicQueueView(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = { }) {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = stringResource(R.string.more_label), tint = Color.White)
-                }
+                SongOptionsButton(
+                    onClick = { currentMediaItem?.let { onMoreClick(it, currentIndex, true) } },
+                    enabled = currentMediaItem != null,
+                    iconColor = Color.White,
+                )
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -677,7 +721,10 @@ private fun AppleMusicQueueView(
                         Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Icon(imageVector = Icons.Rounded.Menu, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                    SongOptionsButton(
+                        onClick = { onMoreClick(window.mediaItem, indexedWindow.index, false) },
+                        iconColor = Color.White.copy(alpha = 0.8f),
+                    )
                 }
             }
         } else {
@@ -687,6 +734,12 @@ private fun AppleMusicQueueView(
         }
     }
 }
+
+private data class QueueMenuSelection(
+    val mediaItem: MediaItem,
+    val index: Int,
+    val isCurrent: Boolean,
+)
 
 @Composable
 private fun QueueActionButton(icon: ImageVector, isActive: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

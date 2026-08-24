@@ -17,15 +17,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.HeartBroken
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -57,6 +52,9 @@ import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.LocalPlayingBars
 import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
+import com.jagr.fridamusic.presentation.components.SongActionsSheet
+import com.jagr.fridamusic.presentation.components.SongMenuActions
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalPlaylistViewModel
@@ -150,27 +148,27 @@ fun LocalPlaylistScreen(
     }
 
     menuSong?.let { song ->
-        PlaylistSongActionsSheet(
-            title = song.song.title,
-            artist = song.artists.joinToString(", ") { it.name },
-            thumbnailUrl = song.song.thumbnailUrl,
+        SongActionsSheet(
+            song = song,
             onDismiss = { menuSong = null },
-            onPlay = {
-                menuSong = null
-                playFromPlaylist(song, songs)
-            },
-            onPlayNext = {
-                menuSong = null
-                playerConnection?.playNext(song.toMediaItem())
-            },
-            onAddToQueue = {
-                menuSong = null
-                playerConnection?.addToQueue(song.toMediaItem())
-            },
-            onAddToPlaylist = {
-                menuSong = null
-                addToPlaylistSong = song
-            },
+            actions = SongMenuActions(
+                onPlay = {
+                    menuSong = null
+                    playFromPlaylist(song, songs)
+                },
+                onPlayNext = {
+                    menuSong = null
+                    playerConnection?.playNext(song.toMediaItem())
+                },
+                onAddToQueue = {
+                    menuSong = null
+                    playerConnection?.addToQueue(song.toMediaItem())
+                },
+                onAddToPlaylist = {
+                    menuSong = null
+                    addToPlaylistSong = song
+                },
+            ),
         )
     }
 
@@ -185,8 +183,6 @@ fun LocalPlaylistScreen(
         )
     }
 }
-
-
 @Composable
 fun OnlinePlaylistScreen(
     onBack: () -> Unit,
@@ -320,27 +316,27 @@ fun OnlinePlaylistScreen(
     }
 
     menuSong?.let { song ->
-        PlaylistSongActionsSheet(
-            title = song.title,
-            artist = song.artists.joinToString(", ") { it.name },
-            thumbnailUrl = song.thumbnail,
+        SongActionsSheet(
+            song = song,
             onDismiss = { menuSong = null },
-            onPlay = {
-                menuSong = null
-                playerConnection?.playYTItem(song)
-            },
-            onPlayNext = {
-                menuSong = null
-                playerConnection?.playNext(song.toMediaItem())
-            },
-            onAddToQueue = {
-                menuSong = null
-                playerConnection?.addToQueue(song.toMediaItem())
-            },
-            onAddToPlaylist = {
-                menuSong = null
-                addToPlaylistSong = song
-            },
+            actions = SongMenuActions(
+                onPlay = {
+                    menuSong = null
+                    playerConnection?.playYTItem(song)
+                },
+                onPlayNext = {
+                    menuSong = null
+                    playerConnection?.playNext(song.toMediaItem())
+                },
+                onAddToQueue = {
+                    menuSong = null
+                    playerConnection?.addToQueue(song.toMediaItem())
+                },
+                onAddToPlaylist = {
+                    menuSong = null
+                    addToPlaylistSong = song
+                },
+            ),
         )
     }
 
@@ -617,9 +613,7 @@ private fun PlaylistSongRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
-            }
+            SongOptionsButton(onClick = onMoreClick)
         }
     }
 }
@@ -734,95 +728,5 @@ private fun AnimatedPlaylistSaveButton(
                 alpha = if (enabled) 1f else 0.45f
             }.size(28.dp),
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PlaylistSongActionsSheet(
-    title: String,
-    artist: String,
-    thumbnailUrl: String?,
-    onDismiss: () -> Unit,
-    onPlay: () -> Unit,
-    onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit,
-    onAddToPlaylist: () -> Unit,
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier.size(62.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (thumbnailUrl != null) {
-                        AsyncImage(
-                            model = thumbnailUrl.resize(width = 128),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        Icon(Icons.Rounded.MusicNote, contentDescription = null)
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                PlaylistSongAction(Icons.Rounded.PlayArrow, stringResource(R.string.play), onPlay)
-                PlaylistSongAction(Icons.Rounded.SkipNext, stringResource(R.string.play_next), onPlayNext)
-                PlaylistSongAction(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.add_to_queue), onAddToQueue)
-                PlaylistSongAction(
-                    Icons.AutoMirrored.Rounded.PlaylistAdd,
-                    stringResource(R.string.add_to_playlist),
-                    onAddToPlaylist,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlaylistSongAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(23.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
     }
 }
