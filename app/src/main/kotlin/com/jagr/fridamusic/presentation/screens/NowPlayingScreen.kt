@@ -644,6 +644,7 @@ fun NowPlayingScreen(
                                         lyrics = currentLyrics?.lyrics.orEmpty(),
                                         durationMs = durationMs,
                                         lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
+                                        isPlaying = isPlaying,
                                         onSeekTo = { playerConnection.player.seekTo(it) },
                                         onOffsetChange = { newOffset ->
                                             currentSong?.song?.let { songEntity ->
@@ -946,6 +947,7 @@ private fun KaraokeLyricsOnly(
     lyrics: String,
     durationMs: Long,
     lyricsOffsetMs: Long,
+    isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
     onOffsetChange: (Int) -> Unit,
 ) {
@@ -962,10 +964,12 @@ private fun KaraokeLyricsOnly(
 
     Box(Modifier.fillMaxSize()) {
         KaraokeLyrics(
+            mediaId = mediaMetadata.id,
             lyrics = lyrics,
             positionProvider = positionProvider,
             durationMs = durationMs,
             offsetMs = lyricsOffsetMs,
+            isPlaying = isPlaying,
             onSeekTo = onSeekTo,
             modifier = Modifier.fillMaxSize(),
         )

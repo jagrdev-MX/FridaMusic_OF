@@ -245,6 +245,7 @@
 
     <!-- Reproductor -->
     <string name="lyrics_not_found">Letras no encontradas</string>
+    <string name="instrumental">Instrumental</string>
     <string name="sleep_timer">Temporizador</string>
     <string name="end_of_song">Al terminar la canción</string>
     <plurals name="minute">
