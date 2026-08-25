@@ -6,13 +6,26 @@ import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.compose.animation.*
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -41,8 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -51,6 +64,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -59,6 +76,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -83,6 +101,7 @@ import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
@@ -141,13 +160,60 @@ fun NowPlayingScreen(
         }
     }
 
-    var showQueuePanel by remember { mutableStateOf(false) }
-    var showLyricsView by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var queueMenuSelection by remember { mutableStateOf<QueueMenuSelection?>(null) }
     var addToPlaylistMediaItem by remember { mutableStateOf<MediaItem?>(null) }
 
     val hasLyrics = currentLyrics != null
+    val coroutineScope = rememberCoroutineScope()
+    val panelMotion = remember { PlayerPanelMotionState() }
+    val panelMotionSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        )
+    }
+    val panelFlingBehavior = AnchoredDraggableDefaults.flingBehavior(
+        state = panelMotion.draggableState,
+        positionalThreshold = { distance -> distance * 0.32f },
+        animationSpec = panelMotionSpec,
+    )
+    val panelNestedScrollConnection = remember(panelMotion.draggableState, panelFlingBehavior) {
+        PlayerPanelNestedScrollConnection(
+            state = panelMotion.draggableState,
+            flingBehavior = panelFlingBehavior,
+        )
+    }
+    val queueInteractionSource = remember { MutableInteractionSource() }
+    val lyricsInteractionSource = remember { MutableInteractionSource() }
+    val panelHandleInteractionSource = remember { MutableInteractionSource() }
+    val queueIconDragged by queueInteractionSource.collectIsDraggedAsState()
+    val lyricsIconDragged by lyricsInteractionSource.collectIsDraggedAsState()
+    val panelHandleDragged by panelHandleInteractionSource.collectIsDraggedAsState()
+    val anyPanelDrag = queueIconDragged || lyricsIconDragged || panelHandleDragged
+
+    LaunchedEffect(queueInteractionSource) {
+        queueInteractionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                panelMotion.prepare(PlayerPanel.Queue)
+            }
+        }
+    }
+    LaunchedEffect(lyricsInteractionSource, hasLyrics) {
+        lyricsInteractionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start && hasLyrics) {
+                panelMotion.prepare(PlayerPanel.Lyrics)
+            }
+        }
+    }
+    LaunchedEffect(panelMotion, anyPanelDrag) {
+        snapshotFlow {
+            panelMotion.draggableState.offset to panelMotion.draggableState.settledValue
+        }.collect {
+            panelMotion.clearClosedPanelIfIdle(anyPanelDrag)
+        }
+    }
+
     val audioQualityLabel = remember(currentFormat, liveAudioFormat) {
         val codec = sequenceOf(liveAudioFormat?.codecs, currentFormat?.codecs)
             .mapNotNull { value ->
@@ -199,12 +265,6 @@ fun NowPlayingScreen(
         listOfNotNull(audioQualityLabel, bitrate, fileSize).joinToString("  •  ")
     }
 
-    val artworkScale by animateFloatAsState(
-        targetValue = if (showLyricsView) 0f else 1f,
-        animationSpec = tween(350),
-        label = "artwork_scale"
-    )
-
     // --- LÓGICA DE GESTO SWIPE-TO-DISMISS ---
     var swipeOffsetY by remember { mutableFloatStateOf(0f) }
     val animatedSwipeOffsetY by animateFloatAsState(
@@ -212,15 +272,20 @@ fun NowPlayingScreen(
         animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "swipe_animation"
     )
+    var panelHeightPx by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { size ->
+                panelHeightPx = size.height.toFloat()
+                panelMotion.updateAnchors(panelHeightPx)
+            }
             .offset { IntOffset(0, animatedSwipeOffsetY.roundToInt()) }
-            .pointerInput(showQueuePanel, showLyricsView) {
+            .pointerInput(panelMotion.activePanel) {
                 // Solo activamos el gesto de deslizar cuando los paneles están cerrados
                 // para no interferir con el scroll de la Cola o las Letras.
-                if (!showQueuePanel && !showLyricsView) {
+                if (panelMotion.activePanel == null) {
                     detectVerticalDragGestures(
                         onDragEnd = {
                             if (swipeOffsetY > 300f) { // Umbral para cerrar
@@ -260,59 +325,22 @@ fun NowPlayingScreen(
             containerColor = Color.Transparent,
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { scaffoldPadding ->
-            if (showQueuePanel || showLyricsView) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(scaffoldPadding),
+            ) {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(scaffoldPadding).statusBarsPadding().padding(horizontal = 20.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val progress = panelMotion.progress(panelHeightPx)
+                            alpha = (1f - progress).coerceIn(0f, 1f)
+                            val playerScale = 1f - (progress * 0.035f)
+                            scaleX = playerScale
+                            scaleY = playerScale
+                        },
                 ) {
-                    // --- HEADER DE PANELES MODERNIZADO (Píldora arrastrable visualmente) ---
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                            .clickable { // Cierra el panel al tocar el encabezado
-                                showQueuePanel = false
-                                showLyricsView = false
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(vertical = 12.dp)
-                                .width(48.dp)
-                                .height(5.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.4f))
-                        )
-                        Text(
-                            text = if (showQueuePanel) stringResource(R.string.queue) else stringResource(R.string.lyrics),
-                            color = Color.White.copy(alpha = 0.65f),
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                    // -----------------------------------------------------------------------
-
-                    Box(Modifier.weight(1f)) {
-                        if (showQueuePanel) {
-                            AppleMusicQueueView(song, playerConnection.player.currentMediaItem, queueWindows, currentMediaItemIndex, currentQueueIndex, shuffleEnabled,
-                                { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }, repeatMode,
-                                { playerConnection.player.repeatMode = when (repeatMode) {
-                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                                    else -> Player.REPEAT_MODE_OFF
-                                } }, { playerConnection.player.seekTo(it, 0) },
-                                onMoveItem = playerConnection::moveQueueItem,
-                                onMoreClick = { mediaItem, index, isCurrent ->
-                                    queueMenuSelection = QueueMenuSelection(mediaItem, index, isCurrent)
-                                })
-                        } else {
-                            KaraokeLyricsOnly(currentLyrics?.lyrics.orEmpty(), karaokePositionMs,
-                                currentSong?.song?.lyricsOffset?.toLong() ?: 0L, { playerConnection.player.seekTo(it) })
-                        }
-                    }
-                }
-            } else {
-                Column(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
-
                     Box(modifier = Modifier.weight(1.14f).fillMaxWidth()) {
 
                         Box(
@@ -334,7 +362,7 @@ fun NowPlayingScreen(
                         ) {
                             AsyncImage(
                                 model = song.thumbnailUrl?.resize(width = 1200), contentDescription = song.title,
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().scale(artworkScale),
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                             )
 
                             Box(
@@ -444,8 +472,42 @@ fun NowPlayingScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                NowPlayingRoundButton({ showQueuePanel = true }, Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.queue))
-                                NowPlayingRoundButton({ if (hasLyrics) showLyricsView = true }, Icons.AutoMirrored.Rounded.Notes, stringResource(R.string.lyrics), enabled = hasLyrics)
+                                NowPlayingRoundButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            panelMotion.open(PlayerPanel.Queue, panelMotionSpec)
+                                        }
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                                    contentDescription = stringResource(R.string.queue),
+                                    modifier = Modifier.anchoredDraggable(
+                                        state = panelMotion.draggableState,
+                                        orientation = Orientation.Vertical,
+                                        interactionSource = queueInteractionSource,
+                                        flingBehavior = panelFlingBehavior,
+                                    ),
+                                    interactionSource = queueInteractionSource,
+                                )
+                                NowPlayingRoundButton(
+                                    onClick = {
+                                        if (hasLyrics) {
+                                            coroutineScope.launch {
+                                                panelMotion.open(PlayerPanel.Lyrics, panelMotionSpec)
+                                            }
+                                        }
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.Notes,
+                                    contentDescription = stringResource(R.string.lyrics),
+                                    enabled = hasLyrics,
+                                    modifier = Modifier.anchoredDraggable(
+                                        state = panelMotion.draggableState,
+                                        orientation = Orientation.Vertical,
+                                        enabled = hasLyrics,
+                                        interactionSource = lyricsInteractionSource,
+                                        flingBehavior = panelFlingBehavior,
+                                    ),
+                                    interactionSource = lyricsInteractionSource,
+                                )
                                 NowPlayingRoundButton({ showSleepTimerDialog = true }, Icons.Rounded.Bedtime, stringResource(R.string.sleep_timer), selected = sleepTimer.isActive)
                             }
 
@@ -500,6 +562,105 @@ fun NowPlayingScreen(
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                panelMotion.activePanel?.let { activePanel ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y = panelMotion.offset(panelHeightPx).roundToInt(),
+                                )
+                            }
+                            .graphicsLayer {
+                                val progress = panelMotion.progress(panelHeightPx)
+                                alpha = 0.35f + (progress * 0.65f)
+                            }
+                            .nestedScroll(panelNestedScrollConnection)
+                            .statusBarsPadding()
+                            .padding(horizontal = 20.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                                .anchoredDraggable(
+                                    state = panelMotion.draggableState,
+                                    orientation = Orientation.Vertical,
+                                    interactionSource = panelHandleInteractionSource,
+                                    flingBehavior = panelFlingBehavior,
+                                )
+                                .clickable {
+                                    coroutineScope.launch {
+                                        panelMotion.close(panelMotionSpec)
+                                    }
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(vertical = 12.dp)
+                                    .width(48.dp)
+                                    .height(5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.4f)),
+                            )
+                            Text(
+                                text = when (activePanel) {
+                                    PlayerPanel.Queue -> stringResource(R.string.queue)
+                                    PlayerPanel.Lyrics -> stringResource(R.string.lyrics)
+                                },
+                                color = Color.White.copy(alpha = 0.65f),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+
+                        Box(Modifier.weight(1f)) {
+                            when (activePanel) {
+                                PlayerPanel.Queue -> {
+                                    AppleMusicQueueView(
+                                        currentSong = song,
+                                        currentMediaItem = playerConnection.player.currentMediaItem,
+                                        windows = queueWindows,
+                                        currentIndex = currentMediaItemIndex,
+                                        currentQueueIndex = currentQueueIndex,
+                                        shuffleEnabled = shuffleEnabled,
+                                        onToggleShuffle = {
+                                            playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                        },
+                                        repeatMode = repeatMode,
+                                        onToggleRepeat = {
+                                            playerConnection.player.repeatMode = when (repeatMode) {
+                                                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                                else -> Player.REPEAT_MODE_OFF
+                                            }
+                                        },
+                                        onItemClick = { playerConnection.player.seekTo(it, 0) },
+                                        onMoveItem = playerConnection::moveQueueItem,
+                                        onMoreClick = { mediaItem, index, isCurrent ->
+                                            queueMenuSelection = QueueMenuSelection(
+                                                mediaItem,
+                                                index,
+                                                isCurrent,
+                                            )
+                                        },
+                                    )
+                                }
+
+                                PlayerPanel.Lyrics -> {
+                                    KaraokeLyricsOnly(
+                                        lyrics = currentLyrics?.lyrics.orEmpty(),
+                                        positionMs = karaokePositionMs,
+                                        lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
+                                        onSeekTo = { playerConnection.player.seekTo(it) },
                                     )
                                 }
                             }
@@ -572,6 +733,160 @@ fun NowPlayingScreen(
     }
 }
 
+private enum class PlayerPanel {
+    Queue,
+    Lyrics,
+}
+
+private enum class PlayerPanelAnchor {
+    Open,
+    Closed,
+}
+
+@Stable
+private class PlayerPanelMotionState {
+    val draggableState = AnchoredDraggableState(PlayerPanelAnchor.Closed)
+
+    var activePanel by mutableStateOf<PlayerPanel?>(null)
+        private set
+
+    var isProgrammaticTransition by mutableStateOf(false)
+        private set
+
+    private var closedAnchorPx by mutableFloatStateOf(0f)
+
+    fun updateAnchors(heightPx: Float) {
+        if (heightPx <= 0f) return
+        closedAnchorPx = heightPx
+        draggableState.updateAnchors(
+            newAnchors = DraggableAnchors {
+                PlayerPanelAnchor.Open at 0f
+                PlayerPanelAnchor.Closed at heightPx
+            },
+            newTarget = if (activePanel == null) {
+                PlayerPanelAnchor.Closed
+            } else {
+                draggableState.targetValue
+            },
+        )
+    }
+
+    fun prepare(panel: PlayerPanel) {
+        if (activePanel == null || draggableState.settledValue == PlayerPanelAnchor.Closed) {
+            activePanel = panel
+        }
+    }
+
+    suspend fun open(panel: PlayerPanel, animationSpec: AnimationSpec<Float>) {
+        isProgrammaticTransition = true
+        activePanel = panel
+        try {
+            draggableState.animateTo(PlayerPanelAnchor.Open, animationSpec)
+        } finally {
+            isProgrammaticTransition = false
+        }
+    }
+
+    suspend fun close(animationSpec: AnimationSpec<Float>) {
+        isProgrammaticTransition = true
+        try {
+            draggableState.animateTo(PlayerPanelAnchor.Closed, animationSpec)
+        } finally {
+            if (isAtClosedAnchor()) activePanel = null
+            isProgrammaticTransition = false
+        }
+    }
+
+    fun clearClosedPanelIfIdle(isDragging: Boolean) {
+        if (!isDragging && !isProgrammaticTransition &&
+            !draggableState.isAnimationRunning && isAtClosedAnchor()
+        ) {
+            activePanel = null
+        }
+    }
+
+    fun offset(fallbackHeightPx: Float): Float =
+        draggableState.offset.takeUnless(Float::isNaN) ?: fallbackHeightPx
+
+    fun progress(fallbackHeightPx: Float): Float {
+        val height = closedAnchorPx.takeIf { it > 0f } ?: fallbackHeightPx
+        if (height <= 0f) return 0f
+        return (1f - (offset(height) / height)).coerceIn(0f, 1f)
+    }
+
+    private fun isAtClosedAnchor(): Boolean {
+        val currentOffset = draggableState.offset
+        return closedAnchorPx > 0f && !currentOffset.isNaN() &&
+            currentOffset >= closedAnchorPx - 0.5f &&
+            draggableState.settledValue == PlayerPanelAnchor.Closed
+    }
+}
+
+private class PlayerPanelNestedScrollConnection(
+    private val state: AnchoredDraggableState<PlayerPanelAnchor>,
+    private val flingBehavior: FlingBehavior,
+) : NestedScrollConnection {
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val delta = available.y
+        return if (delta < 0f && source == NestedScrollSource.UserInput) {
+            Offset(x = 0f, y = state.dispatchRawDelta(delta))
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset = if (source == NestedScrollSource.UserInput) {
+        Offset(x = 0f, y = state.dispatchRawDelta(available.y))
+    } else {
+        Offset.Zero
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val currentOffset = state.offset
+        val minAnchor = state.anchors.minPosition()
+        return if (available.y < 0f && !currentOffset.isNaN() && currentOffset > minAnchor) {
+            state.performPanelFling(flingBehavior, available.y)
+            available
+        } else {
+            Velocity.Zero
+        }
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        val remainingVelocity = state.performPanelFling(flingBehavior, available.y)
+        return Velocity(x = consumed.x, y = remainingVelocity)
+    }
+}
+
+private suspend fun <T> AnchoredDraggableState<T>.performPanelFling(
+    flingBehavior: FlingBehavior,
+    initialVelocity: Float,
+): Float {
+    var remainingVelocity = 0f
+    anchoredDrag { latestAnchors ->
+        val scrollScope = object : ScrollScope {
+            override fun scrollBy(pixels: Float): Float {
+                val currentOffset = offset
+                val newOffset = (currentOffset + pixels).coerceIn(
+                    latestAnchors.minPosition(),
+                    latestAnchors.maxPosition(),
+                )
+                val consumed = newOffset - currentOffset
+                dragTo(newOffset)
+                return consumed
+            }
+        }
+        remainingVelocity = with(flingBehavior) {
+            scrollScope.performFling(initialVelocity)
+        }
+    }
+    return remainingVelocity
+}
+
 @Composable
 private fun NowPlayingRoundButton(
     onClick: () -> Unit,
@@ -579,13 +894,46 @@ private fun NowPlayingRoundButton(
     contentDescription: String,
     enabled: Boolean = true,
     selected: Boolean = false,
+    modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource? = null,
 ) {
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    val isPressed by resolvedInteractionSource.collectIsPressedAsState()
+    val isDragged by resolvedInteractionSource.collectIsDraggedAsState()
+    val feedbackScale by animateFloatAsState(
+        targetValue = when {
+            isDragged -> 0.88f
+            isPressed -> 0.94f
+            else -> 1f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "now_playing_button_feedback",
+    )
+    val backgroundAlpha = when {
+        selected -> 0.22f
+        isDragged -> 0.24f
+        isPressed -> 0.18f
+        else -> 0.12f
+    }
+
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(48.dp)
+            .graphicsLayer {
+                scaleX = feedbackScale
+                scaleY = feedbackScale
+            }
             .clip(CircleShape)
-            .background(if (selected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.12f))
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(Color.White.copy(alpha = backgroundAlpha))
+            .clickable(
+                interactionSource = resolvedInteractionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
