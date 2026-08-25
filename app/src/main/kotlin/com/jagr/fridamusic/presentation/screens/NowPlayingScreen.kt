@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,7 +52,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -79,6 +83,8 @@ import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -104,6 +110,7 @@ fun NowPlayingScreen(
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentMediaItemIndex by playerConnection.currentMediaItemIndex.collectAsState()
+    val currentQueueIndex by playerConnection.currentWindowIndex.collectAsState()
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val sleepTimer = playerConnection.service.sleepTimer
 
@@ -286,13 +293,14 @@ fun NowPlayingScreen(
 
                     Box(Modifier.weight(1f)) {
                         if (showQueuePanel) {
-                            AppleMusicQueueView(song, playerConnection.player.currentMediaItem, queueWindows, currentMediaItemIndex, shuffleEnabled,
+                            AppleMusicQueueView(song, playerConnection.player.currentMediaItem, queueWindows, currentMediaItemIndex, currentQueueIndex, shuffleEnabled,
                                 { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }, repeatMode,
                                 { playerConnection.player.repeatMode = when (repeatMode) {
                                     Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                                     Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                                     else -> Player.REPEAT_MODE_OFF
                                 } }, { playerConnection.player.seekTo(it, 0) },
+                                onMoveItem = playerConnection::moveQueueItem,
                                 onMoreClick = { mediaItem, index, isCurrent ->
                                     queueMenuSelection = QueueMenuSelection(mediaItem, index, isCurrent)
                                 })
@@ -618,15 +626,35 @@ private fun AppleMusicQueueView(
     currentMediaItem: MediaItem?,
     windows: List<androidx.media3.common.Timeline.Window>,
     currentIndex: Int,
+    currentQueueIndex: Int,
     shuffleEnabled: Boolean,
     onToggleShuffle: () -> Unit,
     repeatMode: Int,
     onToggleRepeat: () -> Unit,
     onItemClick: (Int) -> Unit,
+    onMoveItem: (androidx.media3.common.Timeline.Window, androidx.media3.common.Timeline.Window) -> Boolean,
     onMoreClick: (MediaItem, Int, Boolean) -> Unit,
 ) {
+    val hapticFeedback = LocalHapticFeedback.current
+    val lazyListState = rememberLazyListState()
+    val upcoming = remember(windows, currentQueueIndex) {
+        if (currentQueueIndex in windows.indices) {
+            windows.drop(currentQueueIndex + 1)
+        } else {
+            emptyList()
+        }
+    }
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        val fromWindow = windows.firstOrNull { it.saveableQueueKey() == from.key }
+        val toWindow = windows.firstOrNull { it.saveableQueueKey() == to.key }
+        if (fromWindow != null && toWindow != null && onMoveItem(fromWindow, toWindow)) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
+        state = lazyListState,
         contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
     ) {
         item {
@@ -690,7 +718,6 @@ private fun AppleMusicQueueView(
             Spacer(modifier = Modifier.height(32.dp))
         }
 
-        val upcoming = windows.withIndex().filter { it.index > currentIndex }
         if (upcoming.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -699,32 +726,54 @@ private fun AppleMusicQueueView(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-            items(upcoming.size) { index ->
-                val indexedWindow = upcoming[index]
-                val window = indexedWindow.value
-                val metadata = window.mediaItem.metadata
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onItemClick(indexedWindow.index) }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            items(upcoming, key = { it.saveableQueueKey() }) { window ->
+                ReorderableItem(
+                    state = reorderableState,
+                    key = window.saveableQueueKey(),
                 ) {
-                    AsyncImage(
-                        model = metadata?.thumbnailUrl?.resize(width = 96),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val metadata = window.mediaItem.metadata
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onItemClick(window.firstPeriodIndex) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = metadata?.thumbnailUrl?.resize(width = 96),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        SongOptionsButton(
+                            onClick = { onMoreClick(window.mediaItem, window.firstPeriodIndex, false) },
+                            iconColor = Color.White.copy(alpha = 0.8f),
+                        )
+                        IconButton(
+                            onClick = {},
+                            enabled = upcoming.size > 1,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .draggableHandle(
+                                    enabled = upcoming.size > 1,
+                                    onDragStarted = {
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    },
+                                ),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.drag_handle),
+                                contentDescription = stringResource(R.string.reorder_queue),
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
                     }
-                    SongOptionsButton(
-                        onClick = { onMoreClick(window.mediaItem, indexedWindow.index, false) },
-                        iconColor = Color.White.copy(alpha = 0.8f),
-                    )
                 }
             }
         } else {
@@ -734,6 +783,9 @@ private fun AppleMusicQueueView(
         }
     }
 }
+
+private fun androidx.media3.common.Timeline.Window.saveableQueueKey(): String =
+    "${mediaItem.mediaId}:${uid.hashCode()}"
 
 private data class QueueMenuSelection(
     val mediaItem: MediaItem,
