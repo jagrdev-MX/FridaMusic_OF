@@ -1504,6 +1504,41 @@ class MusicService :
         automixItems.value = emptyList()
     }
 
+    fun stopAndClearPlayback() {
+        crossfadeTriggerJob?.cancel()
+        crossfadeJob?.cancel()
+        secondaryPlayer?.runCatching {
+            removeListener(secondaryPlayerListener)
+            stop()
+            clearMediaItems()
+            release()
+        }
+        secondaryPlayer = null
+        fadingPlayer?.runCatching {
+            stop()
+            clearMediaItems()
+            release()
+        }
+        fadingPlayer = null
+        isCrossfading.value = false
+
+        retryJob?.cancel()
+        waitingForNetworkConnection.value = false
+        retryCount = 0
+        consecutivePlaybackErr = 0
+        currentQueue = EmptyQueue
+        queueTitle = null
+        clearAutomix()
+        currentMediaMetadata.value = null
+
+        player.playWhenReady = false
+        player.stop()
+        player.clearMediaItems()
+        abandonAudioFocus()
+        closeAudioEffectSession()
+        clearPersistedQueueFiles()
+    }
+
     fun playNext(items: List<MediaItem>) {
 
         if (player.mediaItemCount == 0 || player.playbackState == STATE_IDLE) {

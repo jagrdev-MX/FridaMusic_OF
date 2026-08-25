@@ -21,7 +21,6 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -62,7 +61,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -79,7 +77,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -112,7 +109,9 @@ import kotlin.time.Duration.Companion.milliseconds
 fun NowPlayingScreen(
     playerConnection: PlayerConnection,
     onBack: () -> Unit,
-    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
+    modifier: Modifier = Modifier,
+    collapseDragModifier: Modifier = Modifier,
+    playlistsViewModel: PlaylistsViewModel? = null,
 ) {
     val context = LocalContext.current
 
@@ -130,7 +129,7 @@ fun NowPlayingScreen(
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentMediaItemIndex by playerConnection.currentMediaItemIndex.collectAsState()
     val currentQueueIndex by playerConnection.currentWindowIndex.collectAsState()
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val playlists = playlistsViewModel?.allPlaylists?.collectAsState()?.value.orEmpty()
     val sleepTimer = playerConnection.service.sleepTimer
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -265,43 +264,14 @@ fun NowPlayingScreen(
         listOfNotNull(audioQualityLabel, bitrate, fileSize).joinToString("  •  ")
     }
 
-    // --- LÓGICA DE GESTO SWIPE-TO-DISMISS ---
-    var swipeOffsetY by remember { mutableFloatStateOf(0f) }
-    val animatedSwipeOffsetY by animateFloatAsState(
-        targetValue = swipeOffsetY,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
-        label = "swipe_animation"
-    )
     var panelHeightPx by remember { mutableFloatStateOf(0f) }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .onSizeChanged { size ->
                 panelHeightPx = size.height.toFloat()
                 panelMotion.updateAnchors(panelHeightPx)
-            }
-            .offset { IntOffset(0, animatedSwipeOffsetY.roundToInt()) }
-            .pointerInput(panelMotion.activePanel) {
-                // Solo activamos el gesto de deslizar cuando los paneles están cerrados
-                // para no interferir con el scroll de la Cola o las Letras.
-                if (panelMotion.activePanel == null) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (swipeOffsetY > 300f) { // Umbral para cerrar
-                                onBack()
-                            } else {
-                                swipeOffsetY = 0f // Rebote al lugar original
-                            }
-                        },
-                        onDragCancel = { swipeOffsetY = 0f }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        if (swipeOffsetY + dragAmount > 0) { // Solo permite arrastrar hacia abajo
-                            swipeOffsetY += dragAmount
-                        }
-                    }
-                }
             }
     ) {
         // Fondo súper desenfocado
@@ -341,7 +311,15 @@ fun NowPlayingScreen(
                             scaleY = playerScale
                         },
                 ) {
-                    Box(modifier = Modifier.weight(1.14f).fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1.14f)
+                            .fillMaxWidth()
+                            .then(
+                                if (panelMotion.activePanel == null) collapseDragModifier
+                                else Modifier,
+                            ),
+                    ) {
 
                         Box(
                             modifier = Modifier
@@ -717,7 +695,7 @@ fun NowPlayingScreen(
             playlists = playlists.filter { it.playlist.isEditable },
             onDismiss = { addToPlaylistMediaItem = null },
             onSelect = { playlist ->
-                playlistsViewModel.addSongToPlaylist(playlist, mediaItem)
+                playlistsViewModel?.addSongToPlaylist(playlist, mediaItem)
                 addToPlaylistMediaItem = null
             },
         )

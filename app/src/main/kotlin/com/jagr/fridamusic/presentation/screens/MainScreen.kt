@@ -23,8 +23,12 @@ import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -35,6 +39,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
@@ -43,12 +48,13 @@ import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FabMenuAction
 import com.jagr.fridamusic.presentation.components.FabOverflowMenu
-import com.jagr.fridamusic.presentation.components.MiniPlayer
+import com.jagr.fridamusic.presentation.components.InteractivePlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
 import com.jagr.fridamusic.presentation.playCachedSong
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.notifications.RecommendationNotificationManager
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
@@ -64,6 +70,12 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    val playerPlaylistsViewModel = if (currentRoute == "now_playing" && backStackEntry != null) {
+        hiltViewModel<PlaylistsViewModel>(backStackEntry!!)
+    } else {
+        null
+    }
 
     val showOverlay = currentRoute != "now_playing" &&
             currentRoute != "settings" &&
@@ -234,12 +246,7 @@ fun MainScreen(
                 )
             }
             composable("now_playing") {
-                if (playerConnection != null) {
-                    NowPlayingScreen(
-                        playerConnection = playerConnection,
-                        onBack = { navController.popBackStack() },
-                    )
-                }
+                Box(Modifier.fillMaxSize())
             }
             composable(
                 route = "album/{albumId}",
@@ -317,18 +324,9 @@ fun MainScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .onSizeChanged { bottomBarHeightPx = it.height }
                     .navigationBarsPadding()
             ) {
-                if (playerConnection != null) {
-                    MiniPlayer(
-                        playerConnection = playerConnection,
-                        onClick = { navController.navigate("now_playing") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = 4.dp),
-                    )
-                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Top,
@@ -365,6 +363,34 @@ fun MainScreen(
                     )
                 }
             }
+        }
+
+        val showInteractivePlayer = showOverlay || currentRoute == "now_playing"
+        if (showInteractivePlayer && playerConnection != null) {
+            InteractivePlayer(
+                playerConnection = playerConnection,
+                bottomBarHeightPx = bottomBarHeightPx,
+                routeExpanded = currentRoute == "now_playing",
+                playlistsViewModel = playerPlaylistsViewModel,
+                onExpanded = {
+                    if (navController.currentDestination?.route != "now_playing") {
+                        navController.navigate("now_playing") { launchSingleTop = true }
+                    }
+                },
+                onCollapseStarted = {
+                    if (navController.currentDestination?.route == "now_playing") {
+                        navController.popBackStack()
+                    }
+                },
+                onCollapsed = {
+                    if (navController.currentDestination?.route == "now_playing") {
+                        navController.popBackStack()
+                    }
+                },
+                onDismissed = {
+                    playerConnection.service.stopAndClearPlayback()
+                },
+            )
         }
     }
 }
