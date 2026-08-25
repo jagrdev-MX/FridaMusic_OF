@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,8 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
+import com.jagr.fridamusic.presentation.SongActionsNavigation
 import com.jagr.fridamusic.presentation.components.FabMenuAction
 import com.jagr.fridamusic.presentation.components.FabOverflowMenu
 import com.jagr.fridamusic.presentation.components.InteractivePlayer
@@ -84,6 +87,12 @@ fun MainScreen(
             currentRoute != "stats" &&
             currentRoute != "about"
 
+    CompositionLocalProvider(
+        LocalSongActionsNavigation provides SongActionsNavigation(
+            openAlbum = { id -> navController.navigate("album/${Uri.encode(id)}") },
+            openArtist = { id -> navController.navigate("artist/${Uri.encode(id)}") },
+        ),
+    ) {
     Box(modifier = Modifier.fillMaxSize()) {
 
         NavHost(
@@ -392,6 +401,7 @@ fun MainScreen(
                 },
             )
         }
+    }
     }
 }
 

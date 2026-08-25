@@ -31,6 +31,11 @@ import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongNavigationTarget
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
@@ -63,6 +68,10 @@ fun AlbumScreen(
     val songs = album.songs
     val thumbnailUrl = album.album.thumbnailUrl
     val artistName = album.artists.joinToString(", ") { it.name }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    val albumArtists = remember(album.artists) {
+        album.artists.map { SongNavigationTarget(name = it.name, id = it.id) }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -228,6 +237,11 @@ fun AlbumScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    SongOptionsButton(
+                        onClick = {
+                            menuContext = song.toSongActionContext(albumArtists = albumArtists)
+                        },
+                    )
                 }
             }
 
@@ -306,6 +320,10 @@ fun AlbumScreen(
                 }
             }
         }
+        UniversalSongActionsHost(
+            context = menuContext,
+            onDismiss = { menuContext = null },
+        )
     }
 }
 

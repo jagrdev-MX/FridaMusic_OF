@@ -2,16 +2,13 @@ package com.jagr.fridamusic.presentation.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
@@ -83,22 +80,17 @@ import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toMediaItem
-import com.jagr.fridamusic.localmedia.LocalMediaStoreActionResult
-import com.jagr.fridamusic.localmedia.LocalSongMetadataUpdate
 import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
-import com.jagr.fridamusic.presentation.components.DeleteLocalSongDialog
 import com.jagr.fridamusic.presentation.components.DeletePlaylistDialog
 import com.jagr.fridamusic.presentation.components.EmptyPlaylistsState
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
-import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
-import com.jagr.fridamusic.presentation.components.LocalSongActionsSheet
-import com.jagr.fridamusic.presentation.components.LocalSongDetailsDialog
+import com.jagr.fridamusic.presentation.components.SongPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.LocalSongGridItem
 import com.jagr.fridamusic.presentation.components.LocalSongListItem
-import com.jagr.fridamusic.presentation.components.LocalSongLyricsEditorDialog
-import com.jagr.fridamusic.presentation.components.LocalSongMetadataEditorDialog
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.components.PlaylistLibraryActionsSheet
 import com.jagr.fridamusic.presentation.components.PlaylistLibraryControls
 import com.jagr.fridamusic.presentation.components.PlaylistLibraryGridItem
@@ -107,8 +99,6 @@ import com.jagr.fridamusic.presentation.components.PlaylistLibrarySortSheet
 import com.jagr.fridamusic.presentation.components.PlaylistNameDialog
 import com.jagr.fridamusic.presentation.components.LibraryViewModeToggle
 import com.jagr.fridamusic.playback.queues.ListQueue
-import com.jagr.fridamusic.utils.openLocalAudioFolder
-import com.jagr.fridamusic.utils.shareLocalAudio
 import com.jagr.fridamusic.utils.SyncErrorKind
 import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.resize
@@ -490,7 +480,6 @@ fun LibraryScreen(
                     )
                     LibraryFilter.LOCAL -> LocalSongsTab(
                         onSongClick = onSongClick,
-                        onLocalItemClick = onLocalItemClick,
                         showBlacklist = showLocalBlacklist,
                         onCloseBlacklist = { showLocalBlacklist = false },
                     )
@@ -513,7 +502,7 @@ fun LibraryScreen(
         )
     }
     if (showSelectionPlaylistPicker) {
-        LocalPlaylistPickerDialog(
+        SongPlaylistPickerDialog(
             playlists = playlists.filter {
                 it.id !in selectedPlaylistIds && it.playlist.isEditable
             },
@@ -1357,7 +1346,7 @@ private fun PlaylistsTab(
     }
 
     addToPlaylistSource?.let { source ->
-        LocalPlaylistPickerDialog(
+        SongPlaylistPickerDialog(
             playlists = playlists.filter {
                 it.id != source.id && it.playlist.isEditable
             },
@@ -1472,10 +1461,6 @@ private fun SongsTab(
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(false) }
     var menuSong by remember { mutableStateOf<Song?>(null) }
-    var playlistSong by remember { mutableStateOf<Song?>(null) }
-    var lyricsEditorSong by remember { mutableStateOf<Song?>(null) }
-    var detailsSong by remember { mutableStateOf<Song?>(null) }
-    val shareUnavailableMessage = stringResource(R.string.local_song_share_unavailable)
 
     LazyVerticalGrid(
         columns = if (gridView) GridCells.Adaptive(minSize = 156.dp) else GridCells.Fixed(1),
@@ -1606,98 +1591,11 @@ private fun SongsTab(
         )
     }
 
-    menuSong?.let { selectedSong ->
-        val albumTarget = selectedSong.album?.let { album ->
-            Album(album = album, artists = selectedSong.artists)
-        }
-        val artistTarget = selectedSong.artists.firstOrNull()?.let { artist ->
-            Artist(artist = artist, songCount = 0)
-        }
-        val albumArtistTarget = artistTarget
-        LocalSongActionsSheet(
-            song = selectedSong,
-            onDismiss = { menuSong = null },
-            isPinned = selectedSong.song.id in pinnedSongIds,
-            onToggleFavorite = {
-                viewModel.toggleFavorite(selectedSong)
-                menuSong = null
-            },
-            onPlayNext = {
-                playerConnection?.playNext(selectedSong.toMediaItem())
-                menuSong = null
-            },
-            onAddToQueue = {
-                playerConnection?.addToQueue(selectedSong.toMediaItem())
-                menuSong = null
-            },
-            onAddToPlaylist = {
-                playlistSong = selectedSong
-                menuSong = null
-            },
-            onTogglePinned = {
-                localSongsViewModel.togglePinnedSong(selectedSong.song.id)
-                menuSong = null
-            },
-            onGoToAlbum = albumTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onGoToArtist = artistTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onGoToAlbumArtist = albumArtistTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onEditLyrics = {
-                lyricsEditorSong = selectedSong
-                menuSong = null
-            },
-            onDetails = {
-                detailsSong = selectedSong
-                menuSong = null
-            },
-            onShare = {
-                if (!shareLibrarySong(context, selectedSong)) {
-                    Toast.makeText(context, shareUnavailableMessage, Toast.LENGTH_SHORT).show()
-                }
-                menuSong = null
-            },
-        )
-    }
-
-    playlistSong?.let { selectedSong ->
-        LocalPlaylistPickerDialog(
-            playlists = playlists,
-            onDismiss = { playlistSong = null },
-            onSelect = { playlist ->
-                playlistsViewModel.addSongToPlaylist(playlist, selectedSong)
-                playlistSong = null
-            },
-        )
-    }
-
-    lyricsEditorSong?.let { selectedSong ->
-        val lyricsEntity by remember(selectedSong.song.id) {
-            localSongsViewModel.lyrics(selectedSong.song.id)
-        }.collectAsState(initial = null)
-        LocalSongLyricsEditorDialog(
-            songId = selectedSong.song.id,
-            initialLyrics = lyricsEntity?.lyrics.orEmpty(),
-            onDismiss = { lyricsEditorSong = null },
-            onSave = { lyrics ->
-                localSongsViewModel.saveLyrics(selectedSong.song.id, lyrics)
-                lyricsEditorSong = null
-            },
-        )
-    }
-
-    detailsSong?.let { selectedSong ->
-        LocalSongDetailsDialog(
-            song = selectedSong,
-            metadata = null,
-            locale = locale,
-            onDismiss = { detailsSong = null },
-        )
-    }
+    UniversalSongActionsHost(
+        context = menuSong?.toSongActionContext(),
+        onDismiss = { menuSong = null },
+        localSongsViewModel = localSongsViewModel,
+    )
 }
 
 @Composable
@@ -1783,14 +1681,11 @@ private fun LibrarySongsEmptyState(
 @Composable
 private fun LocalSongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
-    onLocalItemClick: (LocalItem) -> Unit,
     showBlacklist: Boolean,
     onCloseBlacklist: () -> Unit,
     viewModel: LocalSongsViewModel = hiltViewModel(),
-    playlistsViewModel: PlaylistsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val locale = LocalConfiguration.current.locales[0]
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val playerConnection = LocalPlayerConnection.current
@@ -1815,7 +1710,6 @@ private fun LocalSongsTab(
     val sortMetadata by viewModel.sortMetadata.collectAsState()
     val pinnedSongIds by viewModel.pinnedSongIds.collectAsState()
     val sortPreference by viewModel.sortPreference.collectAsState()
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val sortType = remember(sortPreference.typeName) {
         runCatching { LocalSongSortType.valueOf(sortPreference.typeName) }
             .getOrDefault(LocalSongSortType.DATE_ADDED)
@@ -1824,13 +1718,6 @@ private fun LocalSongsTab(
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(false) }
     var menuSong by remember { mutableStateOf<Song?>(null) }
-    var playlistSong by remember { mutableStateOf<Song?>(null) }
-    var metadataEditorSong by remember { mutableStateOf<Song?>(null) }
-    var lyricsEditorSong by remember { mutableStateOf<Song?>(null) }
-    var detailsSong by remember { mutableStateOf<Song?>(null) }
-    var deleteSong by remember { mutableStateOf<Song?>(null) }
-    var pendingMetadataUpdate by remember { mutableStateOf<LocalSongMetadataUpdate?>(null) }
-    var pendingDeleteSongId by rememberSaveable { mutableStateOf<String?>(null) }
     val sortedSongs = remember(songs, sortMetadata, pinnedSongIds, sortType, sortAscending) {
         sortLocalSongs(
             songs = songs,
@@ -1855,12 +1742,6 @@ private fun LocalSongsTab(
             ascending = sortAscending,
         )
     }
-    val actionFailedMessage = stringResource(R.string.local_song_action_failed)
-    val metadataSavedMessage = stringResource(R.string.local_song_information_saved)
-    val deletedMessage = stringResource(R.string.local_song_deleted)
-    val folderUnavailableMessage = stringResource(R.string.local_song_folder_unavailable)
-    val sharedUnavailableMessage = stringResource(R.string.local_song_share_unavailable)
-    val blacklistedMessage = stringResource(R.string.local_song_blacklisted)
     val restoredMessage = stringResource(R.string.local_song_restored_from_blacklist)
     val undoLabel = stringResource(R.string.undo)
 
@@ -1879,123 +1760,6 @@ private fun LocalSongsTab(
             )
             if (result == SnackbarResult.ActionPerformed) {
                 viewModel.setSongBlacklisted(songId, blacklisted = true)
-            }
-        }
-    }
-
-    fun completeMetadataUpdate() {
-        val update = pendingMetadataUpdate ?: return
-        viewModel.updateSongMetadata(update, requestPermission = false) { result ->
-            when (result) {
-                LocalMediaStoreActionResult.Success -> showMessage(metadataSavedMessage)
-                is LocalMediaStoreActionResult.Failure,
-                is LocalMediaStoreActionResult.PermissionRequired -> showMessage(actionFailedMessage)
-            }
-            pendingMetadataUpdate = null
-        }
-    }
-
-    fun completeLegacyDelete() {
-        val songId = pendingDeleteSongId ?: return
-        viewModel.deleteSongFromDevice(songId, requestPermission = false) { result ->
-            when (result) {
-                LocalMediaStoreActionResult.Success -> showMessage(deletedMessage)
-                is LocalMediaStoreActionResult.Failure,
-                is LocalMediaStoreActionResult.PermissionRequired -> showMessage(actionFailedMessage)
-            }
-            pendingDeleteSongId = null
-        }
-    }
-
-    val mediaPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            when {
-                pendingMetadataUpdate != null -> completeMetadataUpdate()
-                pendingDeleteSongId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
-                    viewModel.refreshAfterExternalMediaAction()
-                    showMessage(deletedMessage)
-                    pendingDeleteSongId = null
-                }
-                pendingDeleteSongId != null -> completeLegacyDelete()
-            }
-        } else {
-            pendingMetadataUpdate = null
-            pendingDeleteSongId = null
-        }
-    }
-
-    val legacyWritePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
-            if (pendingMetadataUpdate != null) completeMetadataUpdate() else completeLegacyDelete()
-        } else {
-            showMessage(actionFailedMessage)
-            pendingMetadataUpdate = null
-            pendingDeleteSongId = null
-        }
-    }
-
-    fun launchMediaPermission(result: LocalMediaStoreActionResult.PermissionRequired) {
-        runCatching {
-            mediaPermissionLauncher.launch(
-                IntentSenderRequest.Builder(result.pendingIntent.intentSender).build(),
-            )
-        }.onFailure {
-            showMessage(actionFailedMessage)
-            pendingMetadataUpdate = null
-            pendingDeleteSongId = null
-        }
-    }
-
-    fun startMetadataUpdate(update: LocalSongMetadataUpdate) {
-        pendingDeleteSongId = null
-        pendingMetadataUpdate = update
-        val needsLegacyWritePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
-            PackageManager.PERMISSION_GRANTED
-        if (needsLegacyWritePermission) {
-            legacyWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            return
-        }
-        viewModel.updateSongMetadata(update, requestPermission = true) { result ->
-            when (result) {
-                LocalMediaStoreActionResult.Success -> {
-                    showMessage(metadataSavedMessage)
-                    pendingMetadataUpdate = null
-                }
-                is LocalMediaStoreActionResult.PermissionRequired -> launchMediaPermission(result)
-                is LocalMediaStoreActionResult.Failure -> {
-                    showMessage(actionFailedMessage)
-                    pendingMetadataUpdate = null
-                }
-            }
-        }
-    }
-
-    fun startDelete(songId: String) {
-        pendingMetadataUpdate = null
-        pendingDeleteSongId = songId
-        val needsLegacyWritePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
-            PackageManager.PERMISSION_GRANTED
-        if (needsLegacyWritePermission) {
-            legacyWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            return
-        }
-        viewModel.deleteSongFromDevice(songId, requestPermission = true) { result ->
-            when (result) {
-                LocalMediaStoreActionResult.Success -> {
-                    showMessage(deletedMessage)
-                    pendingDeleteSongId = null
-                }
-                is LocalMediaStoreActionResult.PermissionRequired -> launchMediaPermission(result)
-                is LocalMediaStoreActionResult.Failure -> {
-                    showMessage(actionFailedMessage)
-                    pendingDeleteSongId = null
-                }
             }
         }
     }
@@ -2037,6 +1801,7 @@ private fun LocalSongsTab(
                 isPlaying = isPlaying,
                 onClose = onCloseBlacklist,
                 onSongClick = { song -> onSongClick(song, sortedBlacklistedSongs) },
+                onMoreClick = { song -> menuSong = song },
                 onRestore = { song -> restoreFromBlacklist(song.song.id) },
             )
         } else {
@@ -2212,163 +1977,13 @@ private fun LocalSongsTab(
         )
     }
 
-    menuSong?.let { selectedSong ->
-        val metadata = sortMetadata[selectedSong.song.id]
-        val albumTarget = selectedSong.album?.let { album ->
-            Album(album = album, artists = selectedSong.artists)
-        }
-        val artistTarget = selectedSong.artists.firstOrNull()?.let { artist ->
-            Artist(artist = artist, songCount = 0)
-        }
-        val albumArtistTarget = selectedSong.artists.firstOrNull { artist ->
-            artist.name.equals(metadata?.albumArtist, ignoreCase = true)
-        }?.let { artist -> Artist(artist = artist, songCount = 0) } ?: artistTarget
-        val canOpenFolder = !metadata?.relativePath.isNullOrBlank() || !metadata?.absolutePath.isNullOrBlank()
-
-        LocalSongActionsSheet(
-            song = selectedSong,
-            metadata = metadata,
-            isPinned = selectedSong.song.id in pinnedSongIds,
-            onDismiss = { menuSong = null },
-            onToggleFavorite = {
-                viewModel.toggleFavorite(selectedSong)
-                menuSong = null
-            },
-            onPlayNext = {
-                playerConnection?.playNext(selectedSong.toMediaItem())
-                menuSong = null
-            },
-            onAddToQueue = {
-                playerConnection?.addToQueue(selectedSong.toMediaItem())
-                menuSong = null
-            },
-            onAddToPlaylist = {
-                playlistSong = selectedSong
-                menuSong = null
-            },
-            onTogglePinned = {
-                viewModel.togglePinnedSong(selectedSong.song.id)
-                menuSong = null
-            },
-            onGoToAlbum = albumTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onGoToArtist = artistTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onGoToAlbumArtist = albumArtistTarget?.let { target ->
-                { onLocalItemClick(target); menuSong = null }
-            },
-            onGoToFolder = if (canOpenFolder) {
-                {
-                    val opened = openLocalAudioFolder(context, metadata.relativePath, metadata.absolutePath)
-                    if (!opened) showMessage(folderUnavailableMessage)
-                    menuSong = null
-                }
-            } else {
-                null
-            },
-            onEditMetadata = {
-                metadataEditorSong = selectedSong
-                menuSong = null
-            },
-            onEditLyrics = {
-                lyricsEditorSong = selectedSong
-                menuSong = null
-            },
-            onBlacklist = {
-                viewModel.setSongBlacklisted(selectedSong.song.id, blacklisted = true)
-                menuSong = null
-                scope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = blacklistedMessage,
-                        actionLabel = undoLabel,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        viewModel.setSongBlacklisted(selectedSong.song.id, blacklisted = false)
-                    }
-                }
-            },
-            onDetails = {
-                detailsSong = selectedSong
-                menuSong = null
-            },
-            onShare = {
-                val shared = shareLocalAudio(context, selectedSong.song.id, metadata?.mimeType)
-                if (!shared) showMessage(sharedUnavailableMessage)
-                menuSong = null
-            },
-            onDelete = {
-                deleteSong = selectedSong
-                menuSong = null
-            },
-        )
-    }
-
-    playlistSong?.let { selectedSong ->
-        LocalPlaylistPickerDialog(
-            playlists = playlists,
-            onDismiss = { playlistSong = null },
-            onSelect = { playlist ->
-                playlistsViewModel.addSongToPlaylist(playlist, selectedSong)
-                playlistSong = null
-            },
-        )
-    }
-
-    metadataEditorSong?.let { selectedSong ->
-        LocalSongMetadataEditorDialog(
-            song = selectedSong,
-            metadata = sortMetadata[selectedSong.song.id],
-            onDismiss = { metadataEditorSong = null },
-            onSave = { title, artist, album ->
-                metadataEditorSong = null
-                startMetadataUpdate(
-                    LocalSongMetadataUpdate(
-                        mediaId = selectedSong.song.id,
-                        title = title,
-                        artist = artist,
-                        album = album,
-                    ),
-                )
-            },
-        )
-    }
-
-    lyricsEditorSong?.let { selectedSong ->
-        val lyricsEntity by remember(selectedSong.song.id) {
-            viewModel.lyrics(selectedSong.song.id)
-        }.collectAsState(initial = null)
-        LocalSongLyricsEditorDialog(
-            songId = selectedSong.song.id,
-            initialLyrics = lyricsEntity?.lyrics.orEmpty(),
-            onDismiss = { lyricsEditorSong = null },
-            onSave = { lyrics ->
-                viewModel.saveLyrics(selectedSong.song.id, lyrics)
-                lyricsEditorSong = null
-            },
-        )
-    }
-
-    detailsSong?.let { selectedSong ->
-        LocalSongDetailsDialog(
-            song = selectedSong,
-            metadata = sortMetadata[selectedSong.song.id],
-            locale = locale,
-            onDismiss = { detailsSong = null },
-        )
-    }
-
-    deleteSong?.let { selectedSong ->
-        DeleteLocalSongDialog(
-            title = selectedSong.song.title,
-            onDismiss = { deleteSong = null },
-            onConfirm = {
-                deleteSong = null
-                startDelete(selectedSong.song.id)
-            },
-        )
-    }
+    UniversalSongActionsHost(
+        context = menuSong?.let { selectedSong ->
+            selectedSong.toSongActionContext(sortMetadata[selectedSong.song.id])
+        },
+        onDismiss = { menuSong = null },
+        localSongsViewModel = viewModel,
+    )
 }
 
 @Composable
@@ -2378,6 +1993,7 @@ private fun LocalBlacklistContent(
     isPlaying: Boolean,
     onClose: () -> Unit,
     onSongClick: (Song) -> Unit,
+    onMoreClick: (Song) -> Unit,
     onRestore: (Song) -> Unit,
 ) {
     LazyColumn(
@@ -2466,7 +2082,7 @@ private fun LocalBlacklistContent(
                 isCurrent = currentSongId == song.song.id,
                 isPlaying = isPlaying,
                 onClick = { onSongClick(song) },
-                onMoreClick = { onRestore(song) },
+                onMoreClick = { onMoreClick(song) },
                 trailingContent = {
                     IconButton(
                         onClick = { onRestore(song) },
@@ -2583,29 +2199,6 @@ private fun sortLibrarySongs(
     }
     val ordered = songs.sortedWith(comparator).let { if (descending) it.asReversed() else it }
     return ordered.sortedByDescending { it.song.id in pinnedSongIds }
-}
-
-private fun shareLibrarySong(context: Context, song: Song): Boolean {
-    val songId = song.song.id.trim()
-    if (song.song.isLocal || songId.startsWith("content://") || songId.startsWith("file://")) {
-        return shareLocalAudio(context, songId, song.format?.mimeType)
-    }
-    if (songId.isEmpty()) return false
-
-    val shareUrl = when {
-        songId.startsWith("spotify:track:", ignoreCase = true) ->
-            "https://open.spotify.com/track/${Uri.encode(songId.substringAfterLast(':'))}"
-        songId.startsWith("http://", ignoreCase = true) ||
-            songId.startsWith("https://", ignoreCase = true) -> songId
-        else -> "https://music.youtube.com/watch?v=${Uri.encode(songId)}"
-    }
-    return runCatching {
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, shareUrl)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, null))
-    }.isSuccess
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

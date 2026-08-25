@@ -35,6 +35,10 @@ import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
@@ -74,6 +78,7 @@ fun ArtistScreen(
         .filterIsInstance<AlbumItem>()
 
     val isLoadingRemote = viewModel.isLoadingRemote
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -227,6 +232,7 @@ fun ArtistScreen(
                         RemoteSongRow(
                             song = song,
                             onClick = { playerConnection?.playYTItem(song) },
+                            onMoreClick = { menuContext = song.toSongActionContext() },
                         )
                     }
                 }
@@ -355,10 +361,17 @@ fun ArtistScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        SongOptionsButton(
+                            onClick = { menuContext = song.toSongActionContext() },
+                        )
                     }
                 }
             }
         }
+        UniversalSongActionsHost(
+            context = menuContext,
+            onDismiss = { menuContext = null },
+        )
     }
 }
 
@@ -366,6 +379,7 @@ fun ArtistScreen(
 private fun RemoteSongRow(
     song: SongItem,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -400,6 +414,7 @@ private fun RemoteSongRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        SongOptionsButton(onClick = onMoreClick)
     }
 }
 

@@ -91,12 +91,10 @@ import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
-import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.MarqueeText
-import com.jagr.fridamusic.presentation.components.SongActionsSheet
-import com.jagr.fridamusic.presentation.components.SongMenuActions
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
-import com.jagr.fridamusic.presentation.components.toSongMenuPresentation
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LyricsMenuViewModel
@@ -132,7 +130,6 @@ fun NowPlayingScreen(
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentMediaItemIndex by playerConnection.currentMediaItemIndex.collectAsState()
     val currentQueueIndex by playerConnection.currentWindowIndex.collectAsState()
-    val playlists = playlistsViewModel?.allPlaylists?.collectAsState()?.value.orEmpty()
     val sleepTimer = playerConnection.service.sleepTimer
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -164,7 +161,6 @@ fun NowPlayingScreen(
 
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var queueMenuSelection by remember { mutableStateOf<QueueMenuSelection?>(null) }
-    var addToPlaylistMediaItem by remember { mutableStateOf<MediaItem?>(null) }
 
     val hasLyrics = currentLyrics != null
     val coroutineScope = rememberCoroutineScope()
@@ -666,54 +662,16 @@ fun NowPlayingScreen(
     }
 
     queueMenuSelection?.let { selection ->
-        val isCurrentItem = selection.isCurrent
-        val presentation = selection.mediaItem.toSongMenuPresentation().let { itemPresentation ->
-            if (isCurrentItem) {
-                itemPresentation.copy(
-                    isFavorite = currentSong?.song?.liked ?: itemPresentation.isFavorite,
-                    isInLibrary = currentSong?.song?.inLibrary != null,
-                )
-            } else {
-                itemPresentation
-            }
-        }
-        SongActionsSheet(
-            mediaItem = selection.mediaItem,
-            presentation = presentation,
+        UniversalSongActionsHost(
+            context = selection.mediaItem.toSongActionContext(),
             onDismiss = { queueMenuSelection = null },
-            actions = SongMenuActions(
-                onPlay = if (!isCurrentItem) {
-                    {
-                        playerConnection.player.seekTo(selection.index, 0)
-                        queueMenuSelection = null
+            onRemoveFromQueue = if (!selection.isCurrent) {
+                {
+                    if (selection.index in 0 until playerConnection.player.mediaItemCount) {
+                        playerConnection.player.removeMediaItem(selection.index)
                     }
-                } else {
-                    null
-                },
-                onToggleLibrary = if (isCurrentItem) {
-                    {
-                        playerConnection.toggleLibrary()
-                        queueMenuSelection = null
-                    }
-                } else {
-                    null
-                },
-                onAddToPlaylist = {
-                    addToPlaylistMediaItem = selection.mediaItem
-                    queueMenuSelection = null
-                },
-            ),
-        )
-    }
-
-    addToPlaylistMediaItem?.let { mediaItem ->
-        LocalPlaylistPickerDialog(
-            playlists = playlists.filter { it.playlist.isEditable },
-            onDismiss = { addToPlaylistMediaItem = null },
-            onSelect = { playlist ->
-                playlistsViewModel?.addSongToPlaylist(playlist, mediaItem)
-                addToPlaylistMediaItem = null
-            },
+                }
+            } else null,
         )
     }
 

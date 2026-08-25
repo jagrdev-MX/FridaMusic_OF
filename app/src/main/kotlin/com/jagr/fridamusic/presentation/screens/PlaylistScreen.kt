@@ -51,10 +51,10 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.LocalPlayingBars
-import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
-import com.jagr.fridamusic.presentation.components.SongActionsSheet
-import com.jagr.fridamusic.presentation.components.SongMenuActions
+import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalPlaylistViewModel
@@ -81,7 +81,6 @@ fun LocalPlaylistScreen(
     val playlist by viewModel.playlist.collectAsState()
     val playlistSongs by viewModel.playlistSongs.collectAsState()
     val songs = playlistSongs.map { it.song }
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val currentSongIdFlow = remember(playerConnection) {
         playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
     }
@@ -90,8 +89,7 @@ fun LocalPlaylistScreen(
     }
     val currentSongId by currentSongIdFlow.collectAsState(initial = null)
     val isPlaying by isPlayingFlow.collectAsState(initial = false)
-    var menuSong by remember { mutableStateOf<Song?>(null) }
-    var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
 
     val thumbnailUrl = playlist?.thumbnails?.firstOrNull()
     val title = playlist?.playlist?.name ?: ""
@@ -142,46 +140,15 @@ fun LocalPlaylistScreen(
                 isCurrent = currentSongId == song.song.id,
                 isPlaying = isPlaying,
                 onClick = { playFromPlaylist(song, songs) },
-                onMoreClick = { menuSong = song },
+                onMoreClick = { menuContext = song.toSongActionContext() },
             )
         }
     }
 
-    menuSong?.let { song ->
-        SongActionsSheet(
-            song = song,
-            onDismiss = { menuSong = null },
-            actions = SongMenuActions(
-                onPlay = {
-                    menuSong = null
-                    playFromPlaylist(song, songs)
-                },
-                onPlayNext = {
-                    menuSong = null
-                    playerConnection?.playNext(song.toMediaItem())
-                },
-                onAddToQueue = {
-                    menuSong = null
-                    playerConnection?.addToQueue(song.toMediaItem())
-                },
-                onAddToPlaylist = {
-                    menuSong = null
-                    addToPlaylistSong = song
-                },
-            ),
-        )
-    }
-
-    addToPlaylistSong?.let { song ->
-        LocalPlaylistPickerDialog(
-            playlists = playlists.filter { it.playlist.isEditable },
-            onDismiss = { addToPlaylistSong = null },
-            onSelect = { target ->
-                addToPlaylistSong = null
-                playlistsViewModel.addSongToPlaylist(target, song)
-            },
-        )
-    }
+    UniversalSongActionsHost(
+        context = menuContext,
+        onDismiss = { menuContext = null },
+    )
 }
 @Composable
 fun OnlinePlaylistScreen(
@@ -198,7 +165,6 @@ fun OnlinePlaylistScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val error by viewModel.error.collectAsState()
     val cachedPlaylist by viewModel.dbPlaylist.collectAsState()
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val currentSongIdFlow = remember(playerConnection) {
         playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
     }
@@ -207,8 +173,7 @@ fun OnlinePlaylistScreen(
     }
     val currentSongId by currentSongIdFlow.collectAsState(initial = null)
     val isPlaying by isPlayingFlow.collectAsState(initial = false)
-    var menuSong by remember { mutableStateOf<SongItem?>(null) }
-    var addToPlaylistSong by remember { mutableStateOf<SongItem?>(null) }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
 
     val hasContinuation = viewModel.continuation != null
     val listState = rememberLazyListState()
@@ -276,7 +241,7 @@ fun OnlinePlaylistScreen(
                 isCurrent = currentSongId == song.id,
                 isPlaying = isPlaying,
                 onClick = { playerConnection?.playYTItem(song) },
-                onMoreClick = { menuSong = song },
+                onMoreClick = { menuContext = song.toSongActionContext() },
             )
         }
 
@@ -309,47 +274,16 @@ fun OnlinePlaylistScreen(
                     isCurrent = currentSongId == songItem.id,
                     isPlaying = isPlaying,
                     onClick = { playerConnection?.playYTItem(songItem) },
-                    onMoreClick = { menuSong = songItem },
+                    onMoreClick = { menuContext = songItem.toSongActionContext() },
                 )
             }
         }
     }
 
-    menuSong?.let { song ->
-        SongActionsSheet(
-            song = song,
-            onDismiss = { menuSong = null },
-            actions = SongMenuActions(
-                onPlay = {
-                    menuSong = null
-                    playerConnection?.playYTItem(song)
-                },
-                onPlayNext = {
-                    menuSong = null
-                    playerConnection?.playNext(song.toMediaItem())
-                },
-                onAddToQueue = {
-                    menuSong = null
-                    playerConnection?.addToQueue(song.toMediaItem())
-                },
-                onAddToPlaylist = {
-                    menuSong = null
-                    addToPlaylistSong = song
-                },
-            ),
-        )
-    }
-
-    addToPlaylistSong?.let { song ->
-        LocalPlaylistPickerDialog(
-            playlists = playlists.filter { it.playlist.isEditable },
-            onDismiss = { addToPlaylistSong = null },
-            onSelect = { target ->
-                addToPlaylistSong = null
-                playlistsViewModel.addSongToPlaylist(target, song)
-            },
-        )
-    }
+    UniversalSongActionsHost(
+        context = menuContext,
+        onDismiss = { menuContext = null },
+    )
 }
 
 @Composable

@@ -1842,4 +1842,22 @@
         <item>%1$s podría sonar justo como necesitas esta noche.</item>
         <item>%1$s está aquí por si quieres una canción más.</item>
     </string-array>
+    <string name="share_now_playing">Comparte lo que escuchas</string>
+    <string name="song_share_link">Compartir enlace de %1$s</string>
+    <string name="song_share_file">Compartir archivo de audio</string>
+    <string name="song_share_card_theme">Tema de la tarjeta</string>
+    <string name="song_share_instagram">Historia de Instagram</string>
+    <string name="song_share_save_card">Guardar tarjeta</string>
+    <string name="song_share_song_link">Enlace de la canción</string>
+    <string name="song_share_more">Compartir más</string>
+    <string name="song_share_card_saved">Tarjeta guardada en Imágenes/FridaMusic.</string>
+    <string name="song_share_failed">No se pudo generar la tarjeta.</string>
+    <string name="by_frida_labs">by Frida Labs</string>
+    <string name="open_listen">Abrir / Escuchar</string>
+    <string name="song_details_identity">Identidad</string>
+    <string name="song_details_music">Música</string>
+    <string name="song_details_file">Archivo</string>
+    <string name="song_details_dates">Fechas</string>
+    <string name="song_date_created">Fecha de creación</string>
+    <string name="song_release_date">Fecha de lanzamiento</string>
 </resources>

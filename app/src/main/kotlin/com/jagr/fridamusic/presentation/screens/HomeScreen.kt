@@ -44,6 +44,10 @@ import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
@@ -112,6 +116,7 @@ fun HomeScreen(
 
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     val activity = LocalContext.current.findActivity()
     val interstitialAdManager = remember(activity) { InterstitialAdManager(activity) }
 
@@ -150,6 +155,7 @@ fun HomeScreen(
                 songs = quickPickItems,
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             ytSection(
@@ -158,6 +164,7 @@ fun HomeScreen(
                 items = dailyDiscoverItems.map { it.recommendation },
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             localItemSection(
@@ -167,6 +174,7 @@ fun HomeScreen(
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             localSongSection(
@@ -175,6 +183,7 @@ fun HomeScreen(
                 songs = forgottenFavoriteItems,
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             echoBrainPlaylistItems.forEachIndexed { index, playlist ->
@@ -184,6 +193,7 @@ fun HomeScreen(
                     items = playlist.songs,
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
+                    onSongMore = { menuContext = it.toSongActionContext() },
                 )
             }
         }
@@ -196,6 +206,7 @@ fun HomeScreen(
                 items = section.items,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
         }
 
@@ -215,6 +226,7 @@ fun HomeScreen(
                 items = accountPlaylistItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             ytSection(
@@ -223,6 +235,7 @@ fun HomeScreen(
                 items = newReleaseItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
 
             similarRecommendationItems.forEachIndexed { index, recommendation ->
@@ -232,6 +245,7 @@ fun HomeScreen(
                     items = recommendation.items,
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
+                    onSongMore = { menuContext = it.toSongActionContext() },
                 )
             }
 
@@ -241,6 +255,7 @@ fun HomeScreen(
                 items = communityPlaylistItems.map { it.playlist },
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
+                onSongMore = { menuContext = it.toSongActionContext() },
             )
         }
 
@@ -269,6 +284,10 @@ fun HomeScreen(
             }
         )
     }
+    UniversalSongActionsHost(
+        context = menuContext,
+        onDismiss = { menuContext = null },
+    )
 }
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -439,6 +458,7 @@ private fun LazyListScope.localSongSection(
     songs: List<Song>,
     isLowEnd: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
+    onSongMore: (Song) -> Unit,
 ) {
     if (songs.isEmpty()) return
 
@@ -461,6 +481,7 @@ private fun LazyListScope.localSongSection(
                         ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg")
                         .resize(width = if (isLowEnd) 320 else 480),
                     onClick = { onSongClick(song, songs) },
+                    onMoreClick = { onSongMore(song) },
                 )
             }
         }
@@ -474,6 +495,7 @@ private fun LazyListScope.localItemSection(
     isLowEnd: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
     onItemClick: (YTItem) -> Unit,
+    onSongMore: (Song) -> Unit,
 ) {
     if (items.isEmpty()) return
     val songQueue = items.filterIsInstance<Song>()
@@ -507,6 +529,7 @@ private fun LazyListScope.localItemSection(
                             else -> localItem.toYTItemOrNull()?.let(onItemClick)
                         }
                     },
+                    onMoreClick = if (localItem is Song) ({ onSongMore(localItem) }) else null,
                 )
             }
         }
@@ -520,6 +543,7 @@ private fun LazyListScope.ytSection(
     items: List<YTItem>,
     isLowEnd: Boolean,
     onItemClick: (YTItem) -> Unit,
+    onSongMore: (SongItem) -> Unit,
 ) {
     if (items.isEmpty()) return
 
@@ -539,6 +563,7 @@ private fun LazyListScope.ytSection(
                     item = item,
                     isLowEnd = isLowEnd,
                     onClick = { onItemClick(item) },
+                    onSongMore = onSongMore,
                 )
             }
         }
@@ -550,6 +575,7 @@ private fun YTItemCard(
     item: YTItem,
     isLowEnd: Boolean,
     onClick: () -> Unit,
+    onSongMore: (SongItem) -> Unit,
 ) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
@@ -571,6 +597,7 @@ private fun YTItemCard(
             subtitle = subtitle,
             imageUrl = item.thumbnail?.resize(width = if (isLowEnd) 320 else 480).orEmpty(),
             onClick = onClick,
+            onMoreClick = if (item is SongItem) ({ onSongMore(item) }) else null,
         )
     }
 }
@@ -625,6 +652,7 @@ private fun WideCard(
     subtitle: String?,
     imageUrl: String,
     onClick: () -> Unit,
+    onMoreClick: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier
@@ -653,6 +681,14 @@ private fun WideCard(
                     )
                 )
         )
+        if (onMoreClick != null) {
+            SongOptionsButton(
+                onClick = onMoreClick,
+                modifier = Modifier.align(Alignment.TopEnd),
+                iconColor = Color.White,
+                containerColor = Color.Black.copy(alpha = 0.36f),
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)

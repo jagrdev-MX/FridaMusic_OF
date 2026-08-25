@@ -276,54 +276,7 @@ fun LocalPlayingBars(
 }
 
 @Composable
-fun LocalSongActionsSheet(
-    song: Song,
-    onDismiss: () -> Unit,
-    metadata: LocalSongSortMetadata? = null,
-    isPinned: Boolean = false,
-    onToggleFavorite: (() -> Unit)? = null,
-    onPlayNext: (() -> Unit)? = null,
-    onAddToQueue: (() -> Unit)? = null,
-    onAddToPlaylist: (() -> Unit)? = null,
-    onTogglePinned: (() -> Unit)? = null,
-    onGoToAlbum: (() -> Unit)? = null,
-    onGoToArtist: (() -> Unit)? = null,
-    onGoToAlbumArtist: (() -> Unit)? = null,
-    onGoToFolder: (() -> Unit)? = null,
-    onEditMetadata: (() -> Unit)? = null,
-    onEditLyrics: (() -> Unit)? = null,
-    onBlacklist: (() -> Unit)? = null,
-    onDetails: (() -> Unit)? = null,
-    onShare: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null,
-) {
-    SongActionsSheet(
-        song = song,
-        onDismiss = onDismiss,
-        album = metadata?.album,
-        isPinned = isPinned,
-        actions = SongMenuActions(
-            onToggleFavorite = onToggleFavorite,
-            onPlayNext = onPlayNext,
-            onAddToQueue = onAddToQueue,
-            onAddToPlaylist = onAddToPlaylist,
-            onTogglePinned = onTogglePinned,
-            onGoToAlbum = onGoToAlbum,
-            onGoToArtist = onGoToArtist,
-            onGoToAlbumArtist = onGoToAlbumArtist,
-            onGoToFolder = onGoToFolder,
-            onEditMetadata = onEditMetadata,
-            onEditLyrics = onEditLyrics,
-            onBlacklist = onBlacklist,
-            onDetails = onDetails,
-            onShare = onShare,
-            onDelete = onDelete,
-        ),
-    )
-}
-
-@Composable
-fun LocalPlaylistPickerDialog(
+fun SongPlaylistPickerDialog(
     playlists: List<Playlist>,
     onDismiss: () -> Unit,
     onSelect: (Playlist) -> Unit,
