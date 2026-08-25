@@ -12,17 +12,18 @@ import com.jagr.fridamusic.utils.NetworkConnectivityObserver
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 import javax.inject.Inject
 
 class LyricsHelper
@@ -31,102 +32,64 @@ constructor(
     @ApplicationContext private val context: Context,
     private val networkConnectivity: NetworkConnectivityObserver,
 ) {
+    private val selectedCache = LruCache<String, LyricsWithProvider>(MAX_CACHE_SIZE)
+    private val searchCache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
+    private var currentLyricsJob: Job? = null
 
     private suspend fun resolveLyricsProviders(): List<LyricsProvider> {
         val preferences = context.dataStore.data.first()
         val orderString = preferences[LyricsProviderOrderKey].orEmpty()
-
-        if (orderString.isNotBlank()) {
-            return LyricsProviderRegistry.getOrderedProviders(orderString)
-        }
+        if (orderString.isNotBlank()) return LyricsProviderRegistry.getOrderedProviders(orderString)
 
         val preferredEnum = preferences[PreferredLyricsProviderKey]
             .toEnum(PreferredLyricsProvider.YOULYPLUS)
         val preferredName = LyricsProviderRegistry.getProviderNameForEnum(preferredEnum)
         val defaultOrder = LyricsProviderRegistry.getDefaultProviderOrder()
-        val migratedOrder = listOf(preferredName) + defaultOrder.filter { it != preferredName }
-        return migratedOrder.mapNotNull { LyricsProviderRegistry.getProviderByName(it) }
+        return (listOf(preferredName) + defaultOrder.filter { it != preferredName })
+            .mapNotNull(LyricsProviderRegistry::getProviderByName)
     }
 
-    private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
-    private var currentLyricsJob: Job? = null
+    suspend fun getLyrics(
+        mediaMetadata: MediaMetadata,
+        forceRefresh: Boolean = false,
+    ): LyricsWithProvider {
+        if (forceRefresh) selectedCache.remove(mediaMetadata.id)
+        selectedCache.get(mediaMetadata.id)?.let { return it }
+        if (!isNetworkAvailable()) return notFound()
 
-    suspend fun getLyrics(mediaMetadata: MediaMetadata): LyricsWithProvider {
-        currentLyricsJob?.cancel()
+        val providers = resolveLyricsProviders().filter(::isProviderEnabled)
+        if (providers.isEmpty()) return notFound()
 
-        val cached = cache.get(mediaMetadata.id)?.firstOrNull()
-        if (cached != null) {
-            return LyricsWithProvider(cached.lyrics, cached.providerName)
+        val preferred = providers.first()
+        val primaryProviders = providers.filterNot(LyricsProviderRegistry::isFallbackProvider)
+            .let { primary -> (listOf(preferred) + primary).distinct() }
+        val candidates = fetchCandidates(primaryProviders, mediaMetadata, preferred.name).toMutableList()
+        var best = candidates.maxByOrNull { it.score.total }
+
+        if (best == null || best.score.total < PRIMARY_ACCEPT_SCORE) {
+            val fallbackProviders = providers.filterNot(primaryProviders::contains)
+            candidates += fetchCandidates(fallbackProviders, mediaMetadata, preferred.name)
+            best = candidates.maxByOrNull { it.score.total }
         }
 
-        val isNetworkAvailable = try {
-            networkConnectivity.isCurrentlyConnected()
-        } catch (_: Exception) { true }
+        if (best == null || best.score.total < MIN_VALID_SCORE) return notFound()
 
-        if (!isNetworkAvailable) {
-            return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-        }
-
-        val providers = resolveLyricsProviders()
-            .filter { it.isEnabled(context) }
-
-        if (providers.isEmpty()) {
-            return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-        }
-
-        return coroutineScope {
-            val resultChannel = Channel<Pair<Int, LyricsWithProvider>>(capacity = providers.size)
-
-            val jobs = providers.map { provider ->
-                async {
-                    try {
-                        val raw = provider.getLyrics(
-                            mediaMetadata.id,
-                            mediaMetadata.title,
-                            mediaMetadata.artists.joinToString { it.name },
-                            mediaMetadata.duration,
-                            mediaMetadata.album?.title,
-                        ).getOrNull()
-
-                        if (raw != null) {
-                            val entries = LyricsUtils.parseLyrics(raw)
-                            val score = when {
-                                entries.any { !it.words.isNullOrEmpty() } -> 3
-                                entries.isNotEmpty() -> 2
-                                raw.isNotBlank() && raw != LYRICS_NOT_FOUND -> 1
-                                else -> 0
-                            }
-                            if (score > 0) {
-                                resultChannel.trySend(score to LyricsWithProvider(raw, provider.name))
-                            }
-                        }
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
-                }
-            }
-
-            launch {
-                jobs.awaitAll()
-                resultChannel.close()
-            }
-
-            var bestScore = 0
-            var bestResult: LyricsWithProvider? = null
-
-            for ((score, result) in resultChannel) {
-                if (score > bestScore) {
-                    bestScore = score
-                    bestResult = result
-                }
-                if (bestScore == 3) break
-            }
-
-            jobs.forEach { it.cancel() }
-            resultChannel.close()
-
-            bestResult ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
-        }
+        val exactPlaybackReference = candidates
+            .filter { it.providerName == YouTubeSubtitleLyricsProvider.name }
+            .maxByOrNull { it.score.total }
+        val autoOffsetMs = exactPlaybackReference
+            ?.takeIf { it !== best }
+            ?.let { LyricsEngine.estimateAutoSyncOffsetMs(best.document, it.document) }
+            ?: 0
+        val result = LyricsWithProvider(
+            lyrics = best.lyrics,
+            provider = best.providerName,
+            syncType = best.document.syncType,
+            score = best.score.total,
+            autoOffsetMs = autoOffsetMs,
+        )
+        selectedCache.put(mediaMetadata.id, result)
+        return result
     }
 
     suspend fun getAllLyrics(
@@ -138,45 +101,66 @@ constructor(
         callback: (LyricsResult) -> Unit,
     ) {
         currentLyricsJob?.cancel()
-
-        val cacheKey = "$songArtists-$songTitle".replace(" ", "")
-        cache.get(cacheKey)?.let { results ->
-            results.forEach { callback(it) }
+        val cacheKey = searchCacheKey(mediaId, songTitle, songArtists)
+        searchCache.get(cacheKey)?.let { results ->
+            results.forEach(callback)
             return
         }
+        if (!isNetworkAvailable()) return
 
-        val isNetworkAvailable = try {
-            networkConnectivity.isCurrentlyConnected()
-        } catch (_: Exception) { true }
-
-        if (!isNetworkAvailable) return
-
-        val allResult = mutableListOf<LyricsResult>()
-        val providers = resolveLyricsProviders()
-
-        val scope = CoroutineScope(SupervisorJob())
-        currentLyricsJob = scope.launch {
-            val jobs = providers
-                .filter { it.isEnabled(context) }
-                .map { provider ->
-                    launch {
-                        try {
-                            provider.getAllLyrics(mediaId, songTitle, songArtists, duration, album) { lyrics ->
-                                val result = LyricsResult(provider.name, lyrics)
-                                synchronized(allResult) { allResult += result }
-                                callback(result)
+        val allResults = mutableListOf<LyricsResult>()
+        val fingerprints = mutableSetOf<String>()
+        val providers = resolveLyricsProviders().filter(::isProviderEnabled)
+        val searchJob = currentCoroutineContext()[Job]
+        currentLyricsJob = searchJob
+        try {
+            supervisorScope {
+                providers.map { provider ->
+                    launch(Dispatchers.IO) {
+                        withTimeoutOrNull(PROVIDER_SEARCH_TIMEOUT_MS) {
+                            try {
+                                provider.getAllLyrics(mediaId, songTitle, songArtists, duration, album) { lyrics ->
+                                    val document = LyricsEngine.normalize(lyrics, duration)
+                                    val score = LyricsEngine.score(
+                                        document = document,
+                                        providerName = provider.name,
+                                        songDurationSeconds = duration,
+                                        preferredProvider = provider == providers.firstOrNull(),
+                                    )
+                                    val fingerprint = lyricsFingerprint(lyrics)
+                                    if (score.total >= MIN_VALID_SCORE) {
+                                        val result = LyricsResult(
+                                            providerName = provider.name,
+                                            lyrics = lyrics,
+                                            syncType = document.syncType,
+                                            score = score.total,
+                                        )
+                                        val shouldPublish = synchronized(allResults) {
+                                            fingerprints.add(fingerprint).also { added ->
+                                                if (added) allResults += result
+                                            }
+                                        }
+                                        if (shouldPublish) callback(result)
+                                    }
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                reportException(e)
                             }
-                        } catch (e: Exception) {
-                            reportException(e)
                         }
                     }
-                }
-            jobs.forEach { it.join() }
-            cache.put(cacheKey, allResult)
+                }.joinAll()
+            }
+            searchCache.put(cacheKey, synchronized(allResults) { allResults.sortedByDescending { it.score } })
+        } finally {
+            if (currentLyricsJob === searchJob) currentLyricsJob = null
         }
+    }
 
-        currentLyricsJob?.join()
-        scope.cancel()
+    fun invalidate(mediaId: String) {
+        selectedCache.remove(mediaId)
+        searchCache.evictAll()
     }
 
     fun cancelCurrentLyricsJob() {
@@ -184,17 +168,100 @@ constructor(
         currentLyricsJob = null
     }
 
+    private suspend fun fetchCandidates(
+        providers: List<LyricsProvider>,
+        mediaMetadata: MediaMetadata,
+        preferredProviderName: String,
+    ): List<ScoredLyricsCandidate> = supervisorScope {
+        providers.map { provider ->
+            async(Dispatchers.IO) {
+                withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                    try {
+                        val raw = provider.getLyrics(
+                            mediaMetadata.id,
+                            mediaMetadata.title,
+                            mediaMetadata.artists.joinToString { it.name },
+                            mediaMetadata.duration,
+                            mediaMetadata.album?.title,
+                        ).getOrElse { error ->
+                            reportException(error)
+                            return@withTimeoutOrNull null
+                        }
+                        val document = LyricsEngine.normalize(raw, mediaMetadata.duration)
+                        val score = LyricsEngine.score(
+                            document = document,
+                            providerName = provider.name,
+                            songDurationSeconds = mediaMetadata.duration,
+                            preferredProvider = provider.name == preferredProviderName,
+                        )
+                        ScoredLyricsCandidate(provider.name, raw, document, score)
+                            .takeIf { score.total >= MIN_VALID_SCORE }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        reportException(e)
+                        null
+                    }
+                }
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    private fun isProviderEnabled(provider: LyricsProvider): Boolean = try {
+        provider.isEnabled(context)
+    } catch (e: Exception) {
+        reportException(e)
+        false
+    }
+
+    private suspend fun isNetworkAvailable(): Boolean = try {
+        networkConnectivity.isCurrentlyConnected()
+    } catch (_: Exception) {
+        true
+    }
+
+    private fun notFound() = LyricsWithProvider(
+        lyrics = LYRICS_NOT_FOUND,
+        provider = "Unknown",
+        syncType = LyricsSyncType.PLAIN,
+        score = Int.MIN_VALUE,
+    )
+
+    private fun searchCacheKey(mediaId: String, title: String, artists: String): String =
+        "$mediaId|$artists|$title".lowercase(Locale.ROOT).replace(" ", "")
+
+    private fun lyricsFingerprint(lyrics: String): String = lyrics
+        .lowercase(Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
     companion object {
-        private const val MAX_CACHE_SIZE = 3
+        private const val MAX_CACHE_SIZE = 6
+        private const val PROVIDER_TIMEOUT_MS = 12_000L
+        private const val PROVIDER_SEARCH_TIMEOUT_MS = 18_000L
+        private const val MIN_VALID_SCORE = 15
+        private const val PRIMARY_ACCEPT_SCORE = 45
     }
 }
+
+private data class ScoredLyricsCandidate(
+    val providerName: String,
+    val lyrics: String,
+    val document: LyricsDocument,
+    val score: LyricsScore,
+)
 
 data class LyricsResult(
     val providerName: String,
     val lyrics: String,
+    val syncType: LyricsSyncType = LyricsSyncType.PLAIN,
+    val score: Int = 0,
 )
 
 data class LyricsWithProvider(
     val lyrics: String,
     val provider: String,
+    val syncType: LyricsSyncType = LyricsSyncType.PLAIN,
+    val score: Int = 0,
+    val autoOffsetMs: Int = 0,
 )

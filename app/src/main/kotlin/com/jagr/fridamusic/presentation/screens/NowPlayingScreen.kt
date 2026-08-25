@@ -49,6 +49,7 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,10 +85,12 @@ import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.LocalPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongActionsSheet
@@ -96,6 +99,7 @@ import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.toSongMenuPresentation
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
+import com.jagr.fridamusic.viewmodels.LyricsMenuViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -118,7 +122,6 @@ fun NowPlayingScreen(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
-    val karaokePositionMs by playerConnection.playbackPositionMs.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
     val playbackError by playerConnection.error.collectAsState()
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
@@ -635,10 +638,22 @@ fun NowPlayingScreen(
 
                                 PlayerPanel.Lyrics -> {
                                     KaraokeLyricsOnly(
+                                        playerConnection = playerConnection,
+                                        mediaMetadata = song,
+                                        lyricsEntity = currentLyrics,
                                         lyrics = currentLyrics?.lyrics.orEmpty(),
-                                        positionMs = karaokePositionMs,
+                                        durationMs = durationMs,
                                         lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
                                         onSeekTo = { playerConnection.player.seekTo(it) },
+                                        onOffsetChange = { newOffset ->
+                                            currentSong?.song?.let { songEntity ->
+                                                coroutineScope.launch {
+                                                    playerConnection.database.query {
+                                                        update(songEntity.copy(lyricsOffset = newOffset))
+                                                    }
+                                                }
+                                            }
+                                        },
                                     )
                                 }
                             }
@@ -925,10 +940,14 @@ private fun NowPlayingRoundButton(
 
 @Composable
 private fun KaraokeLyricsOnly(
+    playerConnection: PlayerConnection,
+    mediaMetadata: MediaMetadata,
+    lyricsEntity: LyricsEntity?,
     lyrics: String,
-    positionMs: Long,
+    durationMs: Long,
     lyricsOffsetMs: Long,
     onSeekTo: (Long) -> Unit,
+    onOffsetChange: (Int) -> Unit,
 ) {
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -937,13 +956,153 @@ private fun KaraokeLyricsOnly(
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    KaraokeLyrics(
-        lyrics = lyrics,
-        positionMs = positionMs,
-        offsetMs = lyricsOffsetMs,
-        onSeekTo = onSeekTo,
-        modifier = Modifier.fillMaxSize(),
-    )
+    val positionState = playerConnection.playbackPositionMs.collectAsState()
+    val positionProvider = remember(positionState) { { positionState.value } }
+    var showSources by remember(mediaMetadata.id) { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        KaraokeLyrics(
+            lyrics = lyrics,
+            positionProvider = positionProvider,
+            durationMs = durationMs,
+            offsetMs = lyricsOffsetMs,
+            onSeekTo = onSeekTo,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color.Black.copy(alpha = 0.28f)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { onOffsetChange((lyricsOffsetMs - 250L).coerceAtLeast(-15_000L).toInt()) }) {
+                Text("−250", color = Color.White)
+            }
+            TextButton(onClick = { onOffsetChange(0) }) {
+                Text(
+                    text = if (lyricsOffsetMs >= 0L) "+${lyricsOffsetMs} ms" else "${lyricsOffsetMs} ms",
+                    color = Color.White.copy(alpha = 0.82f),
+                )
+            }
+            TextButton(onClick = { onOffsetChange((lyricsOffsetMs + 250L).coerceAtMost(15_000L).toInt()) }) {
+                Text("+250", color = Color.White)
+            }
+            IconButton(onClick = { showSources = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.lyrics_providers_label),
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+
+    if (showSources) {
+        LyricsSourceSheet(
+            mediaMetadata = mediaMetadata,
+            lyricsEntity = lyricsEntity,
+            onDismiss = { showSources = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LyricsSourceSheet(
+    mediaMetadata: MediaMetadata,
+    lyricsEntity: LyricsEntity?,
+    onDismiss: () -> Unit,
+    viewModel: LyricsMenuViewModel = hiltViewModel(),
+) {
+    val results by viewModel.results.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    LaunchedEffect(mediaMetadata.id) {
+        viewModel.search(
+            mediaId = mediaMetadata.id,
+            title = mediaMetadata.title,
+            artist = mediaMetadata.artists.joinToString { it.name },
+            duration = mediaMetadata.duration,
+            album = mediaMetadata.album?.title,
+        )
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.lyrics_providers_label),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = lyricsEntity?.provider.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.refetchLyrics(mediaMetadata, lyricsEntity)
+                        onDismiss()
+                    },
+                ) {
+                    Text(stringResource(R.string.refetch))
+                }
+            }
+
+            when {
+                isLoading && results.isEmpty() -> FridaLoadingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(128.dp),
+                )
+
+                results.isEmpty() -> Text(
+                    text = stringResource(R.string.lyrics_not_found),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 28.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                else -> LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp),
+                ) {
+                    items(
+                        items = results,
+                        key = { result -> "${result.providerName}:${result.lyrics.hashCode()}" },
+                    ) { result ->
+                        ListItem(
+                            headlineContent = {
+                                Text(result.providerName, fontWeight = FontWeight.SemiBold)
+                            },
+                            supportingContent = {
+                                Text("${result.syncType.name.replace('_', ' ')} · ${result.score}")
+                            },
+                            modifier = Modifier.clickable {
+                                viewModel.selectLyrics(mediaMetadata.id, result)
+                                onDismiss()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

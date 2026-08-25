@@ -729,6 +729,7 @@ class MusicService :
                     .first() == null
             ) {
                 val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
+                val song = database.song(mediaMetadata.id).firstOrNull()?.song
                 database.query {
                     upsert(
                         LyricsEntity(
@@ -737,6 +738,9 @@ class MusicService :
                             provider = lyricsWithProvider.provider,
                         ),
                     )
+                    if (lyricsWithProvider.autoOffsetMs != 0 && song?.lyricsOffset == 0) {
+                        update(song.copy(lyricsOffset = lyricsWithProvider.autoOffsetMs))
+                    }
                 }
             }
         }
@@ -3602,7 +3606,16 @@ class MusicService :
                                 )
                                 val lyricsResult = lyricsHelper.getLyrics(metadata)
                                 database.query {
-                                    upsert(com.jagr.fridamusic.db.entities.LyricsEntity(id = mediaId, lyrics = lyricsResult.lyrics))
+                                    upsert(
+                                        com.jagr.fridamusic.db.entities.LyricsEntity(
+                                            id = mediaId,
+                                            lyrics = lyricsResult.lyrics,
+                                            provider = lyricsResult.provider,
+                                        ),
+                                    )
+                                    if (lyricsResult.autoOffsetMs != 0 && dbSong.song.lyricsOffset == 0) {
+                                        update(dbSong.song.copy(lyricsOffset = lyricsResult.autoOffsetMs))
+                                    }
                                 }
                                 Timber.tag(TAG).d("Preloaded lyrics for $mediaId")
                             }

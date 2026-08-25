@@ -32,18 +32,23 @@ object LyricsProviderRegistry {
 
     fun getDefaultProviderOrder(): List<String> = listOf(
         "YouLyPlus",
-        "Paxsenix",
-        "Unison",
         "BetterLyrics",
         "SimpMusic",
         "LrcLib",
         "Kugou",
         "YouTubeSubtitle",
         "YouTubeMusic",
+        "Paxsenix",
+        "Unison",
     )
 
     fun getOrderedProviders(orderString: String): List<LyricsProvider> =
         deserializeProviderOrder(orderString).mapNotNull { getProviderByName(it) }
+
+    fun isFallbackProvider(provider: LyricsProvider): Boolean = when (provider.name) {
+        "YouTube Music", "Paxsenix", "Unison" -> true
+        else -> false
+    }
 
     
     fun getProviderNameForEnum(enum: PreferredLyricsProvider): String = when (enum) {

@@ -373,7 +373,22 @@ object LyricsUtils {
         } else {
             parseStandardLyrics(lines)
         }
-        return if (sourceOffsetMs == 0L) entries else entries.map { it.copy(time = (it.time + sourceOffsetMs).coerceAtLeast(0L)) }
+        return if (sourceOffsetMs == 0L) {
+            entries
+        } else {
+            val sourceOffsetSeconds = sourceOffsetMs / 1_000.0
+            entries.map { entry ->
+                entry.copy(
+                    time = (entry.time + sourceOffsetMs).coerceAtLeast(0L),
+                    words = entry.words?.map { word ->
+                        word.copy(
+                            startTime = (word.startTime + sourceOffsetSeconds).coerceAtLeast(0.0),
+                            endTime = (word.endTime + sourceOffsetSeconds).coerceAtLeast(0.0),
+                        )
+                    },
+                )
+            }
+        }
     }
     
     
