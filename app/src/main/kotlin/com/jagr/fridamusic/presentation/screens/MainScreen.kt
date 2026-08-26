@@ -25,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,12 +59,22 @@ import com.jagr.fridamusic.presentation.playCachedSong
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.notifications.RecommendationNotificationManager
+import com.jagr.fridamusic.models.MediaMetadata
+import com.jagr.fridamusic.playback.PlayerConnection
+import com.jagr.fridamusic.playback.queues.YouTubeAlbumRadio
+import com.jagr.fridamusic.playback.queues.YouTubeQueue
+import com.jagr.fridamusic.viewmodels.GlobalShuffleSelection
+import com.jagr.fridamusic.viewmodels.HomeViewModel
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.models.YTItem
+import com.music.shazamkit.models.RecognitionResult
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @Composable
@@ -73,7 +85,10 @@ fun MainScreen(
     val currentRoute = backStackEntry?.destination?.route ?: "home"
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
+    val homeViewModel: HomeViewModel = hiltViewModel()
+    val fabScope = rememberCoroutineScope()
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    var shuffleJob by remember { mutableStateOf<Job?>(null) }
     val playerPlaylistsViewModel = if (currentRoute == "now_playing" && backStackEntry != null) {
         hiltViewModel<PlaylistsViewModel>(backStackEntry!!)
     } else {
@@ -85,7 +100,8 @@ fun MainScreen(
             currentRoute != "login" &&
             currentRoute != "spotify_import" &&
             currentRoute != "stats" &&
-            currentRoute != "about"
+            currentRoute != "about" &&
+            currentRoute != "music_recognition"
 
     CompositionLocalProvider(
         LocalSongActionsNavigation provides SongActionsNavigation(
@@ -126,6 +142,7 @@ fun MainScreen(
                         )
                     },
                     onSettingsClick = { navController.navigate("settings") },
+                    viewModel = homeViewModel,
                 )
             }
             composable("search") {
@@ -254,6 +271,30 @@ fun MainScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
+            composable("music_recognition") {
+                MusicRecognitionScreen(
+                    onBack = { navController.popBackStack() },
+                    onSearchResult = { query ->
+                        navController.navigate("search_result/${Uri.encode(query)}") {
+                            popUpTo("music_recognition") { inclusive = true }
+                        }
+                    },
+                    onPlayResult = { result ->
+                        if (playerConnection?.playRecognitionResult(result) == true) {
+                            navController.navigate("now_playing") {
+                                popUpTo("music_recognition") { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        } else {
+                            navController.navigate(
+                                "search_result/${Uri.encode("${result.title} ${result.artist}".trim())}",
+                            ) {
+                                popUpTo("music_recognition") { inclusive = true }
+                            }
+                        }
+                    },
+                )
+            }
             composable("now_playing") {
                 Box(Modifier.fillMaxSize())
             }
@@ -361,12 +402,44 @@ fun MainScreen(
                             FabMenuAction(
                                 label = "Aleatorio",
                                 icon = Icons.Rounded.Shuffle,
-                                onClick = { /* TODO */ },
+                                onClick = {
+                                    if (shuffleJob?.isActive != true) {
+                                        shuffleJob = fabScope.launch {
+                                            val selection = runCatching {
+                                                homeViewModel.getGlobalShuffleSelection()
+                                            }.onFailure { error ->
+                                                Timber.tag("GlobalShuffle").e(
+                                                    error,
+                                                    "Unable to select global shuffle content",
+                                                )
+                                            }.getOrNull()
+
+                                            when {
+                                                selection == null -> Toast.makeText(
+                                                    context,
+                                                    R.string.global_shuffle_empty,
+                                                    Toast.LENGTH_SHORT,
+                                                ).show()
+                                                playerConnection == null ||
+                                                    !playerConnection.playGlobalShuffle(selection) ->
+                                                    Toast.makeText(
+                                                        context,
+                                                        R.string.global_shuffle_error,
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                            }
+                                        }
+                                    }
+                                },
                             ),
                             FabMenuAction(
                                 label = "Reconocer música",
                                 icon = Icons.Rounded.Mic,
-                                onClick = { /* TODO */ },
+                                onClick = {
+                                    navController.navigate("music_recognition") {
+                                        launchSingleTop = true
+                                    }
+                                },
                             ),
                         ),
                     )
@@ -419,6 +492,64 @@ private fun NavHostController.navigateToDetail(item: LocalItem) {
         }
         else -> {}
     }
+}
+
+private fun PlayerConnection.playGlobalShuffle(selection: GlobalShuffleSelection): Boolean =
+    when (selection) {
+        is GlobalShuffleSelection.SongQueue -> {
+            val first = selection.songs.firstOrNull()
+            if (first == null) {
+                false
+            } else {
+                playSong(first, selection.songs)
+                true
+            }
+        }
+
+        is GlobalShuffleSelection.RemoteItem -> {
+            when (val item = selection.item) {
+                is SongItem -> {
+                    playYTItem(item)
+                    true
+                }
+
+                is AlbumItem -> {
+                    item.playlistId.takeIf(String::isNotBlank)?.let {
+                        playQueue(YouTubeAlbumRadio(it))
+                    } != null
+                }
+
+                is ArtistItem -> {
+                    val endpoint = item.shuffleEndpoint ?: item.radioEndpoint ?: item.playEndpoint
+                    endpoint?.let { playQueue(YouTubeQueue(it)) } != null
+                }
+
+                is PlaylistItem -> {
+                    val endpoint = item.shuffleEndpoint ?: item.radioEndpoint ?: item.playEndpoint
+                    endpoint?.let { playQueue(YouTubeQueue(it)) } != null
+                }
+            }
+        }
+    }
+
+private fun PlayerConnection.playRecognitionResult(result: RecognitionResult): Boolean {
+    val videoId = result.youtubeVideoId?.trim()?.takeIf(String::isNotBlank) ?: return false
+    playQueue(
+        YouTubeQueue(
+            endpoint = WatchEndpoint(videoId = videoId),
+            preloadItem = MediaMetadata(
+                id = videoId,
+                title = result.title,
+                artists = listOf(MediaMetadata.Artist(id = null, name = result.artist)),
+                duration = -1,
+                thumbnailUrl = result.coverArtHqUrl ?: result.coverArtUrl,
+                album = result.album?.takeIf(String::isNotBlank)?.let {
+                    MediaMetadata.Album(id = "recognition:${result.trackId}", title = it)
+                },
+            ),
+        ),
+    )
+    return true
 }
 
 private fun NavHostController.handleYTItemClick(

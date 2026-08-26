@@ -1863,4 +1863,23 @@
     <string name="song_details_dates">Fechas</string>
     <string name="song_date_created">Fecha de creación</string>
     <string name="song_release_date">Fecha de lanzamiento</string>
+    <string name="music_recognition_title">¿Qué canción está sonando?</string>
+    <string name="music_recognition_tap_to_listen">Toca para escuchar</string>
+    <string name="music_recognition_listening">Escuchando…</string>
+    <string name="music_recognition_processing">Identificando…</string>
+    <string name="music_recognition_listen_again">Escuchar de nuevo</string>
+    <string name="music_recognition_no_match">No se encontró coincidencia</string>
+    <string name="music_recognition_recognition_failed">Falló el reconocimiento</string>
+    <string name="music_recognition_timeout">El reconocimiento agotó el tiempo. Intenta acercarte a la música.</string>
+    <string name="music_recognition_open_shazam">Abrir Shazam</string>
+    <string name="music_recognition_permission_title">Permiso de micrófono</string>
+    <string name="music_recognition_permission_desc">Permite el acceso al micrófono para reconocer música cercana.</string>
+    <string name="music_recognition_permission_permanent">El acceso al micrófono está bloqueado. Actívalo en los ajustes de la app para volver a intentarlo.</string>
+    <string name="music_recognition_permission_action">Permitir</string>
+    <string name="music_recognition_open_settings">Abrir ajustes</string>
+    <string name="music_recognition_error">Algo salió mal</string>
+    <string name="music_recognition_play">Reproducir</string>
+    <string name="music_recognition_powered_by">Proporcionado por Frida Labs AI</string>
+    <string name="global_shuffle_empty">Todavía no hay contenido reproducible disponible.</string>
+    <string name="global_shuffle_error">No se pudo iniciar la reproducción aleatoria.</string>
 </resources>

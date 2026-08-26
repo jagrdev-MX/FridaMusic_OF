@@ -1855,4 +1855,23 @@
     <string name="song_details_dates">Dates</string>
     <string name="song_date_created">Date created</string>
     <string name="song_release_date">Release date</string>
+    <string name="music_recognition_title">What song is playing?</string>
+    <string name="music_recognition_tap_to_listen">Tap to listen</string>
+    <string name="music_recognition_listening">Listening…</string>
+    <string name="music_recognition_processing">Identifying…</string>
+    <string name="music_recognition_listen_again">Listen again</string>
+    <string name="music_recognition_no_match">No match found</string>
+    <string name="music_recognition_recognition_failed">Recognition failed</string>
+    <string name="music_recognition_timeout">Recognition timed out. Try again closer to the music.</string>
+    <string name="music_recognition_open_shazam">Open Shazam</string>
+    <string name="music_recognition_permission_title">Microphone permission</string>
+    <string name="music_recognition_permission_desc">Allow microphone access to recognize nearby music.</string>
+    <string name="music_recognition_permission_permanent">Microphone access is blocked. Enable it from the app settings to try again.</string>
+    <string name="music_recognition_permission_action">Allow</string>
+    <string name="music_recognition_open_settings">Open settings</string>
+    <string name="music_recognition_error">Something went wrong</string>
+    <string name="music_recognition_play">Play</string>
+    <string name="music_recognition_powered_by">Powered by Frida Labs AI</string>
+    <string name="global_shuffle_empty">There is no playable content available yet.</string>
+    <string name="global_shuffle_error">Couldn’t start random playback.</string>
 </resources>

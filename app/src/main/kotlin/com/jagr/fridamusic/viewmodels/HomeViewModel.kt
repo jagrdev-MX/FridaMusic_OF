@@ -70,6 +70,11 @@ data class CommunityPlaylistItem(
     val songs: List<SongItem>
 )
 
+sealed interface GlobalShuffleSelection {
+    data class SongQueue(val songs: List<Song>) : GlobalShuffleSelection
+    data class RemoteItem(val item: YTItem) : GlobalShuffleSelection
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @ApplicationContext val context: Context,
@@ -163,63 +168,46 @@ class HomeViewModel @Inject constructor(
             filled.take(targetSize)
         }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    suspend fun getRandomItem(): YTItem? {
+    suspend fun getGlobalShuffleSelection(): GlobalShuffleSelection? {
         try {
             isRandomizing.value = true
-            
-            kotlinx.coroutines.delay(1000)
 
-            val userSongs = mutableListOf<YTItem>()
-            val otherSources = mutableListOf<YTItem>()
+            val songQueue = database.allSongs().first()
+                .asSequence()
+                .filter { it.id.isNotBlank() && it.title.isNotBlank() }
+                .distinctBy { it.id }
+                .shuffled()
+                .take(GLOBAL_SHUFFLE_QUEUE_LIMIT)
+                .toList()
 
-            quickPicks.value?.let { songs ->
-                userSongs.addAll(songs.map { song ->
-                    SongItem(
-                        id = song.id,
-                        title = song.title,
-                        artists = song.artists.map { Artist(name = it.name, id = it.id) },
-                        thumbnail = song.thumbnailUrl ?: "",
-                        explicit = false
-                    )
-                })
+            val remoteItems = buildList {
+                addAll(allYtItems.value)
+                addAll(accountPlaylists.value.orEmpty())
+                addAll(explorePage.value?.newReleaseAlbums.orEmpty())
+                addAll(communityPlaylists.value.orEmpty().map { it.playlist })
+            }.asSequence()
+                .filter(::isPlayableGlobalShuffleItem)
+                .distinctBy { "${it.javaClass.name}:${it.id}" }
+                .toList()
+
+            val availableSources = buildList<GlobalShuffleSelection> {
+                if (songQueue.isNotEmpty()) add(GlobalShuffleSelection.SongQueue(songQueue))
+                remoteItems.randomOrNull()?.let { add(GlobalShuffleSelection.RemoteItem(it)) }
             }
 
-            keepListening.value?.let { items ->
-                items.forEach { item ->
-                    when (item) {
-                        is Song -> userSongs.add(SongItem(
-                            id = item.id,
-                            title = item.title,
-                            artists = item.artists.map { Artist(name = it.name, id = it.id) },
-                            thumbnail = item.thumbnailUrl ?: "",
-                            explicit = false
-                        ))
-                        is Album -> otherSources.add(AlbumItem(
-                            browseId = item.id,
-                            playlistId = item.album.playlistId ?: "",
-                            title = item.title,
-                            artists = item.artists.map { Artist(name = it.name, id = it.id) },
-                            year = item.album.year,
-                            thumbnail = item.thumbnailUrl ?: ""
-                        ))
-                        else -> {}
-                    }
-                }
-            }
-
-            otherSources.addAll(allYtItems.value)
-
-            
-            val item = if (userSongs.isNotEmpty() && (otherSources.isEmpty() || Random.nextFloat() < 0.8f)) {
-                userSongs.distinctBy { it.id }.shuffled().firstOrNull()
-            } else {
-                otherSources.distinctBy { it.id }.shuffled().firstOrNull()
-            } ?: userSongs.firstOrNull() ?: otherSources.firstOrNull()
-
-            return item
+            return availableSources.randomOrNull()
         } finally {
             isRandomizing.value = false
         }
+    }
+
+    private fun isPlayableGlobalShuffleItem(item: YTItem): Boolean = when (item) {
+        is SongItem -> item.id.isNotBlank()
+        is AlbumItem -> item.playlistId.isNotBlank()
+        is com.music.innertube.models.ArtistItem ->
+            item.shuffleEndpoint != null || item.radioEndpoint != null || item.playEndpoint != null
+        is PlaylistItem ->
+            item.shuffleEndpoint != null || item.radioEndpoint != null || item.playEndpoint != null
     }
 
     val accountName = MutableStateFlow("Guest")
@@ -691,6 +679,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private companion object {
+        const val GLOBAL_SHUFFLE_QUEUE_LIMIT = 200
         const val NOTIFICATION_RECOMMENDATIONS_PER_SEED = 20
         const val NOTIFICATION_ITEMS_PER_REMOTE_SOURCE = 30
         const val NOTIFICATION_HOME_CACHE_LIMIT = 80
