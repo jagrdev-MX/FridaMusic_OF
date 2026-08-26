@@ -1850,10 +1850,13 @@
     <string name="song_share_save_card">Guardar tarjeta</string>
     <string name="song_share_song_link">Enlace de la canción</string>
     <string name="song_share_more">Compartir más</string>
+    <string name="song_share_qr">QR / Enlace</string>
+    <string name="song_share_link_copied">Enlace de FridaMusic copiado.</string>
     <string name="song_share_card_saved">Tarjeta guardada en Imágenes/FridaMusic.</string>
     <string name="song_share_failed">No se pudo generar la tarjeta.</string>
     <string name="by_frida_labs">by Frida Labs</string>
     <string name="open_listen">Abrir / Escuchar</string>
+    <string name="listen_on_fridamusic">Escuchar en FridaMusic</string>
     <string name="song_details_identity">Identidad</string>
     <string name="song_details_music">Música</string>
     <string name="song_details_file">Archivo</string>

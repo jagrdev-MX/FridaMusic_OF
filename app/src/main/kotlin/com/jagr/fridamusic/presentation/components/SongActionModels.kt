@@ -1,5 +1,6 @@
 package com.jagr.fridamusic.presentation.components
 
+import android.net.Uri
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import com.jagr.fridamusic.db.entities.Song
@@ -227,8 +228,17 @@ object SongShareLinkResolver {
 
 object FridaAppLinks {
     const val DEEP_LINK_HOME = "fridamusic://home"
+    const val WEBSITE_URL = "https://frida-music-of.vercel.app/"
     val playStoreUrl: String? = null
-    val websiteUrl: String? = null
+    val songDeepLinkBaseUrl: String? = null
+    val websiteUrl: String? = WEBSITE_URL
+
+    fun shareCardUrl(mediaId: String): String =
+        playStoreUrl
+            ?: songDeepLinkBaseUrl?.let { base -> "${base.trimEnd('/')}/${Uri.encode(mediaId)}" }
+            ?: websiteUrl
+            ?: DEEP_LINK_HOME
+
     val shareCardCtaUrl: String
         get() = playStoreUrl ?: websiteUrl ?: DEEP_LINK_HOME
 }

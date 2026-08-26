@@ -3,6 +3,7 @@ package com.jagr.fridamusic.presentation.components
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.ContextWrapper
@@ -25,6 +26,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -34,11 +36,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -46,10 +48,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -60,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +75,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
@@ -120,6 +125,14 @@ enum class FridaShareCardTheme {
     MATERIAL_DYNAMIC,
 }
 
+@Immutable
+data class FridaShareSnapshot(
+    val song: SongActionContext,
+    val positionMs: Long,
+    val durationMs: Long,
+    val shareUrl: String,
+)
+
 @Composable
 fun SongShareOptionsDialog(
     context: SongActionContext,
@@ -142,7 +155,7 @@ fun SongShareOptionsDialog(
                 }
                 context.localFile?.takeIf(SongLocalFile::canShare)?.let { localFile ->
                     ShareDialogRow(
-                        icon = Icons.Rounded.MusicNote,
+                        icon = Icons.Rounded.AttachFile,
                         title = stringResource(R.string.song_share_file),
                         onClick = {
                             if (!shareLocalAudio(androidContext, localFile.contentUri, localFile.mimeType)) {
@@ -188,20 +201,43 @@ fun FridaShareCardDialog(
     playbackPositionMs: Long,
     onDismiss: () -> Unit,
 ) {
+    val snapshot = remember(context.mediaId) {
+        val durationMs = context.durationMs?.takeIf { it > 0L } ?: 0L
+        FridaShareSnapshot(
+            song = context,
+            positionMs = if (durationMs > 0L) {
+                playbackPositionMs.coerceIn(0L, durationMs)
+            } else {
+                playbackPositionMs.coerceAtLeast(0L)
+            },
+            durationMs = durationMs,
+            shareUrl = FridaAppLinks.shareCardUrl(context.mediaId),
+        )
+    }
+    FridaShareCardDialogContent(snapshot = snapshot, onDismiss = onDismiss)
+}
+
+@Composable
+private fun FridaShareCardDialogContent(
+    snapshot: FridaShareSnapshot,
+    onDismiss: () -> Unit,
+) {
     val androidContext = LocalContext.current
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
-    val durationMs = context.durationMs?.takeIf { it > 0L } ?: 0L
-    val capturedPosition = playbackPositionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-    val links = remember(context) { SongShareLinkResolver.resolveSongLinks(context) }
-    var selectedTheme by remember { mutableStateOf(FridaShareCardTheme.ARTWORK) }
-    var artworkBitmap by remember(context.artworkUrl) { mutableStateOf<Bitmap?>(null) }
+    val links = remember(snapshot.song) { SongShareLinkResolver.resolveSongLinks(snapshot.song) }
+    var selectedTheme by remember(snapshot.song.mediaId) { mutableStateOf(FridaShareCardTheme.ARTWORK) }
+    var artworkBitmap by remember(snapshot.song.artworkUrl) { mutableStateOf<Bitmap?>(null) }
+    val artworkImage = remember(artworkBitmap) { artworkBitmap?.asImageBitmap() }
+    val dominantColor = remember(artworkImage) {
+        artworkImage?.themeColor(fallback = FridaPink) ?: FridaPink
+    }
     var isBusy by remember { mutableStateOf(false) }
-    var showLinkPicker by remember { mutableStateOf(false) }
+    var showQrDialog by remember { mutableStateOf(false) }
     var pendingLegacySave by remember { mutableStateOf(false) }
 
-    LaunchedEffect(context.artworkUrl) {
-        artworkBitmap = loadArtworkBitmap(androidContext, context.artworkUrl)
+    LaunchedEffect(snapshot.song.artworkUrl) {
+        artworkBitmap = loadArtworkBitmap(androidContext, snapshot.song.artworkUrl)
     }
     LaunchedEffect(Unit) { cleanupOldShareCards(androidContext) }
 
@@ -212,10 +248,10 @@ fun FridaShareCardDialog(
             runCatching {
                 renderShareCardBitmap(
                     context = androidContext,
-                    song = context,
+                    snapshot = snapshot,
                     theme = selectedTheme,
                     artwork = artworkBitmap,
-                    playbackPositionMs = capturedPosition,
+                    dominantColor = dominantColor,
                     colorScheme = colorScheme,
                 )
             }.onSuccess { bitmap ->
@@ -230,7 +266,7 @@ fun FridaShareCardDialog(
 
     fun saveCard() {
         exportCard { bitmap ->
-            saveShareCardToGallery(androidContext, bitmap, context.title)
+            saveShareCardToGallery(androidContext, bitmap, snapshot.song.title)
             Toast.makeText(androidContext, R.string.song_share_card_saved, Toast.LENGTH_SHORT).show()
         }
     }
@@ -249,12 +285,12 @@ fun FridaShareCardDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.96f)
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.92f)
                 .navigationBarsPadding(),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(26.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 8.dp,
+            tonalElevation = 3.dp,
         ) {
             Box(Modifier.fillMaxSize()) {
                 Column(
@@ -270,25 +306,18 @@ fun FridaShareCardDialog(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(
-                        text = context.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
                     FridaNowPlayingShareCard(
-                        context = context,
+                        snapshot = snapshot,
                         theme = selectedTheme,
-                        artwork = artworkBitmap?.asImageBitmap(),
-                        playbackPositionMs = capturedPosition,
+                        artwork = artworkImage,
+                        dominantColor = dominantColor,
                         modifier = Modifier
-                            .fillMaxWidth(0.72f)
+                            .fillMaxWidth(0.64f)
+                            .widthIn(max = 280.dp)
                             .aspectRatio(9f / 16f),
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(14.dp))
                     Text(
                         text = stringResource(R.string.song_share_card_theme),
                         style = MaterialTheme.typography.titleMedium,
@@ -303,7 +332,7 @@ fun FridaShareCardDialog(
                             ShareThemeSwatch(
                                 theme = theme,
                                 selected = theme == selectedTheme,
-                                artwork = artworkBitmap?.asImageBitmap(),
+                                dominantColor = dominantColor,
                                 onClick = { selectedTheme = theme },
                             )
                         }
@@ -320,7 +349,7 @@ fun FridaShareCardDialog(
                         ) {
                             exportCard { bitmap ->
                                 val uri = saveTemporaryShareCard(androidContext, bitmap)
-                                shareToInstagramStoryOrFallback(androidContext, uri, context, links.firstOrNull())
+                                shareToInstagramStoryOrFallback(androidContext, uri, snapshot.song, links.firstOrNull())
                             }
                         }
                         ShareQuickAction(
@@ -339,14 +368,11 @@ fun FridaShareCardDialog(
                                 saveCard()
                             }
                         }
-                        if (links.isNotEmpty()) {
-                            ShareQuickAction(
-                                icon = Icons.Rounded.Link,
-                                label = links.singleOrNull()?.label ?: stringResource(R.string.song_share_song_link),
-                            ) {
-                                if (links.size == 1) shareText(androidContext, shareCaption(context, links.first().url))
-                                else showLinkPicker = true
-                            }
+                        ShareQuickAction(
+                            icon = Icons.Rounded.QrCode2,
+                            label = stringResource(R.string.song_share_qr),
+                        ) {
+                            showQrDialog = true
                         }
                         ShareQuickAction(
                             icon = Icons.Rounded.MoreHoriz,
@@ -354,7 +380,7 @@ fun FridaShareCardDialog(
                         ) {
                             exportCard { bitmap ->
                                 val uri = saveTemporaryShareCard(androidContext, bitmap)
-                                shareCardMore(androidContext, uri, context, links.firstOrNull())
+                                shareCardMore(androidContext, uri, snapshot.song, links.firstOrNull())
                             }
                         }
                     }
@@ -375,27 +401,39 @@ fun FridaShareCardDialog(
         }
     }
 
-    if (showLinkPicker) {
+    if (showQrDialog) {
         AlertDialog(
-            onDismissRequest = { showLinkPicker = false },
-            title = { Text(stringResource(R.string.song_share_song_link)) },
+            onDismissRequest = { showQrDialog = false },
+            title = { Text(stringResource(R.string.song_share_qr)) },
             text = {
-                Column {
-                    links.forEach { link ->
-                        ShareDialogRow(
-                            icon = Icons.Rounded.Link,
-                            title = link.label,
-                            onClick = {
-                                showLinkPicker = false
-                                shareText(androidContext, shareCaption(context, link.url))
-                            },
-                        )
-                    }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    FridaQrCode(
+                        url = snapshot.shareUrl,
+                        size = 232.dp,
+                        logoSize = 42.dp,
+                    )
+                    Text(
+                        text = snapshot.shareUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
                 }
             },
-            confirmButton = {},
+            confirmButton = {
+                TextButton(onClick = { copyShareLink(androidContext, snapshot.shareUrl) }) {
+                    Text(stringResource(R.string.copy_link))
+                }
+                TextButton(onClick = { shareText(androidContext, snapshot.shareUrl) }) {
+                    Text(stringResource(R.string.share))
+                }
+            },
             dismissButton = {
-                TextButton(onClick = { showLinkPicker = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showQrDialog = false }) { Text(stringResource(R.string.close)) }
             },
         )
     }
@@ -403,169 +441,242 @@ fun FridaShareCardDialog(
 
 @Composable
 fun FridaNowPlayingShareCard(
-    context: SongActionContext,
+    snapshot: FridaShareSnapshot,
     theme: FridaShareCardTheme,
     artwork: ImageBitmap?,
-    playbackPositionMs: Long,
+    dominantColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    val dominant = remember(artwork) { artwork?.themeColor(fallback = FridaPink) ?: FridaPink }
     val material = MaterialTheme.colorScheme
     val palette = when (theme) {
-        FridaShareCardTheme.LIGHT -> CardPalette(Color(0xFFF7F5FB), Color(0xFF17131D), Color(0xFFE9E2F1))
-        FridaShareCardTheme.DARK -> CardPalette(Color(0xFF0D0B10), Color.White, Color(0xFF242028))
-        FridaShareCardTheme.ARTWORK -> CardPalette(dominant, readableOn(dominant), dominant.copy(alpha = 0.72f))
-        FridaShareCardTheme.GRADIENT -> CardPalette(dominant, readableOn(dominant), dominant.copy(alpha = 0.64f))
+        FridaShareCardTheme.LIGHT -> CardPalette(Color(0xFFF7F5FB), Color(0xFF17131D), Color(0xFF6D4A7E))
+        FridaShareCardTheme.DARK -> CardPalette(Color(0xFF0D0B10), Color.White, Color(0xFFDAB8E7))
+        FridaShareCardTheme.ARTWORK -> {
+            val background = blend(dominantColor, Color.Black, 0.36f)
+            CardPalette(background, readableOn(background), dominantColor)
+        }
+        FridaShareCardTheme.GRADIENT -> {
+            val background = blend(dominantColor, Color.Black, 0.58f)
+            CardPalette(background, readableOn(background), dominantColor)
+        }
         FridaShareCardTheme.MATERIAL_DYNAMIC -> CardPalette(
             material.primaryContainer,
             material.onPrimaryContainer,
-            material.secondaryContainer,
+            material.primary,
         )
     }
-    val durationMs = context.durationMs?.takeIf { it > 0L } ?: 0L
-    val progress = if (durationMs > 0L) (playbackPositionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
+    val progress = if (snapshot.durationMs > 0L) {
+        (snapshot.positionMs.toFloat() / snapshot.durationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(28.dp))
             .background(palette.background),
     ) {
-        when (theme) {
-            FridaShareCardTheme.ARTWORK -> {
-                artwork?.let {
-                    Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
-                }
-            }
-            FridaShareCardTheme.GRADIENT -> Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(dominant, dominant.copy(alpha = 0.72f), Color(0xFF100D14))),
-                ),
+        val scale = (maxWidth / 360.dp).coerceIn(0.58f, 1f)
+        if (theme == FridaShareCardTheme.GRADIENT) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                blend(dominantColor, Color.Black, 0.18f),
+                                palette.background,
+                                blend(dominantColor, Color.Black, 0.78f),
+                            ),
+                        ),
+                    ),
             )
-            else -> Unit
         }
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 34.dp, vertical = 42.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 28.dp * scale, vertical = 28.dp * scale),
         ) {
-            Spacer(Modifier.weight(0.65f))
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = palette.panel.copy(alpha = if (theme == FridaShareCardTheme.ARTWORK) 0.92f else 1f),
-                shadowElevation = 10.dp,
-            ) {
-                Column {
-                    if (artwork != null) {
-                        Image(
-                            bitmap = artwork,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Image(
-                                painter = painterResource(R.mipmap.ic_launcher_foreground),
-                                contentDescription = null,
-                                modifier = Modifier.size(96.dp),
-                            )
-                        }
-                    }
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
-                    ) {
-                        Text(
-                            text = context.title,
-                            color = palette.content,
-                            fontSize = 24.sp,
-                            lineHeight = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = context.artists.joinToString(", ") { it.name },
-                            color = palette.content.copy(alpha = 0.72f),
-                            fontSize = 15.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        context.album?.title?.takeIf(String::isNotBlank)?.let { album ->
-                            Text(
-                                text = album,
-                                color = palette.content.copy(alpha = 0.56f),
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(5.dp)
-                                .clip(CircleShape)
-                                .background(palette.content.copy(alpha = 0.18f)),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progress)
-                                    .height(5.dp)
-                                    .background(palette.content),
-                            )
-                        }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(formatDuration(playbackPositionMs), color = palette.content.copy(alpha = 0.68f), fontSize = 11.sp)
-                            Text(formatDuration(durationMs), color = palette.content.copy(alpha = 0.68f), fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(22.dp))
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.Black.copy(alpha = 0.30f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+            if (artwork != null) {
+                Image(
+                    bitmap = artwork,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(22.dp * scale)),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(22.dp * scale))
+                        .background(palette.content.copy(alpha = 0.09f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.MusicNote, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    Column {
-                        Text("FridaMusic", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text(stringResource(R.string.by_frida_labs), color = Color.White.copy(alpha = 0.68f), fontSize = 9.sp)
-                    }
-                    Text(
-                        text = stringResource(R.string.open_listen),
-                        color = Color.White.copy(alpha = 0.82f),
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 8.dp),
+                    FridaLogo(
+                        tint = palette.content,
+                        modifier = Modifier.size(82.dp * scale),
                     )
                 }
             }
-            Spacer(Modifier.weight(0.35f))
+            Spacer(Modifier.height(18.dp * scale))
+            Text(
+                text = snapshot.song.title,
+                color = palette.content,
+                fontSize = 22.sp * scale,
+                lineHeight = 26.sp * scale,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = snapshot.song.artists.joinToString(", ") { it.name },
+                color = palette.content.copy(alpha = 0.76f),
+                fontSize = 14.sp * scale,
+                lineHeight = 18.sp * scale,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            snapshot.song.album?.title?.takeIf(String::isNotBlank)?.let { album ->
+                Text(
+                    text = album,
+                    color = palette.content.copy(alpha = 0.58f),
+                    fontSize = 11.sp * scale,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(14.dp * scale))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp * scale)
+                    .clip(CircleShape)
+                    .background(palette.content.copy(alpha = 0.18f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(4.dp * scale)
+                        .background(palette.accent),
+                )
+            }
+            Spacer(Modifier.height(4.dp * scale))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    formatDuration(snapshot.positionMs),
+                    color = palette.content.copy(alpha = 0.70f),
+                    fontSize = 11.sp * scale,
+                )
+                Text(
+                    formatDuration(snapshot.durationMs),
+                    color = palette.content.copy(alpha = 0.70f),
+                    fontSize = 11.sp * scale,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
+                ) {
+                    FridaLogo(tint = palette.content, modifier = Modifier.size(28.dp * scale))
+                    Column {
+                        Text(
+                            "FridaMusic",
+                            color = palette.content,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp * scale,
+                        )
+                        Text(
+                            stringResource(R.string.by_frida_labs),
+                            color = palette.content.copy(alpha = 0.62f),
+                            fontSize = 9.sp * scale,
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FridaQrCode(
+                        url = snapshot.shareUrl,
+                        size = 88.dp * scale,
+                        logoSize = 22.dp * scale,
+                    )
+                    Text(
+                        text = stringResource(R.string.listen_on_fridamusic),
+                        color = palette.content.copy(alpha = 0.78f),
+                        fontSize = 9.sp * scale,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(108.dp * scale),
+                    )
+                }
+            }
         }
     }
 }
 
-private data class CardPalette(val background: Color, val content: Color, val panel: Color)
+private data class CardPalette(val background: Color, val content: Color, val accent: Color)
+
+@Composable
+private fun FridaLogo(
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Image(
+        painter = painterResource(R.drawable.frida_music_logo_monochrome),
+        contentDescription = null,
+        colorFilter = ColorFilter.tint(tint),
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun FridaQrCode(
+    url: String,
+    size: androidx.compose.ui.unit.Dp,
+    logoSize: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+) {
+    val qrBitmap = remember(url) { runCatching { FridaQrCodeGenerator.create(url).asImageBitmap() }.getOrNull() }
+    Surface(
+        modifier = modifier
+            .size(size)
+            .semantics { contentDescription = "FridaMusic QR" },
+        shape = RoundedCornerShape(12.dp),
+        color = Color.White,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (qrBitmap != null) {
+                Image(
+                    bitmap = qrBitmap,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Surface(
+                modifier = Modifier.size(logoSize),
+                shape = RoundedCornerShape(6.dp),
+                color = Color.White,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    FridaLogo(tint = Color.Black, modifier = Modifier.fillMaxSize().padding(3.dp))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ShareThemeSwatch(
     theme: FridaShareCardTheme,
     selected: Boolean,
-    artwork: ImageBitmap?,
+    dominantColor: Color,
     onClick: () -> Unit,
 ) {
     val border = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
@@ -587,11 +698,11 @@ private fun ShareThemeSwatch(
         when (theme) {
             FridaShareCardTheme.LIGHT -> Box(Modifier.fillMaxSize().background(Color(0xFFF7F5FB)))
             FridaShareCardTheme.DARK -> Box(Modifier.fillMaxSize().background(Color(0xFF0D0B10)))
-            FridaShareCardTheme.ARTWORK -> artwork?.let {
-                Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } ?: Box(Modifier.fillMaxSize().background(FridaPink))
+            FridaShareCardTheme.ARTWORK -> Box(Modifier.fillMaxSize().background(dominantColor))
             FridaShareCardTheme.GRADIENT -> Box(
-                Modifier.fillMaxSize().background(Brush.linearGradient(listOf(FridaPink, Color(0xFF342245)))),
+                Modifier.fillMaxSize().background(
+                    Brush.linearGradient(listOf(dominantColor, blend(dominantColor, Color.Black, 0.70f))),
+                ),
             )
             FridaShareCardTheme.MATERIAL_DYNAMIC -> Box(
                 Modifier.fillMaxSize().background(MaterialTheme.colorScheme.primaryContainer),
@@ -648,10 +759,10 @@ private suspend fun loadArtworkBitmap(context: Context, artworkUrl: String?): Bi
 
 private suspend fun renderShareCardBitmap(
     context: Context,
-    song: SongActionContext,
+    snapshot: FridaShareSnapshot,
     theme: FridaShareCardTheme,
     artwork: Bitmap?,
-    playbackPositionMs: Long,
+    dominantColor: Color,
     colorScheme: ColorScheme,
 ): Bitmap = withContext(Dispatchers.Main) {
     val activity = context.findActivity() ?: error("Share card rendering requires an Activity")
@@ -662,10 +773,10 @@ private suspend fun renderShareCardBitmap(
         setContent {
             MaterialTheme(colorScheme = colorScheme) {
                 FridaNowPlayingShareCard(
-                    context = song,
+                    snapshot = snapshot,
                     theme = theme,
                     artwork = artwork?.asImageBitmap(),
-                    playbackPositionMs = playbackPositionMs,
+                    dominantColor = dominantColor,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -752,8 +863,7 @@ private fun shareToInstagramStoryOrFallback(
 ) {
     val storyIntent = Intent("com.instagram.share.ADD_TO_STORY").apply {
         setDataAndType(imageUri, "image/png")
-        putExtra("interactive_asset_uri", imageUri)
-        putExtra("content_url", link?.url ?: FridaAppLinks.shareCardCtaUrl)
+        putExtra("content_url", link?.url ?: FridaAppLinks.shareCardUrl(song.mediaId))
         clipData = ClipData.newUri(context.contentResolver, null, imageUri)
         `package` = INSTAGRAM_PACKAGE
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -782,6 +892,12 @@ private fun shareText(context: Context, text: String) {
     context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
 }
 
+private fun copyShareLink(context: Context, link: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.song_share_qr), link))
+    Toast.makeText(context, R.string.song_share_link_copied, Toast.LENGTH_SHORT).show()
+}
+
 private fun shareCaption(song: SongActionContext, link: String?): String = buildString {
     append("Escuchando \"")
     append(song.title)
@@ -790,9 +906,9 @@ private fun shareCaption(song: SongActionContext, link: String?): String = build
         append(" — ")
         append(it)
     }
-    append("\nen FridaMusic 🎵")
+    append("\nen FridaMusic")
     append("\n")
-    append(link ?: FridaAppLinks.shareCardCtaUrl)
+    append(link ?: FridaAppLinks.shareCardUrl(song.mediaId))
 }
 
 private fun formatDuration(milliseconds: Long): String {
@@ -801,6 +917,16 @@ private fun formatDuration(milliseconds: Long): String {
 }
 
 private fun readableOn(color: Color): Color = if (color.luminance() > 0.48f) Color(0xFF17131D) else Color.White
+
+private fun blend(start: Color, end: Color, amount: Float): Color {
+    val fraction = amount.coerceIn(0f, 1f)
+    return Color(
+        red = start.red + (end.red - start.red) * fraction,
+        green = start.green + (end.green - start.green) * fraction,
+        blue = start.blue + (end.blue - start.blue) * fraction,
+        alpha = start.alpha + (end.alpha - start.alpha) * fraction,
+    )
+}
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

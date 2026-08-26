@@ -1842,10 +1842,13 @@
     <string name="song_share_save_card">Save card</string>
     <string name="song_share_song_link">Song link</string>
     <string name="song_share_more">Share more</string>
+    <string name="song_share_qr">QR / Link</string>
+    <string name="song_share_link_copied">FridaMusic link copied.</string>
     <string name="song_share_card_saved">Card saved to Pictures/FridaMusic.</string>
     <string name="song_share_failed">The share card could not be generated.</string>
     <string name="by_frida_labs">by Frida Labs</string>
     <string name="open_listen">Open / Listen</string>
+    <string name="listen_on_fridamusic">Listen on FridaMusic</string>
     <string name="song_details_identity">Identity</string>
     <string name="song_details_music">Music</string>
     <string name="song_details_file">File</string>
