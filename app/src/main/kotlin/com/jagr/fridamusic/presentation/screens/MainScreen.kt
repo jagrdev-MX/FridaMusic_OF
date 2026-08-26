@@ -23,11 +23,13 @@ import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +57,7 @@ import com.jagr.fridamusic.presentation.components.FabMenuAction
 import com.jagr.fridamusic.presentation.components.FabOverflowMenu
 import com.jagr.fridamusic.presentation.components.InteractivePlayer
 import com.jagr.fridamusic.presentation.components.ModernBottomNav
+import com.jagr.fridamusic.presentation.components.RootDestination
 import com.jagr.fridamusic.presentation.playCachedSong
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
@@ -83,6 +86,14 @@ fun MainScreen(
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "home"
+    var retainedRoot by rememberSaveable { mutableStateOf(RootDestination.HOME) }
+    val routeRoot = RootDestination.fromRoute(currentRoute)
+    val currentRoot = routeRoot
+        ?: retainedRoot.takeIf { root -> navController.hasRootOnBackStack(root) }
+        ?: RootDestination.HOME
+    LaunchedEffect(currentRoot) {
+        retainedRoot = currentRoot
+    }
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
     val homeViewModel: HomeViewModel = hiltViewModel()
@@ -382,15 +393,14 @@ fun MainScreen(
                     verticalAlignment = Alignment.Top,
                 ) {
                     ModernBottomNav(
-                        currentRoute = currentRoute,
-                        onNavigate = { route ->
-                            if (route != currentRoute) {
-                                navController.navigate(route) {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
+                        currentRoot = currentRoot,
+                        onNavigate = { destination ->
+                            retainedRoot = destination
+                            navController.navigateToRoot(
+                                destination = destination,
+                                currentRoot = currentRoot,
+                                currentRoute = currentRoute,
+                            )
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -475,6 +485,41 @@ fun MainScreen(
             )
         }
     }
+    }
+}
+
+private fun NavHostController.hasRootOnBackStack(root: RootDestination): Boolean =
+    runCatching { getBackStackEntry(root.route) }.isSuccess
+
+private fun NavHostController.navigateToRoot(
+    destination: RootDestination,
+    currentRoot: RootDestination,
+    currentRoute: String,
+) {
+    if (currentRoute == destination.route) return
+
+    if (!hasRootOnBackStack(currentRoot)) {
+        navigate(destination.route) {
+            popUpTo(graph.id) { inclusive = true }
+            launchSingleTop = true
+        }
+        return
+    }
+
+    if (currentRoute != currentRoot.route) {
+        popBackStack(currentRoot.route, inclusive = false)
+    }
+
+    if (destination == currentRoot) return
+
+    navigate(destination.route) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+
+    if (currentDestination?.route != destination.route) {
+        popBackStack(destination.route, inclusive = false)
     }
 }
 

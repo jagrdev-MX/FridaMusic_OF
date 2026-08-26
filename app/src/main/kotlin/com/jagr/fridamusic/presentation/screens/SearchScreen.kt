@@ -1,8 +1,5 @@
 package com.jagr.fridamusic.presentation.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -11,11 +8,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.Search
@@ -26,11 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -39,10 +31,12 @@ import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.SearchInput
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
+import com.jagr.fridamusic.viewmodels.SearchSuggestionViewState
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
@@ -95,108 +89,98 @@ fun SearchScreen(
                     )
                 }
             }
-            OutlinedTextField(
+            SearchInput(
                 value = text,
                 onValueChange = {
                     text = it
                     viewModel.query.value = it
                 },
+                onSubmit = ::submit,
+                onClear = {
+                    text = ""
+                    viewModel.query.value = ""
+                    focusRequester.requestFocus()
+                },
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester),
-                placeholder = { Text(stringResource(R.string.search)) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                trailingIcon = {
-                    AnimatedVisibility(
-                        visible = text.isNotEmpty(),
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        IconButton(onClick = {
-                            text = ""
-                            viewModel.query.value = ""
-                            focusRequester.requestFocus()
-                        }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.clear_search),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(50),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { submit(text) }),
-                colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = Color.Transparent,
-                ),
             )
         }
 
-        LazyColumn(
-            contentPadding = PaddingValues(bottom = 140.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (text.isBlank()) {
-                if (viewState.history.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.recent_searches),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
-                        )
-                    }
-                    items(viewState.history, key = { it.id }) { history ->
-                        SuggestionRow(
-                            icon = Icons.Rounded.History,
-                            text = history.query,
-                            onClick = {
-                                text = history.query
-                                submit(history.query)
-                            },
-                            onFillClick = { text = history.query; viewModel.query.value = history.query },
-                        )
-                    }
-                }
-            } else {
-                items(viewState.suggestions) { suggestion ->
-                    SuggestionRow(
-                        icon = Icons.Rounded.Search,
-                        text = suggestion,
-                        onClick = { submit(suggestion) },
-                        onFillClick = { text = suggestion; viewModel.query.value = suggestion },
+        SearchSuggestionContent(
+            text = text,
+            viewState = viewState,
+            onSubmit = { query ->
+                text = query
+                submit(query)
+            },
+            onFill = { query ->
+                text = query
+                viewModel.query.value = query
+            },
+            onItemClick = { item ->
+                keyboardController?.hide()
+                onItemClick(item)
+            },
+        )
+    }
+}
+
+@Composable
+internal fun SearchSuggestionContent(
+    text: String,
+    viewState: SearchSuggestionViewState,
+    onSubmit: (String) -> Unit,
+    onFill: (String) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 140.dp),
+        modifier = modifier.fillMaxSize(),
+    ) {
+        if (text.isBlank()) {
+            if (viewState.history.isNotEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.recent_searches),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
                     )
                 }
+                items(viewState.history, key = { it.id }) { history ->
+                    SuggestionRow(
+                        icon = Icons.Rounded.History,
+                        text = history.query,
+                        onClick = { onSubmit(history.query) },
+                        onFillClick = { onFill(history.query) },
+                    )
+                }
+            }
+        } else {
+            items(viewState.suggestions) { suggestion ->
+                SuggestionRow(
+                    icon = Icons.Rounded.Search,
+                    text = suggestion,
+                    onClick = { onSubmit(suggestion) },
+                    onFillClick = { onFill(suggestion) },
+                )
+            }
 
-                if (viewState.items.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.direct_results),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
-                        )
-                    }
-                    items(viewState.items, key = { it.id }) { item ->
-                        YTItemRow(item = item, onClick = {
-                            keyboardController?.hide()
-                            onItemClick(item)
-                        })
-                    }
+            if (viewState.items.isNotEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.direct_results),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
+                    )
+                }
+                items(viewState.items, key = { it.id }) { item ->
+                    YTItemRow(item = item, onClick = { onItemClick(item) })
                 }
             }
         }
