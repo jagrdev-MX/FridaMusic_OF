@@ -12,6 +12,10 @@
     <string name="music">Music</string>
     <string name="songs">Songs</string>
     <string name="artists">Artists</string>
+    <string name="now_playing_open_album">Open album for %1$s</string>
+    <string name="now_playing_search_song">Search for %1$s</string>
+    <string name="now_playing_open_artist">Open artist %1$s</string>
+    <string name="now_playing_view_artists">View artists</string>
     <string name="albums">Albums</string>
     <string name="playlists">Playlists</string>
 

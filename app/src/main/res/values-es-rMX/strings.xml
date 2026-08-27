@@ -5,6 +5,10 @@
     <string name="music">Música</string>
     <string name="songs">Canciones</string>
     <string name="artists">Artistas</string>
+    <string name="now_playing_open_album">Abrir álbum de %1$s</string>
+    <string name="now_playing_search_song">Buscar %1$s</string>
+    <string name="now_playing_open_artist">Abrir artista %1$s</string>
+    <string name="now_playing_view_artists">Ver artistas</string>
     <string name="albums">Álbumes</string>
     <string name="playlists">Listas de reproducción</string>
 

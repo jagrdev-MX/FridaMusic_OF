@@ -118,6 +118,7 @@ fun MainScreen(
         LocalSongActionsNavigation provides SongActionsNavigation(
             openAlbum = { id -> navController.navigate("album/${Uri.encode(id)}") },
             openArtist = { id -> navController.navigate("artist/${Uri.encode(id)}") },
+            openSearchResult = navController::navigateToSearchResult,
         ),
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -158,9 +159,7 @@ fun MainScreen(
             }
             composable("search") {
                 SearchScreen(
-                    onSearchSubmit = { query ->
-                        navController.navigate("search_result/${Uri.encode(query)}")
-                    },
+                    onSearchSubmit = navController::navigateToSearchResult,
                     onItemClick = { item ->
                         navController.handleYTItemClick(
                             item,
@@ -490,6 +489,20 @@ fun MainScreen(
 
 private fun NavHostController.hasRootOnBackStack(root: RootDestination): Boolean =
     runCatching { getBackStackEntry(root.route) }.isSuccess
+
+private const val SEARCH_RESULT_ROUTE = "search_result/{query}"
+
+private fun NavHostController.navigateToSearchResult(query: String) {
+    val normalizedQuery = query.trim()
+    if (normalizedQuery.isEmpty()) return
+
+    navigate("search_result/${Uri.encode(normalizedQuery)}") {
+        if (currentDestination?.route == SEARCH_RESULT_ROUTE) {
+            popUpTo(SEARCH_RESULT_ROUTE) { inclusive = true }
+        }
+        launchSingleTop = true
+    }
+}
 
 private fun NavHostController.navigateToRoot(
     destination: RootDestination,

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -72,6 +73,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -89,6 +93,7 @@ import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
+import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.MarqueeText
@@ -111,6 +116,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun NowPlayingScreen(
     playerConnection: PlayerConnection,
     onBack: () -> Unit,
+    onNavigateFromPlayer: (() -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     collapseDragModifier: Modifier = Modifier,
     playlistsViewModel: PlaylistsViewModel? = null,
@@ -141,6 +147,38 @@ fun NowPlayingScreen(
     }
 
     val song = mediaMetadata ?: run { onBack(); return }
+    val navigation = LocalSongActionsNavigation.current
+    val navigableAlbumId = remember(song.album?.id) {
+        song.album?.id?.trim()?.takeIf(::isNavigableAlbumId)
+    }
+    val searchQuery = remember(song.id, song.title, song.artists) {
+        listOfNotNull(
+            song.title.trim().takeIf(String::isNotEmpty),
+            song.artists.firstOrNull()?.name?.trim()?.takeIf(String::isNotEmpty),
+        ).joinToString(" ")
+    }
+    val artistsText = remember(song.id, song.artists) {
+        song.artists.joinToString(", ") { it.name }
+    }
+    val singleArtistId = remember(song.id, song.artists) {
+        song.artists.singleOrNull()?.id?.trim()?.takeIf(String::isNotEmpty)
+    }
+    val titleActionDescription = if (navigableAlbumId != null) {
+        stringResource(R.string.now_playing_open_album, song.title)
+    } else {
+        stringResource(R.string.now_playing_search_song, song.title)
+    }
+    val artistActionDescription = when {
+        song.artists.size > 1 -> stringResource(R.string.now_playing_view_artists)
+        singleArtistId != null -> stringResource(
+            R.string.now_playing_open_artist,
+            song.artists.single().name,
+        )
+        else -> null
+    }
+    val titleInteractionSource = remember(song.id) { MutableInteractionSource() }
+    val artistInteractionSource = remember(song.id) { MutableInteractionSource() }
+    var showArtistPicker by remember(song.id) { mutableStateOf(false) }
 
     var positionMs by remember { mutableLongStateOf(playerConnection.player.currentPosition) }
     var durationMs by remember { mutableLongStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
@@ -381,11 +419,55 @@ fun NowPlayingScreen(
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(
+                                            enabled = navigableAlbumId != null || searchQuery.isNotEmpty(),
+                                            interactionSource = titleInteractionSource,
+                                            role = Role.Button,
+                                        ) {
+                                            onNavigateFromPlayer {
+                                                if (navigableAlbumId != null) {
+                                                    navigation.openAlbum(navigableAlbumId)
+                                                } else {
+                                                    navigation.openSearchResult(searchQuery)
+                                                }
+                                            }
+                                        }
+                                        .semantics(mergeDescendants = true) {
+                                            contentDescription = titleActionDescription
+                                        }
+                                        .heightIn(min = 40.dp)
+                                        .padding(vertical = 4.dp),
                                 )
                                 MarqueeText(
-                                    text = song.artists.joinToString(", ") { it.name },
+                                    text = artistsText,
                                     style = MaterialTheme.typography.titleMedium,
                                     color = Color.White.copy(alpha = 0.88f),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(
+                                            enabled = song.artists.size > 1 || singleArtistId != null,
+                                            interactionSource = artistInteractionSource,
+                                            role = Role.Button,
+                                        ) {
+                                            if (song.artists.size > 1) {
+                                                showArtistPicker = true
+                                            } else if (singleArtistId != null) {
+                                                onNavigateFromPlayer {
+                                                    navigation.openArtist(singleArtistId)
+                                                }
+                                            }
+                                        }
+                                        .then(
+                                            artistActionDescription?.let { description ->
+                                                Modifier.semantics(mergeDescendants = true) {
+                                                    contentDescription = description
+                                                }
+                                            } ?: Modifier,
+                                        )
+                                        .heightIn(min = 40.dp)
+                                        .padding(vertical = 4.dp),
                                 )
                             }
                             NowPlayingRoundButton(
@@ -675,6 +757,19 @@ fun NowPlayingScreen(
         )
     }
 
+    if (showArtistPicker) {
+        NowPlayingArtistPickerSheet(
+            artists = song.artists,
+            onDismiss = { showArtistPicker = false },
+            onSelect = { artistId ->
+                showArtistPicker = false
+                onNavigateFromPlayer {
+                    navigation.openArtist(artistId)
+                }
+            },
+        )
+    }
+
     if (showSleepTimerDialog) {
         SleepTimerDialog(
             isActive = sleepTimer.isActive,
@@ -684,6 +779,80 @@ fun NowPlayingScreen(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NowPlayingArtistPickerSheet(
+    artists: List<MediaMetadata.Artist>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.artists),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            artists.forEachIndexed { index, artist ->
+                val artistId = artist.id?.trim()?.takeIf(String::isNotEmpty)
+                val actionDescription = stringResource(
+                    R.string.now_playing_open_artist,
+                    artist.name,
+                )
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = artist.name,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Rounded.Person,
+                            contentDescription = null,
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = artistId != null,
+                            role = Role.Button,
+                        ) {
+                            artistId?.let(onSelect)
+                        }
+                        .then(
+                            if (artistId != null) {
+                                Modifier.semantics(mergeDescendants = true) {
+                                    contentDescription = actionDescription
+                                }
+                            } else {
+                                Modifier.graphicsLayer { alpha = 0.45f }
+                            },
+                        ),
+                )
+                if (index < artists.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun isNavigableAlbumId(id: String): Boolean =
+    id.startsWith("MPREb_") || id.startsWith("LOCAL_ALBUM_")
 
 private enum class PlayerPanel {
     Queue,

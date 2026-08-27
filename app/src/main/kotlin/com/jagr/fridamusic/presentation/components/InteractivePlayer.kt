@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -67,6 +68,7 @@ fun InteractivePlayer(
 
     var containerHeightPx by remember { mutableFloatStateOf(0f) }
     var miniPlayerHeightPx by remember { mutableFloatStateOf(0f) }
+    var metadataNavigationPending by remember { mutableStateOf(false) }
 
     LaunchedEffect(containerHeightPx, miniPlayerHeightPx, bottomBarHeightPx) {
         if (containerHeightPx > 0f && miniPlayerHeightPx > 0f && bottomBarHeightPx > 0) {
@@ -97,7 +99,18 @@ fun InteractivePlayer(
         state.collapse { settle(PlayerSheetTarget.Collapsed) }
     }
 
-    BackHandler(enabled = !state.isCollapsed) { collapse() }
+    fun collapseAndNavigate(action: () -> Unit) {
+        if (metadataNavigationPending) return
+        metadataNavigationPending = true
+        currentOnCollapseStarted()
+        state.collapse {
+            settle(PlayerSheetTarget.Collapsed)
+            metadataNavigationPending = false
+            action()
+        }
+    }
+
+    BackHandler(enabled = !state.isCollapsed && !metadataNavigationPending) { collapse() }
 
     Box(
         modifier = modifier
@@ -112,6 +125,7 @@ fun InteractivePlayer(
             NowPlayingScreen(
                 playerConnection = playerConnection,
                 onBack = ::collapse,
+                onNavigateFromPlayer = ::collapseAndNavigate,
                 playlistsViewModel = playlistsViewModel,
                 modifier = Modifier.graphicsLayer {
                     alpha = ((state.progress - 0.08f) / 0.92f).coerceIn(0f, 1f)
@@ -122,6 +136,7 @@ fun InteractivePlayer(
                 collapseDragModifier = Modifier.playerSheetDraggable(
                     state = state,
                     velocityThresholdPx = velocityThresholdPx,
+                    enabled = !metadataNavigationPending,
                     onDragStart = {
                         if (state.isExpanded) currentOnCollapseStarted()
                     },
@@ -148,6 +163,7 @@ fun InteractivePlayer(
                     .playerSheetDraggable(
                         state = state,
                         velocityThresholdPx = velocityThresholdPx,
+                        enabled = !metadataNavigationPending,
                         onSettled = ::settle,
                     ),
             )
@@ -287,9 +303,10 @@ private fun rememberPlayerSheetState(scope: CoroutineScope): PlayerSheetState =
 private fun Modifier.playerSheetDraggable(
     state: PlayerSheetState,
     velocityThresholdPx: Float,
+    enabled: Boolean = true,
     onDragStart: () -> Unit = {},
     onSettled: (PlayerSheetTarget) -> Unit,
-): Modifier = pointerInput(state, velocityThresholdPx) {
+): Modifier = if (!enabled) this else pointerInput(state, velocityThresholdPx) {
     val velocityTracker = VelocityTracker()
     detectVerticalDragGestures(
         onDragStart = {
