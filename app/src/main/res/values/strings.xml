@@ -659,6 +659,17 @@
     <string name="onboarding_privacy_subtitle">Everything under your control.</string>
     <string name="onboarding_services_title">External Services</string>
     <string name="onboarding_services_subtitle">Disabled by default. Enable what you want now or from Settings.</string>
+    <string name="onboarding_library_title">Make FridaMusic yours</string>
+    <string name="onboarding_library_subtitle">This is just the beginning.</string>
+    <string name="onboarding_library_description">Once you’re inside the app, visit Settings to discover additional options for your library, playback, privacy, and services. Everything is optional and you can change it whenever you want.</string>
+    <string name="onboarding_discover_library_title">Your library</string>
+    <string name="onboarding_discover_library_desc">Recover and organize additional content.</string>
+    <string name="onboarding_discover_experience_title">Your experience</string>
+    <string name="onboarding_discover_experience_desc">Discover more ways to adapt FridaMusic.</string>
+    <string name="onboarding_discover_control_title">At your pace</string>
+    <string name="onboarding_discover_control_desc">Decide what you want to use and when.</string>
+    <string name="onboarding_discover_settings_title">Explore Settings later</string>
+    <string name="onboarding_discover_settings_desc">More options are available once you’re inside FridaMusic.</string>
     <string name="onboarding_done_title">All set!</string>
     <string name="onboarding_done_subtitle">FridaMusic is configured.\nYou can change any setting\nat any time.</string>
     <string name="granted">Granted</string>

@@ -91,6 +91,9 @@ fun MainScreen(
     val currentRoot = routeRoot
         ?: retainedRoot.takeIf { root -> navController.hasRootOnBackStack(root) }
         ?: RootDestination.HOME
+    var homeReselectToken by remember { mutableIntStateOf(0) }
+    var searchReselectToken by remember { mutableIntStateOf(0) }
+    var libraryReselectToken by remember { mutableIntStateOf(0) }
     LaunchedEffect(currentRoot) {
         retainedRoot = currentRoot
     }
@@ -154,6 +157,7 @@ fun MainScreen(
                         )
                     },
                     onSettingsClick = { navController.navigate("settings") },
+                    reselectToken = homeReselectToken,
                     viewModel = homeViewModel,
                 )
             }
@@ -166,6 +170,7 @@ fun MainScreen(
                             playerConnection?.let { pc -> { pc.playYTItem(item) } },
                         )
                     },
+                    reselectToken = searchReselectToken,
                 )
             }
             composable(
@@ -197,6 +202,7 @@ fun MainScreen(
                     onLocalItemClick = { item -> navController.navigateToDetail(item) },
                     onStatsClick = { navController.navigate("stats") },
                     onExternalPlaylistClick = { navController.navigate("spotify_import") },
+                    reselectToken = libraryReselectToken,
                 )
             }
             composable(
@@ -394,12 +400,20 @@ fun MainScreen(
                     ModernBottomNav(
                         currentRoot = currentRoot,
                         onNavigate = { destination ->
-                            retainedRoot = destination
-                            navController.navigateToRoot(
-                                destination = destination,
-                                currentRoot = currentRoot,
-                                currentRoute = currentRoute,
-                            )
+                            if (destination == currentRoot && currentRoute == destination.route) {
+                                when (destination) {
+                                    RootDestination.HOME -> homeReselectToken++
+                                    RootDestination.SEARCH -> searchReselectToken++
+                                    RootDestination.LIBRARY -> libraryReselectToken++
+                                }
+                            } else {
+                                retainedRoot = destination
+                                navController.navigateToRoot(
+                                    destination = destination,
+                                    currentRoot = currentRoot,
+                                    currentRoute = currentRoute,
+                                )
+                            }
                         },
                         modifier = Modifier.weight(1f),
                     )

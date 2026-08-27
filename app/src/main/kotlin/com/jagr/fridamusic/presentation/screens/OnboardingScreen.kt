@@ -3,6 +3,7 @@ package com.jagr.fridamusic.presentation.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -107,6 +108,8 @@ fun OnboardingScreen(
     val isFirst = step == SetupStep.WELCOME
     val isLast = step == SetupStep.DONE
 
+    BackHandler(enabled = !isFirst, onBack = viewModel::back)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -184,6 +187,7 @@ fun OnboardingScreen(
                     SetupStep.QUALITY -> QualityStep()
                     SetupStep.PRIVACY -> PrivacyStep()
                     SetupStep.SERVICES -> ServicesStep()
+                    SetupStep.LIBRARY -> LibraryStep()
                     SetupStep.DONE -> DoneStep()
                 }
             }
@@ -461,6 +465,128 @@ private fun ServicesStep() {
             checked = echoBrain,
             onCheckedChange = { echoBrain = it },
         )
+    }
+}
+
+@Composable
+private fun LibraryStep() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        StepTitle(
+            icon = Icons.Rounded.Settings,
+            title = stringResource(R.string.onboarding_library_title),
+            subtitle = stringResource(R.string.onboarding_library_subtitle),
+        )
+
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = stringResource(R.string.onboarding_library_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 21.sp,
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                DiscoverFeatureRow(
+                    icon = Icons.Rounded.LibraryMusic,
+                    title = stringResource(R.string.onboarding_discover_library_title),
+                    subtitle = stringResource(R.string.onboarding_discover_library_desc),
+                )
+                DiscoverFeatureRow(
+                    icon = Icons.Rounded.Tune,
+                    title = stringResource(R.string.onboarding_discover_experience_title),
+                    subtitle = stringResource(R.string.onboarding_discover_experience_desc),
+                )
+                DiscoverFeatureRow(
+                    icon = Icons.Rounded.Lock,
+                    title = stringResource(R.string.onboarding_discover_control_title),
+                    subtitle = stringResource(R.string.onboarding_discover_control_desc),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Column {
+                    Text(
+                        text = stringResource(R.string.onboarding_discover_settings_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        text = stringResource(R.string.onboarding_discover_settings_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun DiscoverFeatureRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

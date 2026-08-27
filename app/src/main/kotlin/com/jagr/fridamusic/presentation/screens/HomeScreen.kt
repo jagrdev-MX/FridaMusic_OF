@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +66,7 @@ fun HomeScreen(
     onItemClick: (YTItem) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onHistoryClick: () -> Unit = {},
+    reselectToken: Int = 0,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val quickPicks by viewModel.quickPicks.collectAsState()
@@ -119,13 +121,27 @@ fun HomeScreen(
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     val activity = LocalContext.current.findActivity()
     val interstitialAdManager = remember(activity) { InterstitialAdManager(activity) }
+    val listState = rememberLazyListState()
+    var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
 
     DisposableEffect(interstitialAdManager) {
         interstitialAdManager.load()
         onDispose { interstitialAdManager.release() }
     }
 
+    LaunchedEffect(reselectToken) {
+        val shouldScroll = reselectToken != handledReselectToken
+        handledReselectToken = reselectToken
+        if (
+            shouldScroll &&
+            (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)
+        ) {
+            listState.animateReselectScrollToTop(directAnimationItemLimit = 8)
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),

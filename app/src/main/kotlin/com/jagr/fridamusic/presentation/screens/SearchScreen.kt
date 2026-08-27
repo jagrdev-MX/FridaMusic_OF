@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,15 +50,29 @@ fun SearchScreen(
     onSearchSubmit: (String) -> Unit,
     onItemClick: (YTItem) -> Unit,
     onBack: (() -> Unit)? = null,
+    reselectToken: Int = 0,
     viewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
 ) {
     var text by remember { mutableStateOf("") }
     val viewState by viewModel.viewState.collectAsState()
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val listState = rememberLazyListState()
+    var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(reselectToken) {
+        val shouldScroll = reselectToken != handledReselectToken
+        handledReselectToken = reselectToken
+        if (
+            shouldScroll &&
+            (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)
+        ) {
+            listState.animateReselectScrollToTop(directAnimationItemLimit = 24)
+        }
     }
 
     fun submit(query: String) {
@@ -122,6 +138,7 @@ fun SearchScreen(
                 keyboardController?.hide()
                 onItemClick(item)
             },
+            listState = listState,
         )
     }
 }
@@ -134,8 +151,10 @@ internal fun SearchSuggestionContent(
     onFill: (String) -> Unit,
     onItemClick: (YTItem) -> Unit,
     modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(bottom = 140.dp),
         modifier = modifier.fillMaxSize(),
     ) {

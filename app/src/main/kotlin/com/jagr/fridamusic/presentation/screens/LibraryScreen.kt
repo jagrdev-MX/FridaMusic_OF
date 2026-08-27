@@ -23,11 +23,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -187,6 +189,7 @@ fun LibraryScreen(
     onLocalItemClick: (LocalItem) -> Unit,
     onStatsClick: () -> Unit,
     onExternalPlaylistClick: () -> Unit,
+    reselectToken: Int = 0,
     mixViewModel: LibraryMixViewModel = hiltViewModel(),
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
@@ -463,6 +466,8 @@ fun LibraryScreen(
                             }
                         },
                         playlistsViewModel = playlistsViewModel,
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
                     )
                     LibraryFilter.PLAYLISTS -> PlaylistsTab(
                         onLocalItemClick = onLocalItemClick,
@@ -470,6 +475,8 @@ fun LibraryScreen(
                         selectedPlaylistIds = selectedPlaylistIds,
                         onSelectedPlaylistIdsChange = { selectedPlaylistIds = it },
                         viewModel = playlistsViewModel,
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
                     )
                     LibraryFilter.SONGS -> SongsTab(
                         mode = songMode,
@@ -477,14 +484,26 @@ fun LibraryScreen(
                         onSongClick = onSongClick,
                         onCachedSongClick = onCachedSongClick,
                         onLocalItemClick = onLocalItemClick,
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
                     )
                     LibraryFilter.LOCAL -> LocalSongsTab(
                         onSongClick = onSongClick,
                         showBlacklist = showLocalBlacklist,
                         onCloseBlacklist = { showLocalBlacklist = false },
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
                     )
-                    LibraryFilter.ARTISTS -> ArtistsTab(onLocalItemClick = onLocalItemClick)
-                    LibraryFilter.ALBUMS -> AlbumsTab(onLocalItemClick = onLocalItemClick)
+                    LibraryFilter.ARTISTS -> ArtistsTab(
+                        onLocalItemClick = onLocalItemClick,
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
+                    )
+                    LibraryFilter.ALBUMS -> AlbumsTab(
+                        onLocalItemClick = onLocalItemClick,
+                        reselectToken = reselectToken,
+                        isActive = page == pagerState.currentPage,
+                    )
                 }
             }
         }
@@ -517,6 +536,24 @@ fun LibraryScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun RootReselectScrollEffect(
+    reselectToken: Int,
+    isActive: Boolean,
+    isAtTop: () -> Boolean,
+    animateScrollToTop: suspend () -> Unit,
+) {
+    var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
+
+    LaunchedEffect(reselectToken) {
+        val shouldScroll = isActive && reselectToken != handledReselectToken
+        handledReselectToken = reselectToken
+        if (shouldScroll && !isAtTop()) {
+            animateScrollToTop()
+        }
     }
 }
 
@@ -581,6 +618,8 @@ private fun LibraryMixTab(
     onTabSelected: (LibraryFilter) -> Unit,
     onBlacklistSelected: () -> Unit,
     onSongCollectionSelected: (LibrarySongMode) -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
     artistsViewModel: LibraryArtistsViewModel = hiltViewModel(),
     songsViewModel: LibrarySongsViewModel = hiltViewModel(),
@@ -593,8 +632,19 @@ private fun LibraryMixTab(
     val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
     val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
     val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsState()
+    val listState = rememberLazyListState()
+
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        },
+        animateScrollToTop = { listState.animateReselectScrollToTop() },
+    )
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = LibraryContentTopPadding, bottom = 140.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -939,6 +989,8 @@ private fun PlaylistsTab(
     onExternalPlaylistClick: () -> Unit,
     selectedPlaylistIds: Set<String>,
     onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     viewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -947,6 +999,8 @@ private fun PlaylistsTab(
     val scope = rememberCoroutineScope()
     val playlists by viewModel.allPlaylists.collectAsState()
     val preferences by viewModel.preferences.collectAsState()
+    val gridState = rememberLazyGridState()
+    val listState = rememberLazyListState()
     val playerConnection = LocalPlayerConnection.current
     val queueTitleFlow = remember(playerConnection) { playerConnection?.queueTitle ?: flowOf(null) }
     val isPlayingFlow = remember(playerConnection) { playerConnection?.isEffectivelyPlaying ?: flowOf(false) }
@@ -977,6 +1031,22 @@ private fun PlaylistsTab(
     val actionFailedMessage = stringResource(R.string.playlist_action_failed)
     val exportSuccessfulMessage = stringResource(R.string.export_successful)
     val importedMessage = stringResource(R.string.playlist_imported)
+
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            if (preferences.gridView) {
+                gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+            } else {
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            }
+        },
+        animateScrollToTop = {
+            if (preferences.gridView) gridState.animateReselectScrollToTop()
+            else listState.animateReselectScrollToTop()
+        },
+    )
 
     fun toggleSelection(playlistId: String) {
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1088,6 +1158,7 @@ private fun PlaylistsTab(
         if (preferences.gridView) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 156.dp),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -1134,6 +1205,7 @@ private fun PlaylistsTab(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -1418,6 +1490,8 @@ private fun SongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
     onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     viewModel: LibrarySongsViewModel = hiltViewModel(),
     cacheViewModel: CachePlaylistViewModel = hiltViewModel(),
     localSongsViewModel: LocalSongsViewModel = hiltViewModel(),
@@ -1461,9 +1535,20 @@ private fun SongsTab(
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(false) }
     var menuSong by remember { mutableStateOf<Song?>(null) }
+    val gridState = rememberLazyGridState()
+
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+        },
+        animateScrollToTop = { gridState.animateReselectScrollToTop() },
+    )
 
     LazyVerticalGrid(
         columns = if (gridView) GridCells.Adaptive(minSize = 156.dp) else GridCells.Fixed(1),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp, end = 16.dp, top = LibraryContentTopPadding, bottom = 140.dp,
@@ -1683,6 +1768,8 @@ private fun LocalSongsTab(
     onSongClick: (Song, List<Song>) -> Unit,
     showBlacklist: Boolean,
     onCloseBlacklist: () -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     viewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -1718,6 +1805,8 @@ private fun LocalSongsTab(
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(false) }
     var menuSong by remember { mutableStateOf<Song?>(null) }
+    val gridState = rememberLazyGridState()
+    val blacklistListState = rememberLazyListState()
     val sortedSongs = remember(songs, sortMetadata, pinnedSongIds, sortType, sortAscending) {
         sortLocalSongs(
             songs = songs,
@@ -1744,6 +1833,23 @@ private fun LocalSongsTab(
     }
     val restoredMessage = stringResource(R.string.local_song_restored_from_blacklist)
     val undoLabel = stringResource(R.string.undo)
+
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            if (showBlacklist) {
+                blacklistListState.firstVisibleItemIndex == 0 &&
+                    blacklistListState.firstVisibleItemScrollOffset == 0
+            } else {
+                gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+            }
+        },
+        animateScrollToTop = {
+            if (showBlacklist) blacklistListState.animateReselectScrollToTop()
+            else gridState.animateReselectScrollToTop()
+        },
+    )
 
     BackHandler(enabled = showBlacklist, onBack = onCloseBlacklist)
 
@@ -1803,10 +1909,12 @@ private fun LocalSongsTab(
                 onSongClick = { song -> onSongClick(song, sortedBlacklistedSongs) },
                 onMoreClick = { song -> menuSong = song },
                 onRestore = { song -> restoreFromBlacklist(song.song.id) },
+                listState = blacklistListState,
             )
         } else {
             LazyVerticalGrid(
                 columns = if (gridView) GridCells.Adaptive(minSize = 156.dp) else GridCells.Fixed(1),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -1995,8 +2103,10 @@ private fun LocalBlacklistContent(
     onSongClick: (Song) -> Unit,
     onMoreClick: (Song) -> Unit,
     onRestore: (Song) -> Unit,
+    listState: LazyListState,
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp,
@@ -2453,11 +2563,24 @@ private fun <T : Comparable<T>> compareLocalSortValues(
 @Composable
 private fun ArtistsTab(
     onLocalItemClick: (LocalItem) -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
     val artists by viewModel.allArtists.collectAsState()
+    val listState = rememberLazyListState()
+
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        },
+        animateScrollToTop = { listState.animateReselectScrollToTop() },
+    )
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp, end = 16.dp, top = LibraryContentTopPadding, bottom = 140.dp,
@@ -2498,10 +2621,13 @@ private fun ArtistsTab(
 @Composable
 private fun AlbumsTab(
     onLocalItemClick: (LocalItem) -> Unit,
+    reselectToken: Int,
+    isActive: Boolean,
     viewModel: LibraryAlbumsViewModel = hiltViewModel(),
 ) {
     val albums by viewModel.allAlbums.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val listState = rememberLazyListState()
 
     if (isLoading) {
         FridaLoadingIndicator(
@@ -2514,7 +2640,17 @@ private fun AlbumsTab(
         return
     }
 
+    RootReselectScrollEffect(
+        reselectToken = reselectToken,
+        isActive = isActive,
+        isAtTop = {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        },
+        animateScrollToTop = { listState.animateReselectScrollToTop() },
+    )
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 16.dp, end = 16.dp, top = LibraryContentTopPadding, bottom = 140.dp,
