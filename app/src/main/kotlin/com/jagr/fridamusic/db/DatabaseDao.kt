@@ -361,10 +361,18 @@ interface DatabaseDao {
           AND EXISTS (
               SELECT 1
               FROM album_artist_map release_artist
-              JOIN song_artist_map familiar_song ON familiar_song.artistId = release_artist.artistId
-              JOIN event familiar_event ON familiar_event.songId = familiar_song.songId
+              JOIN artist release_artist_entity ON release_artist_entity.id = release_artist.artistId
               WHERE release_artist.albumId = album.id
-                AND familiar_event.timestamp >= :familiarSince
+                AND (
+                    release_artist_entity.bookmarkedAt IS NOT NULL
+                    OR EXISTS (
+                        SELECT 1
+                        FROM song_artist_map familiar_song
+                        JOIN event familiar_event ON familiar_event.songId = familiar_song.songId
+                        WHERE familiar_song.artistId = release_artist.artistId
+                          AND familiar_event.timestamp >= :familiarSince
+                    )
+                )
           )
         ORDER BY album.lastUpdateTime DESC
         LIMIT :limit

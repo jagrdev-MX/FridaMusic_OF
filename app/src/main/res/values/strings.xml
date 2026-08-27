@@ -71,6 +71,10 @@
     <string name="library_song_empty">Library songs will show up here</string>
     <string name="library_artist_empty">Library artists will show up here</string>
     <string name="library_album_empty">Library albums will show up here</string>
+    <string name="add_album_to_library">Add album to library</string>
+    <string name="remove_album_from_library">Remove album from library</string>
+    <string name="follow_artist">Follow artist</string>
+    <string name="unfollow_artist">Unfollow artist</string>
     <string name="library_playlist_empty">Your playlists will show up here</string>
 
     <!-- Artist screen -->

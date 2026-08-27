@@ -651,7 +651,7 @@ private fun AnimatedPlaylistSaveButton(
             },
             contentDescription = null,
             tint = when (visualState) {
-                PlaylistSaveIconState.EMPTY -> MaterialTheme.colorScheme.onBackground
+                PlaylistSaveIconState.EMPTY -> Color.White
                 PlaylistSaveIconState.SAVED -> MaterialTheme.colorScheme.primary
                 PlaylistSaveIconState.BROKEN -> MaterialTheme.colorScheme.error
             },

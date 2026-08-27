@@ -34,6 +34,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
@@ -60,6 +61,7 @@ fun ArtistScreen(
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
+    val isBookmarkUpdating by viewModel.isBookmarkUpdating.collectAsState()
     val artistPage = viewModel.artistPage
 
 
@@ -125,6 +127,19 @@ fun ArtistScreen(
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+                    AnimatedLibraryHeartButton(
+                        isSaved = libraryArtist?.artist?.bookmarkedAt != null,
+                        enabled = !isBookmarkUpdating && (libraryArtist != null || artistPage != null),
+                        contentDescription = stringResource(
+                            if (libraryArtist?.artist?.bookmarkedAt != null) {
+                                R.string.unfollow_artist
+                            } else {
+                                R.string.follow_artist
+                            }
+                        ),
+                        onClick = viewModel::toggleFollow,
+                    )
                 }
             }
 

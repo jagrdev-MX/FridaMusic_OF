@@ -25,12 +25,14 @@ import javax.inject.Inject
 class AlbumViewModel
 @Inject
 constructor(
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val albumId = savedStateHandle.get<String>("albumId")!!
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+    private val _isBookmarkUpdating = MutableStateFlow(false)
+    val isBookmarkUpdating = _isBookmarkUpdating.asStateFlow()
     val playlistId = MutableStateFlow("")
     val albumWithSongs =
         database
@@ -123,6 +125,21 @@ constructor(
                 }
         }.invokeOnCompletion {
             _isLoading.value = false
+        }
+    }
+
+    fun toggleBookmark() {
+        if (_isBookmarkUpdating.value) return
+        _isBookmarkUpdating.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val currentAlbum = database.album(albumId).first()?.album ?: return@launch
+                database.update(currentAlbum.localToggleLike())
+            } catch (error: Exception) {
+                reportException(error)
+            } finally {
+                _isBookmarkUpdating.value = false
+            }
         }
     }
 }

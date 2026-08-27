@@ -66,6 +66,10 @@
     <string name="library_song_empty">Las canciones de tu biblioteca aparecerán aquí</string>
     <string name="library_artist_empty">Los artistas de tu biblioteca aparecerán aquí</string>
     <string name="library_album_empty">Los álbumes de tu biblioteca aparecerán aquí</string>
+    <string name="add_album_to_library">Añadir álbum a la biblioteca</string>
+    <string name="remove_album_from_library">Quitar álbum de la biblioteca</string>
+    <string name="follow_artist">Seguir artista</string>
+    <string name="unfollow_artist">Dejar de seguir artista</string>
     <string name="library_playlist_empty">Tus listas de reproducción aparecerán aquí</string>
 
     <!-- Pantalla de Artista -->
