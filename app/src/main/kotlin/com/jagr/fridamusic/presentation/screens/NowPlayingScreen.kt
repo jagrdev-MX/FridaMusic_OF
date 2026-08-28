@@ -311,7 +311,6 @@ fun NowPlayingScreen(
                 panelMotion.updateAnchors(panelHeightPx)
             }
     ) {
-        // Fondo súper desenfocado
         AsyncImage(
             model = song.thumbnailUrl?.resize(width = 400),
             contentDescription = null,
@@ -321,7 +320,6 @@ fun NowPlayingScreen(
                 .blur(80.dp)
         )
 
-        // Capa oscura para contraste global
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -365,7 +363,6 @@ fun NowPlayingScreen(
                                 .drawWithContent {
                                     drawContent()
 
-                                    // Gradiente que actúa como borrador: difumina el 15% inferior de la carátula
                                     drawRect(
                                         brush = Brush.verticalGradient(
                                             0.85f to Color.Transparent,
@@ -392,7 +389,6 @@ fun NowPlayingScreen(
                             )
                         }
 
-                        // --- INDICADOR DE GESTO SWIPE-TO-DISMISS (Píldora superior) ---
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -403,7 +399,6 @@ fun NowPlayingScreen(
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.4f))
                         )
-                        // --------------------------------------------------------------
 
                         Row(
                             modifier = Modifier
@@ -504,10 +499,69 @@ fun NowPlayingScreen(
                             Text(formatMs(durationMs), color = Color.White, style = MaterialTheme.typography.bodyLarge)
                         }
                         Spacer(Modifier.weight(1f).heightIn(min = 16.dp))
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = playerConnection::seekToPrevious, enabled = canSkipPrevious, modifier = Modifier.size(68.dp)) { Icon(Icons.Rounded.SkipPrevious, stringResource(R.string.previous), tint = Color.White, modifier = Modifier.size(48.dp)) }
-                            IconButton(onClick = { if (isPlaying) playerConnection.player.pause() else playerConnection.player.play() }, modifier = Modifier.size(78.dp)) { Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (isPlaying) stringResource(R.string.pause) else stringResource(R.string.play), tint = Color.White, modifier = Modifier.size(58.dp)) }
-                            IconButton(onClick = playerConnection::seekToNext, enabled = canSkipNext, modifier = Modifier.size(68.dp)) { Icon(Icons.Rounded.SkipNext, stringResource(R.string.next), tint = Color.White, modifier = Modifier.size(48.dp)) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            NowPlayingRoundButton(
+                                onClick = {
+                                    playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                },
+                                icon = Icons.Rounded.Shuffle,
+                                contentDescription = stringResource(
+                                    if (shuffleEnabled) R.string.action_shuffle_off else R.string.action_shuffle_on
+                                ),
+                                selected = shuffleEnabled,
+                                modifier = Modifier.size(48.dp),
+                            )
+
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            ) {
+                                NowPlayingTransportButton(
+                                    onClick = playerConnection::seekToPrevious,
+                                    icon = Icons.Rounded.SkipPrevious,
+                                    contentDescription = stringResource(R.string.previous),
+                                    enabled = canSkipPrevious,
+                                )
+                                NowPlayingTransportButton(
+                                    onClick = { playerConnection.togglePlayPause() },
+                                    icon = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) stringResource(R.string.pause) else stringResource(R.string.play),
+                                    emphasized = true,
+                                )
+                                NowPlayingTransportButton(
+                                    onClick = playerConnection::seekToNext,
+                                    icon = Icons.Rounded.SkipNext,
+                                    contentDescription = stringResource(R.string.next),
+                                    enabled = canSkipNext,
+                                )
+                            }
+
+                            NowPlayingRoundButton(
+                                onClick = {
+                                    playerConnection.player.repeatMode = when (repeatMode) {
+                                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+                                        Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+                                        else -> Player.REPEAT_MODE_OFF
+                                    }
+                                },
+                                icon = when (repeatMode) {
+                                    Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne
+                                    Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat
+                                    else -> Icons.Rounded.Repeat
+                                },
+                                contentDescription = when (repeatMode) {
+                                    Player.REPEAT_MODE_ONE -> stringResource(R.string.repeat_mode_one)
+                                    Player.REPEAT_MODE_ALL -> stringResource(R.string.repeat_mode_all)
+                                    else -> stringResource(R.string.repeat_mode_off)
+                                },
+                                selected = repeatMode != Player.REPEAT_MODE_OFF,
+                                modifier = Modifier.size(48.dp),
+                            )
                         }
 
                         Box(
@@ -1062,6 +1116,67 @@ private fun NowPlayingRoundButton(
             contentDescription = contentDescription,
             tint = if (enabled) Color.White else Color.White.copy(alpha = 0.35f),
             modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+private fun NowPlayingTransportButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean = true,
+    emphasized: Boolean = false,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val isDragged by interactionSource.collectIsDraggedAsState()
+    val feedbackScale by animateFloatAsState(
+        targetValue = when {
+            !enabled -> 1f
+            isDragged -> 0.92f
+            isPressed -> 0.95f
+            emphasized -> 1f
+            else -> 1f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "now_playing_transport_feedback",
+    )
+    val size = if (emphasized) 68.dp else 52.dp
+    val iconSize = if (emphasized) 28.dp else 22.dp
+    val backgroundAlpha = when {
+        !enabled -> 0.08f
+        emphasized -> 0.24f
+        isDragged -> 0.22f
+        isPressed -> 0.18f
+        else -> 0.12f
+    }
+
+    Box(
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer {
+                scaleX = feedbackScale
+                scaleY = feedbackScale
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = backgroundAlpha))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (enabled) Color.White else Color.White.copy(alpha = 0.35f),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
