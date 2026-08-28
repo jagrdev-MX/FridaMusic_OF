@@ -158,6 +158,7 @@ class PlayerConnection(
     val error = MutableStateFlow<PlaybackException?>(null)
     /** Playback clock for consumers that need sub-second synchronization, such as karaoke lyrics. */
     val playbackPositionMs = MutableStateFlow(player.currentPosition)
+    val playbackDurationMs = MutableStateFlow(player.validDurationMs())
     val isMuted = service.isMuted
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
@@ -183,8 +184,9 @@ class PlayerConnection(
         try {
             scope.launch {
                 while (isActive) {
-                    playbackPositionMs.value = player.currentPosition
-                    delay(if (player.isPlaying) 50L else 250L)
+                    val currentPlayer = player
+                    updatePlaybackClock(currentPlayer)
+                    delay(if (currentPlayer.isPlaying) 50L else 250L)
                 }
             }
 
@@ -219,7 +221,7 @@ class PlayerConnection(
         playbackState.value = newPlayer.playbackState
         playWhenReady.value = newPlayer.playWhenReady
         mediaMetadata.value = newPlayer.currentMetadata
-        playbackPositionMs.value = newPlayer.currentPosition
+        updatePlaybackClock(newPlayer)
         queueTitle.value = service.queueTitle
         queueWindows.value = newPlayer.getQueueWindows()
         currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
@@ -494,6 +496,7 @@ class PlayerConnection(
 
     override fun onPlaybackStateChanged(state: Int) {
         playbackState.value = state
+        updatePlaybackClock(player)
         error.value = player.playerError
     }
 
@@ -509,7 +512,7 @@ class PlayerConnection(
         reason: Int,
     ) {
         mediaMetadata.value = mediaItem?.metadata
-        playbackPositionMs.value = player.currentPosition
+        updatePlaybackClock(player)
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
@@ -519,12 +522,21 @@ class PlayerConnection(
         timeline: Timeline,
         reason: Int,
     ) {
+        updatePlaybackClock(player)
         queueWindows.value = player.getQueueWindows()
         queueTitle.value = service.queueTitle
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
     }
+
+    private fun updatePlaybackClock(currentPlayer: Player) {
+        playbackPositionMs.value = currentPlayer.currentPosition
+        playbackDurationMs.value = currentPlayer.validDurationMs()
+    }
+
+    private fun Player.validDurationMs(): Long =
+        duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: C.TIME_UNSET
 
     override fun onShuffleModeEnabledChanged(enabled: Boolean) {
         shuffleModeEnabled.value = enabled

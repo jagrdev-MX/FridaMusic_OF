@@ -55,6 +55,7 @@ import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalPlaylistViewModel
@@ -479,8 +480,10 @@ private fun PlaylistSongRow(
     onMoreClick: () -> Unit,
 ) {
     Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         shape = RoundedCornerShape(16.dp),
         color = if (isCurrent) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)

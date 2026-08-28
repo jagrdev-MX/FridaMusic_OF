@@ -92,7 +92,11 @@ import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.SongPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.LocalSongGridItem
 import com.jagr.fridamusic.presentation.components.LocalSongListItem
+import com.jagr.fridamusic.presentation.components.LocalCollectionActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalLocalCollectionActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.components.PlaylistLibraryActionsSheet
 import com.jagr.fridamusic.presentation.components.PlaylistLibraryControls
@@ -101,6 +105,7 @@ import com.jagr.fridamusic.presentation.components.PlaylistLibraryListItem
 import com.jagr.fridamusic.presentation.components.PlaylistLibrarySortSheet
 import com.jagr.fridamusic.presentation.components.PlaylistNameDialog
 import com.jagr.fridamusic.presentation.components.LibraryViewModeToggle
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.utils.SyncErrorKind
 import com.jagr.fridamusic.utils.SyncStatus
@@ -116,6 +121,7 @@ import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import com.music.innertube.models.ArtistItem
 import java.text.Collator
 import java.time.ZoneId
 import java.util.Locale
@@ -636,6 +642,8 @@ private fun LibraryMixTab(
     val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
     val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsState()
     val listState = rememberLazyListState()
+    var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
+    var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
 
     RootReselectScrollEffect(
         reselectToken = reselectToken,
@@ -750,6 +758,16 @@ private fun LibraryMixTab(
                         PlaylistCompactCard(
                             playlist = playlist,
                             onClick = { onLocalItemClick(playlist) },
+                            onMoreClick = {
+                                collectionMenu = LocalCollectionActionContext(
+                                    id = playlist.id,
+                                    title = playlist.title,
+                                    subtitle = "${playlist.songCount} canciones",
+                                    thumbnail = playlist.thumbnails.firstOrNull(),
+                                    circularThumbnail = false,
+                                    onOpen = { onLocalItemClick(playlist) },
+                                )
+                            },
                         )
                     }
                     item {
@@ -777,6 +795,16 @@ private fun LibraryMixTab(
                         ArtistCircleCard(
                             artist = artistWithSongs,
                             onClick = { onLocalItemClick(artistWithSongs) },
+                            onMoreClick = {
+                                artistMenuItem = ArtistItem(
+                                    id = artistWithSongs.id,
+                                    title = artistWithSongs.title,
+                                    thumbnail = artistWithSongs.thumbnailUrl,
+                                    channelId = artistWithSongs.artist.channelId,
+                                    shuffleEndpoint = null,
+                                    radioEndpoint = null,
+                                )
+                            },
                         )
                     }
                     item {
@@ -788,6 +816,15 @@ private fun LibraryMixTab(
             }
         }
     }
+    UniversalLocalCollectionActionsHost(
+        context = collectionMenu,
+        onDismiss = { collectionMenu = null },
+    )
+    UniversalYTItemActionsHost(
+        item = artistMenuItem,
+        onDismiss = { artistMenuItem = null },
+        onOpen = {},
+    )
 }
 
 @Composable
@@ -870,7 +907,11 @@ private fun LibrarySectionHeader(title: String, onSeeAll: () -> Unit) {
 }
 
 @Composable
-private fun PlaylistCompactCard(playlist: Playlist, onClick: () -> Unit) {
+private fun PlaylistCompactCard(
+    playlist: Playlist,
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -885,7 +926,12 @@ private fun PlaylistCompactCard(playlist: Playlist, onClick: () -> Unit) {
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(28.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .universalMediaClickable(
+                onClick = onClick,
+                onLongClick = onMoreClick,
+                interactionSource = interactionSource,
+                indication = null,
+            )
             .padding(10.dp),
     ) {
         Box(
@@ -902,6 +948,11 @@ private fun PlaylistCompactCard(playlist: Playlist, onClick: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            SongOptionsButton(
+                onClick = onMoreClick,
+                modifier = Modifier.align(Alignment.TopEnd),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+            )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = playlist.playlist.name,
@@ -944,18 +995,26 @@ private fun SeeMoreCard(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ArtistCircleCard(artist: Artist, onClick: () -> Unit) {
+private fun ArtistCircleCard(
+    artist: Artist,
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit,
+) {
     Column(
-        modifier = Modifier.width(80.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .width(80.dp)
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        AsyncImage(
-            model = artist.artist.thumbnailUrl?.resize(width = 160),
-            contentDescription = artist.artist.name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(72.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+        Box(modifier = Modifier.size(72.dp)) {
+            AsyncImage(
+                model = artist.artist.thumbnailUrl?.resize(width = 160),
+                contentDescription = artist.artist.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        }
         Spacer(modifier = Modifier.height(6.dp))
         Text(text = artist.artist.name,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
@@ -1202,7 +1261,10 @@ private fun PlaylistsTab(
                             if (selectedPlaylistIds.isNotEmpty()) toggleSelection(playlist.id)
                             else onLocalItemClick(playlist)
                         },
-                        onLongClick = { toggleSelection(playlist.id) },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuPlaylist = playlist
+                        },
                         onPlay = { playPlaylist(playlist) },
                         onMoreClick = { menuPlaylist = playlist },
                     )
@@ -1247,7 +1309,10 @@ private fun PlaylistsTab(
                             if (selectedPlaylistIds.isNotEmpty()) toggleSelection(playlist.id)
                             else onLocalItemClick(playlist)
                         },
-                        onLongClick = { toggleSelection(playlist.id) },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuPlaylist = playlist
+                        },
                         onPlay = { playPlaylist(playlist) },
                         onMoreClick = { menuPlaylist = playlist },
                     )
@@ -1369,6 +1434,10 @@ private fun PlaylistsTab(
             onAddToPlaylist = if (hasSongs) {
                 { menuPlaylist = null; addToPlaylistSource = playlist }
             } else null,
+            onSelect = {
+                menuPlaylist = null
+                toggleSelection(playlist.id)
+            },
             onTogglePinned = {
                 viewModel.togglePinned(playlist)
                 menuPlaylist = null
@@ -2575,6 +2644,7 @@ private fun ArtistsTab(
 ) {
     val artists by viewModel.allArtists.collectAsState()
     val listState = rememberLazyListState()
+    var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
 
     RootReselectScrollEffect(
         reselectToken = reselectToken,
@@ -2594,11 +2664,24 @@ private fun ArtistsTab(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(artists, key = { it.artist.id }) { artistWithSongs ->
+            val showActions = {
+                artistMenuItem = ArtistItem(
+                    id = artistWithSongs.id,
+                    title = artistWithSongs.title,
+                    thumbnail = artistWithSongs.thumbnailUrl,
+                    channelId = artistWithSongs.artist.channelId,
+                    shuffleEndpoint = null,
+                    radioEndpoint = null,
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { onLocalItemClick(artistWithSongs) }
+                    .universalMediaClickable(
+                        onClick = { onLocalItemClick(artistWithSongs) },
+                        onLongClick = showActions,
+                    )
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -2622,6 +2705,11 @@ private fun ArtistsTab(
             }
         }
     }
+    UniversalYTItemActionsHost(
+        item = artistMenuItem,
+        onDismiss = { artistMenuItem = null },
+        onOpen = {},
+    )
 }
 
 @Composable
@@ -2634,6 +2722,7 @@ private fun AlbumsTab(
     val albums by viewModel.allAlbums.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val listState = rememberLazyListState()
+    var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
 
     if (isLoading) {
         FridaLoadingIndicator(
@@ -2664,12 +2753,25 @@ private fun AlbumsTab(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(albums, key = { it.id }) { album ->
+            val showActions = {
+                collectionMenu = LocalCollectionActionContext(
+                    id = album.id,
+                    title = album.title,
+                    subtitle = album.artists.joinToString(", ") { it.name },
+                    thumbnail = album.thumbnailUrl,
+                    circularThumbnail = false,
+                    onOpen = { onLocalItemClick(album) },
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .clickable { onLocalItemClick(album) }
+                    .universalMediaClickable(
+                        onClick = { onLocalItemClick(album) },
+                        onLongClick = showActions,
+                    )
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -2691,7 +2793,12 @@ private fun AlbumsTab(
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                SongOptionsButton(onClick = showActions)
             }
         }
     }
+    UniversalLocalCollectionActionsHost(
+        context = collectionMenu,
+        onDismiss = { collectionMenu = null },
+    )
 }

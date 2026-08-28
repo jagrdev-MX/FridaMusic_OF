@@ -550,6 +550,7 @@ fun PlaylistLibraryActionsSheet(
     onPlay: (() -> Unit)?,
     onAddToQueue: (() -> Unit)?,
     onAddToPlaylist: (() -> Unit)?,
+    onSelect: (() -> Unit)?,
     onTogglePinned: () -> Unit,
     onChooseCover: (() -> Unit)?,
     onRename: (() -> Unit)?,
@@ -594,6 +595,7 @@ fun PlaylistLibraryActionsSheet(
                 PlaylistActionRow(Icons.Rounded.PlayArrow, stringResource(R.string.play), onPlay)
                 PlaylistActionRow(Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.add_to_queue), onAddToQueue)
                 PlaylistActionRow(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.add_to_playlist), onAddToPlaylist)
+                PlaylistActionRow(Icons.Rounded.CheckCircle, stringResource(R.string.select_item), onSelect)
                 PlaylistActionRow(
                     Icons.Rounded.PushPin,
                     stringResource(if (playlist.playlist.isPinned) R.string.local_song_unpin else R.string.local_song_pin),

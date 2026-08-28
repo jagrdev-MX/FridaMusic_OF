@@ -68,7 +68,7 @@ internal object RecommendationNotificationManager {
             Uri.parse(candidate.deepLink),
             context,
             MainActivity::class.java,
-        )
+        ).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val pendingIntent = PendingIntent.getActivity(
             context,
             candidate.id.hashCode(),

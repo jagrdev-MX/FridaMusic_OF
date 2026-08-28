@@ -107,7 +107,18 @@ class ArtistViewModel @Inject constructor(
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
                 val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-                YouTube.artist(artistId)
+                val fallbackArtistId = currentArtist?.artist?.channelId
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && it != artistId }
+                val artistResult = YouTube.artist(artistId).let { primaryResult ->
+                    if (primaryResult.isSuccess || fallbackArtistId == null) {
+                        primaryResult
+                    } else {
+                        YouTube.artist(fallbackArtistId)
+                    }
+                }
+
+                artistResult
                     .onSuccess { page ->
                         val filteredSections = page.sections
                             .map { section ->

@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var pendingExternalAudio: ExternalAudioRequest? = null
     private var externalAudioJob: Job? = null
+    private var pendingDeepLink by mutableStateOf<Uri?>(null)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -172,7 +173,10 @@ class MainActivity : ComponentActivity() {
                             OnboardingScreen(onFinish = {})
                         }
                         false -> {
-                            MainScreen()
+                            MainScreen(
+                                pendingDeepLink = pendingDeepLink,
+                                onDeepLinkConsumed = { pendingDeepLink = null },
+                            )
                         }
                     }
                 }
@@ -184,6 +188,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         enqueueExternalAudio(intent)
+        pendingDeepLink = intent.data
+            ?.takeIf { uri -> uri.scheme.equals("fridamusic", ignoreCase = true) }
     }
 
     private fun enqueueExternalAudio(intent: Intent?) {

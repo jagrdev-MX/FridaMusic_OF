@@ -262,6 +262,13 @@ interface DatabaseDao {
 
     @Transaction
     @Query(
+        "SELECT song.* FROM song_artist_map JOIN song ON song_artist_map.songId = song.id " +
+            "WHERE artistId = :artistId ORDER BY song.totalPlayTime DESC",
+    )
+    fun artistSongsForPlayback(artistId: String): Flow<List<Song>>
+
+    @Transaction
+    @Query(
         """
         SELECT song.*
         FROM (SELECT *, COUNT(1) AS referredCount

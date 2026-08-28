@@ -21,14 +21,17 @@ import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,7 +39,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
@@ -45,25 +47,36 @@ import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.HomeContentType
+import com.jagr.fridamusic.presentation.components.HomeMediaCard
+import com.jagr.fridamusic.presentation.components.HomeSectionHeader
 import com.jagr.fridamusic.presentation.components.SongActionContext
-import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.YTContentCard
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.Artist as YTArtist
 import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.BrowseEndpoint
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import com.music.innertube.pages.HomePage
+import kotlinx.coroutines.flow.distinctUntilChanged
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
     onSongClick: (Song, List<Song>) -> Unit = { _, _ -> },
     onItemClick: (YTItem) -> Unit = {},
+    onPlayItem: (YTItem) -> Unit = {},
+    onBrowseClick: (BrowseEndpoint, String) -> Unit = { _, _ -> },
+    onNewReleasesClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onHistoryClick: () -> Unit = {},
     reselectToken: Int = 0,
@@ -80,7 +93,11 @@ fun HomeScreen(
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
     val echoBrainPlaylists by viewModel.echoBrainPlaylists.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedChip by viewModel.selectedChip.collectAsState()
+    val playerConnection = LocalPlayerConnection.current
+    val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
+    val currentIsPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
     val isLowEnd = rememberIsLowEndDevice()
     val quickPickItems = quickPicks.orEmpty()
     val dailyDiscoverItems = dailyDiscover.orEmpty()
@@ -119,9 +136,12 @@ fun HomeScreen(
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
     val activity = LocalContext.current.findActivity()
     val interstitialAdManager = remember(activity) { InterstitialAdManager(activity) }
     val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState()
+    val pullRefreshHaptic = LocalHapticFeedback.current
     var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
 
     DisposableEffect(interstitialAdManager) {
@@ -140,13 +160,39 @@ fun HomeScreen(
         }
     }
 
-    LazyColumn(
-        state = listState,
+    LaunchedEffect(pullToRefreshState) {
+        snapshotFlow { pullToRefreshState.distanceFraction >= 1f }
+            .distinctUntilChanged()
+            .collect { activated ->
+                if (activated) {
+                    pullRefreshHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+            }
+    }
+
+    PullToRefreshBox(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(bottom = 140.dp),
+        state = pullToRefreshState,
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            pullRefreshHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            viewModel.refresh()
+        },
+        indicator = {
+            PullToRefreshDefaults.LoadingIndicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        },
     ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 140.dp),
+        ) {
         item(key = "header") {
             HomeHeader(
                 onHistoryClick = onHistoryClick,
@@ -171,6 +217,8 @@ fun HomeScreen(
                 songs = quickPickItems,
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
+                currentMediaId = currentMediaMetadata?.id,
+                isPlaying = currentIsPlaying,
                 onSongMore = { menuContext = it.toSongActionContext() },
             )
 
@@ -180,7 +228,11 @@ fun HomeScreen(
                 items = dailyDiscoverItems.map { it.recommendation },
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
-                onSongMore = { menuContext = it.toSongActionContext() },
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onItemMore = { remoteMenuItem = it },
             )
 
             localItemSection(
@@ -190,7 +242,12 @@ fun HomeScreen(
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
                 onItemClick = onItemClick,
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
                 onSongMore = { menuContext = it.toSongActionContext() },
+                onItemMore = { remoteMenuItem = it },
             )
 
             localSongSection(
@@ -199,6 +256,8 @@ fun HomeScreen(
                 songs = forgottenFavoriteItems,
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
+                currentMediaId = currentMediaMetadata?.id,
+                isPlaying = currentIsPlaying,
                 onSongMore = { menuContext = it.toSongActionContext() },
             )
 
@@ -209,7 +268,11 @@ fun HomeScreen(
                     items = playlist.songs,
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
-                    onSongMore = { menuContext = it.toSongActionContext() },
+                    onPlayItem = onPlayItem,
+                    currentMediaId = currentMediaMetadata?.id,
+                    currentAlbumId = currentMediaMetadata?.album?.id,
+                    isPlaying = currentIsPlaying,
+                    onItemMore = { remoteMenuItem = it },
                 )
             }
         }
@@ -219,10 +282,19 @@ fun HomeScreen(
                 key = "youtube_${index}_${section.title}",
                 title = section.title,
                 subtitle = section.label,
+                thumbnail = section.thumbnail,
+                circularThumbnail = section.endpoint?.isArtistEndpoint == true,
                 items = section.items,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
-                onSongMore = { menuContext = it.toSongActionContext() },
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onSeeAll = section.endpoint
+                    ?.takeIf { endpoint -> endpoint.browseId.isNotBlank() }
+                    ?.let { endpoint -> { onBrowseClick(endpoint, section.title) } },
+                onItemMore = { remoteMenuItem = it },
             )
         }
 
@@ -242,7 +314,11 @@ fun HomeScreen(
                 items = accountPlaylistItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
-                onSongMore = { menuContext = it.toSongActionContext() },
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onItemMore = { remoteMenuItem = it },
             )
 
             ytSection(
@@ -251,7 +327,12 @@ fun HomeScreen(
                 items = newReleaseItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
-                onSongMore = { menuContext = it.toSongActionContext() },
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onSeeAll = onNewReleasesClick,
+                onItemMore = { remoteMenuItem = it },
             )
 
             similarRecommendationItems.forEachIndexed { index, recommendation ->
@@ -261,7 +342,11 @@ fun HomeScreen(
                     items = recommendation.items,
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
-                    onSongMore = { menuContext = it.toSongActionContext() },
+                    onPlayItem = onPlayItem,
+                    currentMediaId = currentMediaMetadata?.id,
+                    currentAlbumId = currentMediaMetadata?.album?.id,
+                    isPlaying = currentIsPlaying,
+                    onItemMore = { remoteMenuItem = it },
                 )
             }
 
@@ -271,7 +356,11 @@ fun HomeScreen(
                 items = communityPlaylistItems.map { it.playlist },
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
-                onSongMore = { menuContext = it.toSongActionContext() },
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onItemMore = { remoteMenuItem = it },
             )
         }
 
@@ -288,6 +377,7 @@ fun HomeScreen(
         if (!isLoading && !hasVisibleContent) {
             item(key = "empty") { HomeEmptyState() }
         }
+        }
     }
 
     // Instancia del Diálogo de Apoyo
@@ -303,6 +393,12 @@ fun HomeScreen(
     UniversalSongActionsHost(
         context = menuContext,
         onDismiss = { menuContext = null },
+    )
+    UniversalYTItemActionsHost(
+        item = remoteMenuItem,
+        onDismiss = { remoteMenuItem = null },
+        onOpen = { remoteMenuItem?.let(onItemClick) },
+        onPlay = remoteMenuItem?.let { item -> { onPlayItem(item) } },
     )
 }
 
@@ -474,15 +570,18 @@ private fun LazyListScope.localSongSection(
     songs: List<Song>,
     isLowEnd: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
+    currentMediaId: String?,
+    isPlaying: Boolean,
     onSongMore: (Song) -> Unit,
 ) {
     if (songs.isEmpty()) return
 
     item(key = "${key}_header") {
-        SectionTitle(title = title, subtitle = subtitle)
+        HomeSectionHeader(title = title, subtitle = subtitle)
     }
     item(key = "${key}_row") {
         LazyRow(
+            modifier = Modifier.padding(bottom = 18.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -490,13 +589,17 @@ private fun LazyListScope.localSongSection(
                 items = songs,
                 key = { index, song -> "${key}_${song.id}_$index" },
             ) { _, song ->
-                WideCard(
+                HomeMediaCard(
+                    type = HomeContentType.SONG,
                     title = song.title,
                     subtitle = song.artists.joinToString(", ") { it.name },
                     imageUrl = (song.song.thumbnailUrl
                         ?: "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg")
                         .resize(width = if (isLowEnd) 320 else 480),
+                    isActive = song.id == currentMediaId,
+                    isPlaying = isPlaying,
                     onClick = { onSongClick(song, songs) },
+                    onPlay = { onSongClick(song, songs) },
                     onMoreClick = { onSongMore(song) },
                 )
             }
@@ -511,16 +614,22 @@ private fun LazyListScope.localItemSection(
     isLowEnd: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
     onItemClick: (YTItem) -> Unit,
+    onPlayItem: (YTItem) -> Unit,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    isPlaying: Boolean,
     onSongMore: (Song) -> Unit,
+    onItemMore: (YTItem) -> Unit,
 ) {
     if (items.isEmpty()) return
     val songQueue = items.filterIsInstance<Song>()
 
     item(key = "${key}_header") {
-        SectionTitle(title = title, subtitle = null)
+        HomeSectionHeader(title = title)
     }
     item(key = "${key}_row") {
         LazyRow(
+            modifier = Modifier.padding(bottom = 18.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -534,18 +643,42 @@ private fun LazyListScope.localItemSection(
                     is LocalArtist -> stringResource(R.string.artists)
                     is LocalPlaylist -> stringResource(R.string.playlists)
                 }
-                WideCard(
+                val type = when (localItem) {
+                    is Song -> HomeContentType.SONG
+                    is LocalAlbum -> HomeContentType.ALBUM
+                    is LocalArtist -> HomeContentType.ARTIST
+                    is LocalPlaylist -> HomeContentType.PLAYLIST
+                }
+                val remoteItem = localItem.toYTItemOrNull()
+                HomeMediaCard(
+                    type = type,
                     title = localItem.title,
                     subtitle = subtitle,
                     imageUrl = localItem.thumbnailUrl.orEmpty()
                         .resize(width = if (isLowEnd) 320 else 480),
+                    isActive = when (localItem) {
+                        is Song -> localItem.id == currentMediaId
+                        is LocalAlbum -> localItem.id == currentAlbumId
+                        else -> false
+                    },
+                    isPlaying = isPlaying,
                     onClick = {
                         when (localItem) {
                             is Song -> onSongClick(localItem, songQueue)
-                            else -> localItem.toYTItemOrNull()?.let(onItemClick)
+                            else -> remoteItem?.let(onItemClick)
                         }
                     },
-                    onMoreClick = if (localItem is Song) ({ onSongMore(localItem) }) else null,
+                    onPlay = when {
+                        localItem is Song -> ({ onSongClick(localItem, songQueue) })
+                        remoteItem is AlbumItem && remoteItem.playlistId.isNotBlank() ->
+                            ({ onPlayItem(remoteItem) })
+                        else -> null
+                    },
+                    onMoreClick = when {
+                        localItem is Song -> ({ onSongMore(localItem) })
+                        remoteItem != null -> ({ onItemMore(remoteItem) })
+                        else -> null
+                    },
                 )
             }
         }
@@ -556,18 +689,32 @@ private fun LazyListScope.ytSection(
     key: String,
     title: String,
     subtitle: String? = null,
+    thumbnail: String? = null,
+    circularThumbnail: Boolean = false,
     items: List<YTItem>,
     isLowEnd: Boolean,
     onItemClick: (YTItem) -> Unit,
-    onSongMore: (SongItem) -> Unit,
+    onPlayItem: (YTItem) -> Unit,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    isPlaying: Boolean,
+    onSeeAll: (() -> Unit)? = null,
+    onItemMore: (YTItem) -> Unit,
 ) {
     if (items.isEmpty()) return
 
     item(key = "${key}_header") {
-        SectionTitle(title = title, subtitle = subtitle)
+        HomeSectionHeader(
+            title = title,
+            subtitle = subtitle,
+            thumbnail = thumbnail,
+            circularThumbnail = circularThumbnail,
+            onSeeAll = onSeeAll,
+        )
     }
     item(key = "${key}_row") {
         LazyRow(
+            modifier = Modifier.padding(bottom = 18.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -575,46 +722,25 @@ private fun LazyListScope.ytSection(
                 items = items,
                 key = { index, item -> "${key}_${item.id}_$index" },
             ) { _, item ->
-                YTItemCard(
+                YTContentCard(
                     item = item,
-                    isLowEnd = isLowEnd,
+                    currentMediaId = currentMediaId,
+                    currentAlbumId = currentAlbumId,
+                    isPlaying = isPlaying,
                     onClick = { onItemClick(item) },
-                    onSongMore = onSongMore,
+                    onPlay = when (item) {
+                        is SongItem -> ({ onPlayItem(item) })
+                        is AlbumItem -> item.playlistId
+                            .takeIf(String::isNotBlank)
+                            ?.let { { onPlayItem(item) } }
+                        is ArtistItem,
+                        is PlaylistItem -> null
+                    },
+                    onMore = onItemMore,
+                    thumbnailWidth = if (isLowEnd) 320 else 480,
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun YTItemCard(
-    item: YTItem,
-    isLowEnd: Boolean,
-    onClick: () -> Unit,
-    onSongMore: (SongItem) -> Unit,
-) {
-    val subtitle = when (item) {
-        is SongItem -> item.artists.joinToString(", ") { it.name }
-        is AlbumItem -> item.artists?.joinToString(", ") { it.name }
-            ?: stringResource(R.string.album_text)
-        is PlaylistItem -> item.author?.name ?: stringResource(R.string.playlists)
-        is ArtistItem -> stringResource(R.string.artists)
-    }
-
-    if (item is ArtistItem) {
-        ArtistCard(
-            name = item.title,
-            imageUrl = item.thumbnail?.resize(width = if (isLowEnd) 200 else 300).orEmpty(),
-            onClick = onClick,
-        )
-    } else {
-        WideCard(
-            title = item.title,
-            subtitle = subtitle,
-            imageUrl = item.thumbnail?.resize(width = if (isLowEnd) 320 else 480).orEmpty(),
-            onClick = onClick,
-            onMoreClick = if (item is SongItem) ({ onSongMore(item) }) else null,
-        )
     }
 }
 
@@ -631,138 +757,12 @@ private fun LocalItem.toYTItemOrNull(): YTItem? = when (this) {
         id = id,
         title = title,
         thumbnail = thumbnailUrl,
+        channelId = artist.channelId,
         shuffleEndpoint = null,
         radioEndpoint = null,
     )
     is LocalPlaylist -> null
     is Song -> null
-}
-
-@Composable
-private fun SectionTitle(title: String, subtitle: String?) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        if (!subtitle.isNullOrBlank()) {
-            Text(
-                text = subtitle.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp,
-            )
-        }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
-
-@Composable
-private fun WideCard(
-    title: String,
-    subtitle: String?,
-    imageUrl: String,
-    onClick: () -> Unit,
-    onMoreClick: (() -> Unit)? = null,
-) {
-    Box(
-        modifier = Modifier
-            .width(220.dp)
-            .height(150.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick),
-    ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.75f),
-                        ),
-                        startY = 60f,
-                    )
-                )
-        )
-        if (onMoreClick != null) {
-            SongOptionsButton(
-                onClick = onMoreClick,
-                modifier = Modifier.align(Alignment.TopEnd),
-                iconColor = Color.White,
-                containerColor = Color.Black.copy(alpha = 0.36f),
-            )
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(12.dp),
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ArtistCard(
-    name: String,
-    imageUrl: String,
-    onClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .width(100.dp)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = name,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(100.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-        )
-    }
 }
 
 @Composable

@@ -1,6 +1,5 @@
 package com.jagr.fridamusic.presentation.components
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +11,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.Composable
@@ -40,10 +40,10 @@ fun MiniPlayer(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val playbackPositionMs by playerConnection.playbackPositionMs.collectAsState()
+    val playbackDurationMs by playerConnection.playbackDurationMs.collectAsState()
     val song = mediaMetadata ?: return
-    val durationMs = (song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)) ?: C.TIME_UNSET
-    val progress = if (durationMs > 0L) {
-        (playbackPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    val progress = if (playbackDurationMs != C.TIME_UNSET && playbackDurationMs > 0L) {
+        (playbackPositionMs.toFloat() / playbackDurationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -65,6 +65,7 @@ fun MiniPlayer(
             imageUrl = song.thumbnailUrl?.resize(width = 96),
             contentDescription = song.title,
             progress = progress,
+            isPlaying = isPlaying,
             modifier = Modifier.size(56.dp)
         )
 
@@ -105,23 +106,28 @@ fun CircularArtwork(
     imageUrl: String?,
     contentDescription: String?,
     progress: Float,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        label = "miniPlayerProgress",
-    )
-
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        CircularWavyProgressIndicator(
-            progress = { animatedProgress },
-            modifier = Modifier.matchParentSize(),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
+        if (isPlaying) {
+            CircularWavyProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.matchParentSize(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+        } else {
+            CircularProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.matchParentSize(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+        }
         AsyncImage(
             model = imageUrl,
             contentDescription = contentDescription,

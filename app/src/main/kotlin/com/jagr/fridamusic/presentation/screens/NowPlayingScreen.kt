@@ -99,6 +99,7 @@ import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
@@ -504,7 +505,7 @@ fun NowPlayingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            NowPlayingRoundButton(
+                            NowPlayingModeButton(
                                 onClick = {
                                     playerConnection.player.shuffleModeEnabled = !shuffleEnabled
                                 },
@@ -541,11 +542,11 @@ fun NowPlayingScreen(
                                 )
                             }
 
-                            NowPlayingRoundButton(
+                            NowPlayingModeButton(
                                 onClick = {
                                     playerConnection.player.repeatMode = when (repeatMode) {
-                                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
-                                        Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
+                                        Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                        Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                                         else -> Player.REPEAT_MODE_OFF
                                     }
                                 },
@@ -1141,6 +1142,68 @@ private fun NowPlayingRoundButton(
 }
 
 @Composable
+private fun NowPlayingModeButton(
+    onClick: () -> Unit,
+    icon: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val iconScale by animateFloatAsState(
+        targetValue = when {
+            !enabled -> 1f
+            isPressed -> 0.92f
+            selected -> 1.08f
+            else -> 1f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "now_playing_mode_scale",
+    )
+    val iconAlpha by animateFloatAsState(
+        targetValue = when {
+            !enabled -> 0.35f
+            selected -> 1f
+            else -> 0.62f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "now_playing_mode_alpha",
+    )
+
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White.copy(alpha = iconAlpha),
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                },
+        )
+    }
+}
+
+@Composable
 private fun NowPlayingTransportButton(
     onClick: () -> Unit,
     icon: ImageVector,
@@ -1414,6 +1477,12 @@ private fun AppleMusicQueueView(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.White.copy(alpha = 0.08f))
+                    .universalMediaClickable(
+                        onClick = {},
+                        onLongClick = currentMediaItem?.let { mediaItem ->
+                            { onMoreClick(mediaItem, currentIndex, true) }
+                        },
+                    )
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1486,7 +1555,12 @@ private fun AppleMusicQueueView(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onItemClick(window.firstPeriodIndex) }
+                            .universalMediaClickable(
+                                onClick = { onItemClick(window.firstPeriodIndex) },
+                                onLongClick = {
+                                    onMoreClick(window.mediaItem, window.firstPeriodIndex, false)
+                                },
+                            )
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

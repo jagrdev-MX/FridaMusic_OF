@@ -6,9 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
@@ -62,7 +60,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LocalSongListItem(
     song: Song,
@@ -91,7 +88,7 @@ fun LocalSongListItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onMoreClick),
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         shape = RoundedCornerShape(16.dp),
         color = containerColor,
     ) {
@@ -155,7 +152,6 @@ fun LocalSongListItem(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LocalSongGridItem(
     song: Song,
@@ -176,7 +172,7 @@ fun LocalSongGridItem(
     )
 
     Surface(
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onMoreClick),
+        modifier = Modifier.universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         shape = RoundedCornerShape(20.dp),
         color = containerColor,
     ) {

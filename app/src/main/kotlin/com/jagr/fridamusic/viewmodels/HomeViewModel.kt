@@ -36,7 +36,6 @@ import com.jagr.fridamusic.db.entities.SpeedDialItem
 import com.jagr.fridamusic.extensions.filterVideoSongs
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.models.SimilarRecommendation
-import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
 import com.jagr.fridamusic.utils.reportException
@@ -79,7 +78,6 @@ sealed interface GlobalShuffleSelection {
 class HomeViewModel @Inject constructor(
     @ApplicationContext val context: Context,
     val database: MusicDatabase,
-    val syncUtils: SyncUtils,
     val echoBrainEngine: com.jagr.fridamusic.engine.EchoBrainEngine
 ) : ViewModel() {
     val isRefreshing = MutableStateFlow(false)
@@ -769,10 +767,6 @@ class HomeViewModel @Inject constructor(
                 isRefreshing.value = false
             }
         }
-        
-        viewModelScope.launch(Dispatchers.IO) {
-            syncUtils.tryAutoSync()
-        }
     }
 
     init {
@@ -787,12 +781,6 @@ class HomeViewModel @Inject constructor(
             load()
         }
 
-        
-        viewModelScope.launch(Dispatchers.IO) {
-            syncUtils.tryAutoSync()
-        }
-
-        
         viewModelScope.launch(Dispatchers.IO) {
             context.dataStore.data
                 .map { it[InnerTubeCookieKey] }

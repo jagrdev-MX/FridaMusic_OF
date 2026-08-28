@@ -30,12 +30,15 @@ constructor(
 ) : ViewModel() {
     private val _newReleaseAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
     val newReleaseAlbums = _newReleaseAlbums.asStateFlow()
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading = _isLoading.asStateFlow()
 
     init {
         viewModelScope.launch {
-            YouTube
-                .newReleaseAlbums()
-                .onSuccess { albums ->
+            try {
+                YouTube
+                    .newReleaseAlbums()
+                    .onSuccess { albums ->
                     val artists: MutableMap<Int, String> = mutableMapOf()
                     val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
                     database.allArtistsByPlayTime().first().let { list ->
@@ -62,9 +65,12 @@ constructor(
                                     } ?: Int.MAX_VALUE
                                 firstArtistKey
                             }.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                }.onFailure {
-                    reportException(it)
-                }
+                    }.onFailure {
+                        reportException(it)
+                    }
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.EnterTransition
@@ -71,6 +72,7 @@ import com.jagr.fridamusic.viewmodels.HomeViewModel
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.BrowseEndpoint
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
@@ -83,6 +85,8 @@ import timber.log.Timber
 @Composable
 fun MainScreen(
     navController: NavHostController = rememberNavController(),
+    pendingDeepLink: Uri? = null,
+    onDeepLinkConsumed: () -> Unit = {},
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "home"
@@ -97,12 +101,26 @@ fun MainScreen(
     LaunchedEffect(currentRoot) {
         retainedRoot = currentRoot
     }
+    LaunchedEffect(pendingDeepLink) {
+        val deepLink = pendingDeepLink ?: return@LaunchedEffect
+        navController.handleDeepLink(Intent(Intent.ACTION_VIEW, deepLink))
+        onDeepLinkConsumed()
+    }
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
     val homeViewModel: HomeViewModel = hiltViewModel()
     val fabScope = rememberCoroutineScope()
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     var shuffleJob by remember { mutableStateOf<Job?>(null) }
+    val playRemoteItem: (YTItem) -> Unit = { item ->
+        if (playerConnection?.playHomeItem(item) != true) {
+            Toast.makeText(
+                context,
+                R.string.recommendation_unavailable,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
     val playerPlaylistsViewModel = if (currentRoute == "now_playing" && backStackEntry != null) {
         hiltViewModel<PlaylistsViewModel>(backStackEntry!!)
     } else {
@@ -156,6 +174,13 @@ fun MainScreen(
                             },
                         )
                     },
+                    onPlayItem = playRemoteItem,
+                    onBrowseClick = { endpoint, title ->
+                        navController.navigateToBrowse(endpoint, title)
+                    },
+                    onNewReleasesClick = {
+                        navController.navigate("new_releases")
+                    },
                     onSettingsClick = { navController.navigate("settings") },
                     reselectToken = homeReselectToken,
                     viewModel = homeViewModel,
@@ -184,6 +209,48 @@ fun MainScreen(
                             playerConnection?.let { pc -> { pc.playYTItem(item) } },
                         )
                     },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = "browse/{browseId}?params={params}&title={title}",
+                arguments = listOf(
+                    navArgument("browseId") { type = NavType.StringType },
+                    navArgument("params") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("title") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                BrowseScreen(
+                    requestedTitle = entry.arguments?.getString("title"),
+                    onItemClick = { item ->
+                        navController.handleYTItemClick(
+                            item = item,
+                            playSong = playerConnection?.let { connection ->
+                                { connection.playYTItem(item) }
+                            },
+                        )
+                    },
+                    onPlayItem = playRemoteItem,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("new_releases") {
+                NewReleaseScreen(
+                    onAlbumClick = { album ->
+                        navController.handleYTItemClick(
+                            item = album,
+                            playSong = null,
+                        )
+                    },
+                    onPlayAlbum = playRemoteItem,
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -326,6 +393,7 @@ fun MainScreen(
             ) {
                 AlbumScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onAlbumClick = { album -> navController.navigate("album/${album.browseId}") },
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -506,7 +574,6 @@ private fun NavHostController.hasRootOnBackStack(root: RootDestination): Boolean
     runCatching { getBackStackEntry(root.route) }.isSuccess
 
 private const val SEARCH_RESULT_ROUTE = "search_result/{query}"
-
 private fun NavHostController.navigateToSearchResult(query: String) {
     val normalizedQuery = query.trim()
     if (normalizedQuery.isEmpty()) return
@@ -517,6 +584,26 @@ private fun NavHostController.navigateToSearchResult(query: String) {
         }
         launchSingleTop = true
     }
+}
+
+private fun NavHostController.navigateToBrowse(
+    endpoint: BrowseEndpoint,
+    title: String,
+) {
+    if (endpoint.browseId.isBlank()) return
+
+    val queryArguments = buildList {
+        endpoint.params?.takeIf(String::isNotBlank)?.let { params ->
+            add("params=${Uri.encode(params)}")
+        }
+        title.takeIf(String::isNotBlank)?.let { value ->
+            add("title=${Uri.encode(value)}")
+        }
+    }
+    val query = queryArguments.takeIf { it.isNotEmpty() }
+        ?.joinToString(prefix = "?", separator = "&")
+        .orEmpty()
+    navigate("browse/${Uri.encode(endpoint.browseId)}$query")
 }
 
 private fun NavHostController.navigateToRoot(
@@ -604,6 +691,20 @@ private fun PlayerConnection.playGlobalShuffle(selection: GlobalShuffleSelection
             }
         }
     }
+
+private fun PlayerConnection.playHomeItem(item: YTItem): Boolean = when (item) {
+    is SongItem -> {
+        playYTItem(item)
+        true
+    }
+
+    is AlbumItem -> item.playlistId.takeIf(String::isNotBlank)?.let { playlistId ->
+        playQueue(YouTubeAlbumRadio(playlistId))
+    } != null
+
+    is ArtistItem,
+    is PlaylistItem -> false
+}
 
 private fun PlayerConnection.playRecognitionResult(result: RecognitionResult): Boolean {
     val videoId = result.youtubeVideoId?.trim()?.takeIf(String::isNotBlank) ?: return false

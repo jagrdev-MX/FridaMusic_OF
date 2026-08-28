@@ -36,7 +36,9 @@ import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongNavigationTarget
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
@@ -46,6 +48,7 @@ import com.music.innertube.models.AlbumItem
 @Composable
 fun AlbumScreen(
     onSongClick: (Song, List<Song>) -> Unit,
+    onAlbumClick: (AlbumItem) -> Unit,
     onBack: () -> Unit,
     viewModel: AlbumViewModel = hiltViewModel(),
 ) {
@@ -71,6 +74,7 @@ fun AlbumScreen(
     val thumbnailUrl = album.album.thumbnailUrl
     val artistName = album.artists.joinToString(", ") { it.name }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    var remoteMenuAlbum by remember { mutableStateOf<AlbumItem?>(null) }
     val albumArtists = remember(album.artists) {
         album.artists.map { SongNavigationTarget(name = it.name, id = it.id) }
     }
@@ -216,7 +220,12 @@ fun AlbumScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSongClick(song, songs) }
+                        .universalMediaClickable(
+                            onClick = { onSongClick(song, songs) },
+                            onLongClick = {
+                                menuContext = song.toSongActionContext(albumArtists = albumArtists)
+                            },
+                        )
                         .padding(horizontal = 20.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -303,7 +312,8 @@ fun AlbumScreen(
                         items(otherVersions, key = { "other_${it.browseId}" }) { albumItem ->
                             AlbumCard(
                                 album = albumItem,
-                                onClick = { playerConnection?.playYTItem(albumItem) },
+                                onClick = { onAlbumClick(albumItem) },
+                                onMoreClick = { remoteMenuAlbum = albumItem },
                             )
                         }
                     }
@@ -328,7 +338,8 @@ fun AlbumScreen(
                         items(releasesForYou, key = { "release_${it.browseId}" }) { albumItem ->
                             AlbumCard(
                                 album = albumItem,
-                                onClick = { playerConnection?.playYTItem(albumItem) },
+                                onClick = { onAlbumClick(albumItem) },
+                                onMoreClick = { remoteMenuAlbum = albumItem },
                             )
                         }
                     }
@@ -340,6 +351,11 @@ fun AlbumScreen(
             context = menuContext,
             onDismiss = { menuContext = null },
         )
+        UniversalYTItemActionsHost(
+            item = remoteMenuAlbum,
+            onDismiss = { remoteMenuAlbum = null },
+            onOpen = { remoteMenuAlbum?.let(onAlbumClick) },
+        )
     }
 }
 
@@ -347,22 +363,31 @@ fun AlbumScreen(
 private fun AlbumCard(
     album: AlbumItem,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .width(150.dp)
-            .clickable(onClick = onClick),
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        AsyncImage(
-            model = album.thumbnail.resize(width = 300),
-            contentDescription = album.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(150.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+        Box(modifier = Modifier.size(150.dp)) {
+            AsyncImage(
+                model = album.thumbnail.resize(width = 300),
+                contentDescription = album.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            SongOptionsButton(
+                onClick = onMoreClick,
+                modifier = Modifier.align(Alignment.TopEnd),
+                iconColor = Color.White,
+                containerColor = Color.Black.copy(alpha = 0.38f),
+            )
+        }
         Text(
             text = album.title,
             style = MaterialTheme.typography.bodyMedium,

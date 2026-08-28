@@ -73,8 +73,11 @@ import com.jagr.fridamusic.db.entities.SongWithStats
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.viewmodels.StatsViewModel
+import com.music.innertube.models.ArtistItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,6 +106,7 @@ fun StatsScreen(
 
     var contentTab by remember { mutableIntStateOf(0) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
 
     Scaffold(
         topBar = {
@@ -184,6 +188,16 @@ fun StatsScreen(
                             1 -> TopArtistsSection(
                                 artists = topArtists,
                                 onArtistClick = { onNavigateToArtist(it.artist.id) },
+                                onMoreClick = { artist ->
+                                    artistMenuItem = ArtistItem(
+                                        id = artist.id,
+                                        title = artist.title,
+                                        thumbnail = artist.thumbnailUrl,
+                                        channelId = artist.artist.channelId,
+                                        shuffleEndpoint = null,
+                                        radioEndpoint = null,
+                                    )
+                                },
                             )
                             2 -> TopAlbumsSection(
                                 albums = topAlbums,
@@ -199,6 +213,11 @@ fun StatsScreen(
     UniversalSongActionsHost(
         context = menuContext,
         onDismiss = { menuContext = null },
+    )
+    UniversalYTItemActionsHost(
+        item = artistMenuItem,
+        onDismiss = { artistMenuItem = null },
+        onOpen = {},
     )
 }
 
@@ -451,7 +470,7 @@ private fun RankedSongRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -518,6 +537,7 @@ private fun RankedSongRow(
 private fun TopArtistsSection(
     artists: List<Artist>,
     onArtistClick: (Artist) -> Unit,
+    onMoreClick: (Artist) -> Unit,
 ) {
     if (artists.isEmpty()) {
         EmptyState(stringResource(R.string.stat_no_data))
@@ -528,7 +548,10 @@ private fun TopArtistsSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onArtistClick(artist) }
+                    .universalMediaClickable(
+                        onClick = { onArtistClick(artist) },
+                        onLongClick = { onMoreClick(artist) },
+                    )
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

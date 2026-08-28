@@ -853,33 +853,124 @@ object YouTube {
             .mapNotNull(MoodAndGenres.Companion::fromSectionListRendererContent)
     }
 
+    private fun parseBrowseSections(
+        contents: List<SectionListRenderer.Content>,
+    ): List<BrowseResult.Item> = contents.mapNotNull { content ->
+        when {
+            content.gridRenderer != null -> {
+                BrowseResult.Item(
+                    title = content.gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text,
+                    items = content.gridRenderer.items
+                        .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
+                        .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer),
+                )
+            }
+
+            content.musicCarouselShelfRenderer != null -> {
+                BrowseResult.Item(
+                    title = content.musicCarouselShelfRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
+                    items = content.musicCarouselShelfRenderer.contents
+                        .mapNotNull(MusicCarouselShelfRenderer.Content::musicTwoRowItemRenderer)
+                        .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer),
+                )
+            }
+
+            content.musicShelfRenderer != null -> {
+                BrowseResult.Item(
+                    title = content.musicShelfRenderer.title?.runs?.firstOrNull()?.text,
+                    items = content.musicShelfRenderer.contents.orEmpty()
+                        .getItems()
+                        .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer),
+                )
+            }
+
+            content.musicPlaylistShelfRenderer != null -> {
+                BrowseResult.Item(
+                    title = null,
+                    items = content.musicPlaylistShelfRenderer.contents
+                        .getItems()
+                        .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer),
+                )
+            }
+
+            else -> null
+        }
+    }.filter { it.items.isNotEmpty() }
+
+    private fun browseContinuationFromSections(
+        sectionListRenderer: SectionListRenderer?,
+    ): String? = sectionListRenderer?.contents.orEmpty().firstNotNullOfOrNull { content ->
+        content.gridRenderer?.continuations?.getContinuation()
+            ?: content.musicShelfRenderer?.continuations?.getContinuation()
+            ?: content.musicPlaylistShelfRenderer?.continuations?.getContinuation()
+    } ?: sectionListRenderer?.continuations?.getContinuation()
+
     suspend fun browse(browseId: String, params: String?): Result<BrowseResult> = runCatching {
         val response = innerTube.browse(WEB_REMIX, browseId = browseId, params = params).body<BrowseResponse>()
+        val sectionListRenderer = response.contents?.singleColumnBrowseResultsRenderer
+            ?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer
         BrowseResult(
             title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
-            items = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.mapNotNull { content ->
-                when {
-                    content.gridRenderer != null -> {
-                        BrowseResult.Item(
-                            title = content.gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text,
-                            items = content.gridRenderer.items
-                                .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-                                .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
-                        )
-                    }
+            items = parseBrowseSections(sectionListRenderer?.contents.orEmpty()),
+            continuation = browseContinuationFromSections(sectionListRenderer),
+        )
+    }
 
-                    content.musicCarouselShelfRenderer != null -> {
-                        BrowseResult.Item(
-                            title = content.musicCarouselShelfRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
-                            items = content.musicCarouselShelfRenderer.contents
-                                .mapNotNull(MusicCarouselShelfRenderer.Content::musicTwoRowItemRenderer)
-                                .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
-                        )
-                    }
+    suspend fun browseContinuation(continuation: String): Result<BrowseResult> = runCatching {
+        val response = innerTube.browse(WEB_REMIX, continuation = continuation).body<BrowseResponse>()
+        val continuationContents = response.continuationContents
+        val sectionContinuation = continuationContents?.sectionListContinuation
+        val gridContinuation = continuationContents?.gridContinuation
+        val playlistShelfContinuation = continuationContents?.musicPlaylistShelfContinuation
+        val musicShelfContinuation = continuationContents?.musicShelfContinuation
+        val appendedContents = response.onResponseReceivedActions.orEmpty()
+            .flatMap { it.appendContinuationItemsAction?.continuationItems.orEmpty() }
 
-                    else -> null
-                }
-            }.orEmpty()
+        val sections = buildList {
+            addAll(parseBrowseSections(sectionContinuation?.contents.orEmpty()))
+
+            gridContinuation?.items
+                ?.mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
+                ?.mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { add(BrowseResult.Item(title = null, items = it)) }
+
+            playlistShelfContinuation?.contents
+                ?.getItems()
+                ?.mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer)
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { add(BrowseResult.Item(title = null, items = it)) }
+
+            musicShelfContinuation?.contents.orEmpty()
+                .getItems()
+                .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer)
+                .takeIf { it.isNotEmpty() }
+                ?.let { add(BrowseResult.Item(title = null, items = it)) }
+
+            appendedContents
+                .getItems()
+                .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer)
+                .takeIf { it.isNotEmpty() }
+                ?.let { add(BrowseResult.Item(title = null, items = it)) }
+        }
+
+        val sectionRenderer = sectionContinuation?.let {
+            SectionListRenderer(
+                header = null,
+                contents = it.contents,
+                continuations = it.continuations,
+            )
+        }
+        val nextContinuation = browseContinuationFromSections(sectionRenderer)
+            ?: gridContinuation?.continuations?.getContinuation()
+            ?: playlistShelfContinuation?.continuations?.getContinuation()
+            ?: musicShelfContinuation?.continuations?.getContinuation()
+            ?: appendedContents.getContinuation()
+
+        BrowseResult(
+            title = null,
+            items = sections,
+            continuation = nextContinuation,
         )
     }
 

@@ -16,6 +16,8 @@ import com.jagr.fridamusic.utils.get
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,22 +33,57 @@ constructor(
     private val params = savedStateHandle.get<String>("params")
 
     val result = MutableStateFlow<BrowseResult?>(null)
+    val isLoading = MutableStateFlow(true)
+    val isLoadingMore = MutableStateFlow(false)
+    val loadFailed = MutableStateFlow(false)
+    private var loadMoreJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-            YouTube
-                .browse(browseId, params)
-                .onSuccess {
-                    result.value = it
-                        .filterExplicit(hideExplicit)
-                        .filterVideoSongs(hideVideoSongs)
-                        .filterYoutubeShorts(hideYoutubeShorts)
-                }.onFailure {
-                    reportException(it)
-                }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                result.value = YouTube.browse(browseId, params)
+                    .getOrThrow()
+                    .applyContentFilters()
+            } catch (error: Throwable) {
+                loadFailed.value = true
+                reportException(error)
+            } finally {
+                isLoading.value = false
+            }
         }
+    }
+
+    fun loadMore() {
+        val continuation = result.value?.continuation ?: return
+        if (isLoadingMore.value) return
+
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
+            isLoadingMore.value = true
+            try {
+                val next = YouTube.browseContinuation(continuation)
+                    .getOrThrow()
+                    .applyContentFilters()
+                val current = result.value ?: return@launch
+                result.value = current.copy(
+                    items = current.items + next.items,
+                    continuation = next.continuation.takeUnless { it == continuation },
+                )
+            } catch (error: Throwable) {
+                reportException(error)
+                result.value = result.value?.copy(continuation = null)
+            } finally {
+                isLoadingMore.value = false
+            }
+        }
+    }
+
+    private suspend fun BrowseResult.applyContentFilters(): BrowseResult {
+        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+        return filterExplicit(hideExplicit)
+            .filterVideoSongs(hideVideoSongs)
+            .filterYoutubeShorts(hideYoutubeShorts)
     }
 }

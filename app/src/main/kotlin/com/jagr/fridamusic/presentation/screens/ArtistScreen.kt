@@ -39,7 +39,9 @@ import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
@@ -81,6 +83,7 @@ fun ArtistScreen(
 
     val isLoadingRemote = viewModel.isLoadingRemote
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -269,6 +272,7 @@ fun ArtistScreen(
                                 RemoteItemCard(
                                     item = item,
                                     onClick = { onRemoteItemClick(item) },
+                                    onMoreClick = { remoteMenuItem = item },
                                 )
                             }
                         }
@@ -354,7 +358,10 @@ fun ArtistScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSongClick(song, librarySongs) }
+                            .universalMediaClickable(
+                                onClick = { onSongClick(song, librarySongs) },
+                                onLongClick = { menuContext = song.toSongActionContext() },
+                            )
                             .padding(horizontal = 20.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -387,6 +394,11 @@ fun ArtistScreen(
             context = menuContext,
             onDismiss = { menuContext = null },
         )
+        UniversalYTItemActionsHost(
+            item = remoteMenuItem,
+            onDismiss = { remoteMenuItem = null },
+            onOpen = { remoteMenuItem?.let(onRemoteItemClick) },
+        )
     }
 }
 
@@ -399,7 +411,7 @@ private fun RemoteSongRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -437,6 +449,7 @@ private fun RemoteSongRow(
 private fun RemoteItemCard(
     item: YTItem,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
 ) {
     val subtitle = when (item) {
         is AlbumItem -> item.year?.toString() ?: ""
@@ -448,18 +461,28 @@ private fun RemoteItemCard(
     Column(
         modifier = Modifier
             .width(150.dp)
-            .clickable(onClick = onClick),
+            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        AsyncImage(
-            model = item.thumbnail?.resize(width = 300),
-            contentDescription = item.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(150.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+        Box(modifier = Modifier.size(150.dp)) {
+            AsyncImage(
+                model = item.thumbnail?.resize(width = 300),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(if (item is ArtistItem) CircleShape else RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            if (item !is ArtistItem) {
+                SongOptionsButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    iconColor = Color.White,
+                    containerColor = Color.Black.copy(alpha = 0.38f),
+                )
+            }
+        }
         Text(
             text = item.title,
             style = MaterialTheme.typography.bodyMedium,

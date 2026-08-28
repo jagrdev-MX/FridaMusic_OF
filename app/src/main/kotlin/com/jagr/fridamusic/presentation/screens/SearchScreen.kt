@@ -2,7 +2,6 @@ package com.jagr.fridamusic.presentation.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -31,11 +30,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
-import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.SearchInput
-import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
-import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
 import com.jagr.fridamusic.viewmodels.SearchSuggestionViewState
@@ -261,18 +259,14 @@ fun YTItemRow(
         else -> null
     }
     val isRound = item is ArtistItem
-    val isSong = item is SongItem
-
-    var menuContext by remember(item.id) { mutableStateOf<SongActionContext?>(null) }
+    var menuItem by remember(item.id) { mutableStateOf<YTItem?>(null) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
+            .universalMediaClickable(
                 onClick = onClick,
-                onLongClick = {
-                    if (item is SongItem) menuContext = item.toSongActionContext()
-                },
+                onLongClick = { menuItem = item },
             )
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -306,17 +300,14 @@ fun YTItemRow(
                 )
             }
         }
-        if (isSong) {
-            SongOptionsButton(
-                onClick = {
-                    if (item is SongItem) menuContext = item.toSongActionContext()
-                },
-            )
+        if (item !is ArtistItem) {
+            SongOptionsButton(onClick = { menuItem = item })
         }
     }
 
-    UniversalSongActionsHost(
-        context = menuContext,
-        onDismiss = { menuContext = null },
+    UniversalYTItemActionsHost(
+        item = menuItem,
+        onDismiss = { menuItem = null },
+        onOpen = onClick,
     )
 }

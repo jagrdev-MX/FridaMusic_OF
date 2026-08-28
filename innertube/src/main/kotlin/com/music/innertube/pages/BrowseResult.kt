@@ -8,6 +8,7 @@ import com.music.innertube.models.filterYoutubeShorts
 data class BrowseResult(
     val title: String?,
     val items: List<Item>,
+    val continuation: String? = null,
 ) {
     data class Item(
         val title: String?,

@@ -1743,6 +1743,7 @@
     <string name="playlist_deleted">Playlist deleted.</string>
     <string name="playlist_action_failed">The playlist action could not be completed.</string>
     <string name="playlist_selected_count">%1$d selected</string>
+    <string name="select_item">Select</string>
     <string name="playlist_external">External playlist</string>
     <string name="playlist_import">Import playlist</string>
     <string-array name="notification_recommendation_titles">
@@ -1905,4 +1906,8 @@
     <string name="music_recognition_powered_by">Powered by Frida Labs AI</string>
     <string name="global_shuffle_empty">There is no playable content available yet.</string>
     <string name="global_shuffle_error">Couldn’t start random playback.</string>
+    <string name="see_all_section">See all %1$s</string>
+    <string name="albums_and_singles">Albums &amp; singles</string>
+    <string name="collection_empty">There is no content to show yet.</string>
+    <string name="collection_load_error">This collection could not be loaded.</string>
 </resources>

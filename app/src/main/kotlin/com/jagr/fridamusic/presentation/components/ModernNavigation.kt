@@ -44,7 +44,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.jagr.fridamusic.constants.FastAnimationSpec
 
 private data class FloatingNavigationItem(
     val destination: RootDestination,
@@ -127,7 +126,7 @@ private fun InteractiveNavigationItem(
             MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0f)
         },
         animationSpec = tween(
-            durationMillis = 180,
+            durationMillis = 240,
             easing = FastOutSlowInEasing,
         ),
         label = "navigationItemColor",
@@ -139,14 +138,17 @@ private fun InteractiveNavigationItem(
             MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = tween(
-            durationMillis = 180,
+            durationMillis = 240,
             easing = FastOutSlowInEasing,
         ),
         label = "navigationContentColor",
     )
     val iconScale by animateFloatAsState(
         targetValue = if (isSelected) 1f else 0.92f,
-        animationSpec = FastAnimationSpec,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow,
+        ),
         label = "navigationIconScale",
     )
 
@@ -180,25 +182,25 @@ private fun InteractiveNavigationItem(
             visible = isSelected,
             enter = fadeIn(
                 animationSpec = tween(
-                    durationMillis = 140,
+                    durationMillis = 200,
                     easing = LinearOutSlowInEasing,
                 ),
             ) + expandHorizontally(
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow,
                 ),
                 expandFrom = Alignment.Start,
             ),
             exit = fadeOut(
                 animationSpec = tween(
-                    durationMillis = 120,
+                    durationMillis = 160,
                     easing = FastOutLinearInEasing,
                 ),
             ) + shrinkHorizontally(
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
+                    stiffness = Spring.StiffnessLow,
                 ),
                 shrinkTowards = Alignment.Start,
             ),
