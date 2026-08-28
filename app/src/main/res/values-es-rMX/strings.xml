@@ -107,12 +107,13 @@
     <string name="add_all_to_library">Añadir todo a la biblioteca</string>
     <string name="remove_from_library">Quitar de la biblioteca</string>
     <string name="remove_all_from_library">Quitar todo de la biblioteca</string>
-    <string name="action_download">Descargar</string>
-    <string name="downloading">Descargando</string>
+    <string name="action_download">Sincroniza</string>
+    <string name="downloading">Sincronizando</string>
+    <string name="downloading_ellipsis">Sincronizando…</string>
     <string name="loading">Cargando</string>
     <string name="saving">Guardando</string>
     <string name="saved">Guardado</string>
-    <string name="remove_download">Eliminar descarga</string>
+    <string name="remove_download">Elimina sincronización</string>
     <string name="import_playlist">Importar lista</string>
     <string name="add_to_playlist">Añadir a lista de reproducción</string>
     <string name="added_to_playlist">Añadido a %s</string>
@@ -130,6 +131,8 @@
     <string name="remove_from_history">Quitar del historial</string>
     <string name="remove_from_playlist">Quitar de la lista</string>
     <string name="remove_from_queue">Quitar de la cola</string>
+    <string name="move_to_queue_start">Mover al inicio de la cola</string>
+    <string name="move_to_queue_end">Mover al final de la cola</string>
     <string name="search_online">Buscar en línea</string>
     <string name="action_sync">Sincronizar</string>
     <string name="advanced">Avanzado</string>

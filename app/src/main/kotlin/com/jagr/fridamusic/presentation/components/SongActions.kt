@@ -29,8 +29,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -79,7 +82,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.exoplayer.offline.Download
+import androidx.media3.exoplayer.offline.DownloadRequest
+import androidx.media3.exoplayer.offline.DownloadService
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.LyricsEntity
@@ -91,6 +98,7 @@ import com.jagr.fridamusic.localmedia.LocalSongMetadataUpdate
 import com.jagr.fridamusic.localmedia.LocalSongSortMetadata
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
+import com.jagr.fridamusic.playback.ExoDownloadService
 import com.jagr.fridamusic.utils.openLocalAudioFolder
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
@@ -106,6 +114,9 @@ import java.util.Locale
 data class SongMenuActions(
     val onToggleFavorite: (() -> Unit)? = null,
     val onToggleLibrary: (() -> Unit)? = null,
+    val isDownloaded: Boolean = false,
+    val isDownloading: Boolean = false,
+    val onToggleDownload: (() -> Unit)? = null,
     val onPlayNext: (() -> Unit)? = null,
     val onAddToQueue: (() -> Unit)? = null,
     val playlists: List<Playlist> = emptyList(),
@@ -122,6 +133,8 @@ data class SongMenuActions(
     val onEditLyrics: ((String) -> Unit)? = null,
     val isBlacklisted: Boolean = false,
     val onBlacklist: (() -> Unit)? = null,
+    val onMoveToQueueStart: (() -> Unit)? = null,
+    val onMoveToQueueEnd: (() -> Unit)? = null,
     val onRemoveFromQueue: (() -> Unit)? = null,
     val onDelete: (() -> Unit)? = null,
 )
@@ -168,6 +181,8 @@ fun SongOptionsButton(
 fun UniversalSongActionsHost(
     context: SongActionContext?,
     onDismiss: () -> Unit,
+    onMoveToQueueStart: (() -> Unit)? = null,
+    onMoveToQueueEnd: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
     localSongsViewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
@@ -207,6 +222,13 @@ fun UniversalSongActionsHost(
     val isLocal = effectiveContext.source == SongActionSource.LOCAL_FILE
     val isPinned = if (isLocal) effectiveContext.mediaId in pinnedLocalIds else remotePinned
     val isBlacklisted = isLocal && blacklistedSongs.any { it.song.id == effectiveContext.mediaId }
+    val downloadUtil = playerConnection?.service?.mediaLibrarySessionCallback?.downloadUtil
+    val downloadFlow = remember(downloadUtil, effectiveContext.mediaId) {
+        downloadUtil?.getDownload(effectiveContext.mediaId) ?: flowOf(null)
+    }
+    val download by downloadFlow.collectAsState(initial = null)
+    val isDownloaded = download?.state == Download.STATE_COMPLETED
+    val isDownloading = download?.state == Download.STATE_QUEUED || download?.state == Download.STATE_DOWNLOADING
     val playbackPosition by (playerConnection?.playbackPositionMs ?: flowOf(0L)).collectAsState(initial = 0L)
     val currentMediaId by (playerConnection?.mediaMetadata ?: flowOf(null)).collectAsState(initial = null)
     val sharePosition = if (currentMediaId?.id == effectiveContext.mediaId) playbackPosition else 0L
@@ -368,6 +390,30 @@ fun UniversalSongActionsHost(
     val actions = SongMenuActions(
         onToggleFavorite = database?.let { { toggleFavorite() } },
         onToggleLibrary = if (!isLocal && database != null) ({ toggleLibrary() }) else null,
+        isDownloaded = isDownloaded,
+        isDownloading = isDownloading,
+        onToggleDownload = if (!isLocal && !isDownloading) {
+            {
+                if (isDownloaded) {
+                    DownloadService.sendRemoveDownload(
+                        androidContext,
+                        ExoDownloadService::class.java,
+                        effectiveContext.mediaId,
+                        false,
+                    )
+                } else {
+                    DownloadService.sendAddDownload(
+                        androidContext,
+                        ExoDownloadService::class.java,
+                        DownloadRequest.Builder(effectiveContext.mediaId, effectiveContext.mediaId.toUri())
+                            .setCustomCacheKey(effectiveContext.mediaId)
+                            .setData(effectiveContext.title.toByteArray())
+                            .build(),
+                        false,
+                    )
+                }
+            }
+        } else null,
         onPlayNext = playerConnection?.let { { it.playNext(effectiveContext.mediaItem) } },
         onAddToQueue = playerConnection?.let { { it.addToQueue(effectiveContext.mediaItem) } },
         playlists = playlists.filter { it.playlist.isEditable },
@@ -423,6 +469,8 @@ fun UniversalSongActionsHost(
         onBlacklist = if (isLocal) {
             { localSongsViewModel.setSongBlacklisted(effectiveContext.mediaId, blacklisted = !isBlacklisted) }
         } else null,
+        onMoveToQueueStart = onMoveToQueueStart,
+        onMoveToQueueEnd = onMoveToQueueEnd,
         onRemoveFromQueue = onRemoveFromQueue,
         onDelete = if (isLocal && storedSong != null) ::startDelete else null,
     )
@@ -545,6 +593,23 @@ fun SongActionsSheet(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (context.source != SongActionSource.LOCAL_FILE) item(key = "download") {
+                    SongActionGroup {
+                        SongAction(
+                            icon = if (actions.isDownloaded) Icons.Rounded.Delete else Icons.Rounded.Download,
+                            label = stringResource(
+                                when {
+                                    actions.isDownloading -> R.string.downloading_ellipsis
+                                    actions.isDownloaded -> R.string.remove_download
+                                    else -> R.string.action_download
+                                },
+                            ),
+                            enabled = !actions.isDownloading,
+                        ) {
+                            performAndDismiss(actions.onToggleDownload)
+                        }
+                    }
+                }
                 item(key = "playback") {
                     SongActionGroup {
                         if (SongActionCapability.PLAY_NEXT in capabilities) {
@@ -568,6 +633,16 @@ fun SongActionsSheet(
                                 stringResource(if (actions.isPinned) R.string.local_song_unpin else R.string.local_song_pin),
                                 onClick = actions.onTogglePinned ?: {},
                             )
+                        }
+                        actions.onMoveToQueueStart?.let { moveToStart ->
+                            SongAction(Icons.Rounded.ArrowUpward, stringResource(R.string.move_to_queue_start)) {
+                                performAndDismiss(moveToStart)
+                            }
+                        }
+                        actions.onMoveToQueueEnd?.let { moveToEnd ->
+                            SongAction(Icons.Rounded.ArrowDownward, stringResource(R.string.move_to_queue_end)) {
+                                performAndDismiss(moveToEnd)
+                            }
                         }
                         if (SongActionCapability.REMOVE_FROM_QUEUE in capabilities) {
                             SongAction(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_queue)) {
@@ -889,13 +964,18 @@ private fun SongAction(
     icon: ImageVector,
     label: String,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val contentColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    val contentColor = when {
+        destructive -> MaterialTheme.colorScheme.error
+        enabled -> MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),

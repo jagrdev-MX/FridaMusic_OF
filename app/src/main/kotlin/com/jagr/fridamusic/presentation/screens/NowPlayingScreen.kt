@@ -798,9 +798,29 @@ fun NowPlayingScreen(
     }
 
     queueMenuSelection?.let { selection ->
+        val upcomingWindows = if (currentQueueIndex in queueWindows.indices) {
+            queueWindows.drop(currentQueueIndex + 1)
+        } else {
+            emptyList()
+        }
+        val selectedWindow = queueWindows.firstOrNull { window ->
+            window.firstPeriodIndex == selection.index && window.mediaItem.mediaId == selection.mediaItem.mediaId
+        }
+        val firstUpcomingWindow = upcomingWindows.firstOrNull()
+        val lastUpcomingWindow = upcomingWindows.lastOrNull()
         UniversalSongActionsHost(
             context = selection.mediaItem.toSongActionContext(),
             onDismiss = { queueMenuSelection = null },
+            onMoveToQueueStart = selectedWindow?.takeIf { window ->
+                !selection.isCurrent && firstUpcomingWindow?.uid != window.uid
+            }?.let { window ->
+                { firstUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
+            },
+            onMoveToQueueEnd = selectedWindow?.takeIf { window ->
+                !selection.isCurrent && lastUpcomingWindow?.uid != window.uid
+            }?.let { window ->
+                { lastUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
+            },
             onRemoveFromQueue = if (!selection.isCurrent) {
                 {
                     if (selection.index in 0 until playerConnection.player.mediaItemCount) {

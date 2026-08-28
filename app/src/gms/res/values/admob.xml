@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Replace these two test values with the production AdMob IDs before publishing. -->
-    <string name="admob_app_id" translatable="false">ca-app-pub-3940256099942544~3347511713</string>
-    <string name="admob_interstitial_ad_unit_id" translatable="false">ca-app-pub-3940256099942544/1033173712</string>
+
+    <string
+        name="admob_app_id"
+        translatable="false">ca-app-pub-4175362947670909~4405267564</string>
+
+    <string
+        name="admob_interstitial_ad_unit_id"
+        translatable="false">ca-app-pub-4175362947670909/9454380817</string>
+
 </resources>

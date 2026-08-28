@@ -112,12 +112,13 @@
     <string name="add_all_to_library">Add all to library</string>
     <string name="remove_from_library">Remove from library</string>
     <string name="remove_all_from_library">Remove all from library</string>
-    <string name="action_download">Download</string>
-    <string name="downloading">Downloading</string>
+    <string name="action_download">Synchronize</string>
+    <string name="downloading">Synchronizing</string>
+    <string name="downloading_ellipsis">Synchronizing…</string>
     <string name="loading">Loading</string>
     <string name="saving">Saving</string>
     <string name="saved">Saved</string>
-    <string name="remove_download">Remove download</string>
+    <string name="remove_download">Remove synchronization</string>
     <string name="import_playlist">Import playlist</string>
     <string name="add_to_playlist">Add to playlist</string>
     <string name="added_to_playlist">Added to %s</string>
@@ -135,6 +136,8 @@
     <string name="remove_from_history">Remove from history</string>
     <string name="remove_from_playlist">Remove from playlist</string>
     <string name="remove_from_queue">Remove from queue</string>
+    <string name="move_to_queue_start">Move to start of queue</string>
+    <string name="move_to_queue_end">Move to end of queue</string>
     <string name="search_online">Search online</string>
     <string name="search_local">Search local</string>
     <string name="action_sync">Sync</string>
