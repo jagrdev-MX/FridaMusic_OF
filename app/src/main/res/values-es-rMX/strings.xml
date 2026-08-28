@@ -569,6 +569,13 @@
     <string name="audio_offload_desc">Ahorra batería delegando la reproducción al hardware</string>
     <string name="streaming_quality">Calidad de streaming</string>
     <string name="download_quality">Calidad de descarga</string>
+    <string name="quality_normal">Normal</string>
+    <string name="quality_medium">Media</string>
+    <string name="quality_high">Alta</string>
+    <string name="quality_normal_description">Equilibrio entre calidad, velocidad y compatibilidad.</string>
+    <string name="quality_medium_description">Preferencia de calidad equilibrada.</string>
+    <string name="quality_high_description">Preferencia por la mejor experiencia disponible.</string>
+    <string name="audio_quality_fallback">La calidad seleccionada no está disponible para esta canción. Usando una opción compatible.</string>
     <string name="opus_recommended">Opus (recomendado)</string>
     <string name="saavn">Saavn</string>
     <string name="lossless">Sin pérdida</string>

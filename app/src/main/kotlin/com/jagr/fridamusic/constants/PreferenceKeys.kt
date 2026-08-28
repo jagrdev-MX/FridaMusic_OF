@@ -118,6 +118,24 @@ enum class DownloadQuality {
     LOSSLESS,
 }
 
+const val ADVANCED_AUDIO_PROVIDERS_ENABLED = false
+
+// Advanced quality tiers remain selectable for UI/preferences,
+// but are temporarily routed through the stable Normal pipeline.
+// Remove this compatibility mapping when advanced providers are re-enabled.
+fun AudioQuality.effectiveForPlayback(): AudioQuality =
+    if (ADVANCED_AUDIO_PROVIDERS_ENABLED) this else AudioQuality.OPUS
+
+fun DownloadQuality.effectiveForDownload(): DownloadQuality =
+    if (ADVANCED_AUDIO_PROVIDERS_ENABLED) this else DownloadQuality.YOUTUBE
+
+fun DownloadQuality.effectiveAudioQuality(): AudioQuality =
+    when (effectiveForDownload()) {
+        DownloadQuality.YOUTUBE -> AudioQuality.OPUS
+        DownloadQuality.SAAVN -> AudioQuality.SAAVN
+        DownloadQuality.LOSSLESS -> AudioQuality.LOSSLESS
+    }
+
 val AudioOffload = booleanPreferencesKey("enableOffload")
 
 val PersistentQueueKey = booleanPreferencesKey("persistentQueue")

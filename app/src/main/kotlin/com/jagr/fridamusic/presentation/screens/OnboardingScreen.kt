@@ -341,26 +341,54 @@ private fun QualityStep() {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AudioQuality.values().forEach { q ->
                 QualityPill(
-                    label = q.name,
+                    label = when (q) {
+                        AudioQuality.OPUS -> stringResource(R.string.quality_normal)
+                        AudioQuality.SAAVN -> stringResource(R.string.quality_medium)
+                        AudioQuality.LOSSLESS -> stringResource(R.string.quality_high)
+                    },
                     selected = audioQuality == q,
                     modifier = Modifier.weight(1f),
                     onClick = { audioQuality = q },
                 )
             }
         }
+        Text(
+            text = when (audioQuality) {
+                AudioQuality.OPUS -> stringResource(R.string.quality_normal_description)
+                AudioQuality.SAAVN -> stringResource(R.string.quality_medium_description)
+                AudioQuality.LOSSLESS -> stringResource(R.string.quality_high_description)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
         SetupSectionLabel(stringResource(R.string.download_quality))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             DownloadQuality.values().forEach { q ->
                 QualityPill(
-                    label = q.name,
+                    label = when (q) {
+                        DownloadQuality.YOUTUBE -> stringResource(R.string.quality_normal)
+                        DownloadQuality.SAAVN -> stringResource(R.string.quality_medium)
+                        DownloadQuality.LOSSLESS -> stringResource(R.string.quality_high)
+                    },
                     selected = downloadQuality == q,
                     modifier = Modifier.weight(1f),
                     onClick = { downloadQuality = q },
                 )
             }
         }
+        Text(
+            text = when (downloadQuality) {
+                DownloadQuality.YOUTUBE -> stringResource(R.string.quality_normal_description)
+                DownloadQuality.SAAVN -> stringResource(R.string.quality_medium_description)
+                DownloadQuality.LOSSLESS -> stringResource(R.string.quality_high_description)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
         SetupSectionLabel(stringResource(R.string.onboarding_extras_label))

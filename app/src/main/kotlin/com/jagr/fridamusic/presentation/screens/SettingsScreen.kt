@@ -549,9 +549,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
                 icon = Icons.Rounded.GraphicEq,
                 title = stringResource(R.string.streaming_quality),
                 options = listOf(
-                    AudioQuality.OPUS.name to stringResource(R.string.opus_recommended),
-                    AudioQuality.SAAVN.name to stringResource(R.string.saavn),
-                    AudioQuality.LOSSLESS.name to stringResource(R.string.lossless),
+                    AudioQuality.OPUS.name to stringResource(R.string.quality_normal),
+                    AudioQuality.SAAVN.name to stringResource(R.string.quality_medium),
+                    AudioQuality.LOSSLESS.name to stringResource(R.string.quality_high),
+                ),
+                optionDescriptions = mapOf(
+                    AudioQuality.OPUS.name to stringResource(R.string.quality_normal_description),
+                    AudioQuality.SAAVN.name to stringResource(R.string.quality_medium_description),
+                    AudioQuality.LOSSLESS.name to stringResource(R.string.quality_high_description),
                 ),
                 prefKey = AudioQualityKey,
                 default = AudioQuality.OPUS,
@@ -560,9 +565,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
                 icon = Icons.Rounded.Download,
                 title = stringResource(R.string.download_quality),
                 options = listOf(
-                    DownloadQuality.YOUTUBE.name to stringResource(R.string.youtube),
-                    DownloadQuality.SAAVN.name to stringResource(R.string.saavn),
-                    DownloadQuality.LOSSLESS.name to stringResource(R.string.lossless),
+                    DownloadQuality.YOUTUBE.name to stringResource(R.string.quality_normal),
+                    DownloadQuality.SAAVN.name to stringResource(R.string.quality_medium),
+                    DownloadQuality.LOSSLESS.name to stringResource(R.string.quality_high),
+                ),
+                optionDescriptions = mapOf(
+                    DownloadQuality.YOUTUBE.name to stringResource(R.string.quality_normal_description),
+                    DownloadQuality.SAAVN.name to stringResource(R.string.quality_medium_description),
+                    DownloadQuality.LOSSLESS.name to stringResource(R.string.quality_high_description),
                 ),
                 prefKey = DownloadQualityKey,
                 default = DownloadQuality.YOUTUBE,
@@ -1019,11 +1029,12 @@ private inline fun <reified E : Enum<E>> PrefDropdownEnum(
     icon: ImageVector,
     title: String,
     options: List<Pair<String, String>>,
+    optionDescriptions: Map<String, String> = emptyMap(),
     prefKey: androidx.datastore.preferences.core.Preferences.Key<String>,
     default: E,
 ) {
     var value by rememberEnumPreference<E>(prefKey, default)
-    SettingDropdown(icon, title, options, value.name) { value = enumValueOf(it) }
+    SettingDropdown(icon, title, options, value.name, optionDescriptions) { value = enumValueOf(it) }
 }
 
 @Composable
@@ -1056,10 +1067,12 @@ private fun SettingDropdown(
     title: String,
     options: List<Pair<String, String>>,
     selectedKey: String,
+    optionDescriptions: Map<String, String> = emptyMap(),
     onSelect: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val label = options.find { it.first == selectedKey }?.second ?: selectedKey
+    val selectedDescription = optionDescriptions[selectedKey]
 
     Row(
         modifier = Modifier.fillMaxWidth().clickable { expanded = true }
@@ -1072,6 +1085,13 @@ private fun SettingDropdown(
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
             Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            selectedDescription?.let { description ->
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Box {
             Icon(Icons.Rounded.ExpandMore, contentDescription = null,
@@ -1079,7 +1099,18 @@ private fun SettingDropdown(
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { (key, lbl) ->
                     DropdownMenuItem(
-                        text = { Text(lbl) },
+                        text = {
+                            Column {
+                                Text(lbl)
+                                optionDescriptions[key]?.let { description ->
+                                    Text(
+                                        description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
                         onClick = { onSelect(key); expanded = false },
                         trailingIcon = {
                             if (key == selectedKey) Icon(Icons.Rounded.Check, contentDescription = null)
