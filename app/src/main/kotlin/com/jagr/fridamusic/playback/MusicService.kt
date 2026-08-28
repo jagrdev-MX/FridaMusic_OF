@@ -79,6 +79,7 @@ import com.jagr.fridamusic.constants.AudioNormalizationKey
 import com.jagr.fridamusic.constants.AudioOffload
 import com.jagr.fridamusic.constants.AudioQuality
 import com.jagr.fridamusic.constants.AudioQualityKey
+import com.jagr.fridamusic.constants.effectiveForPlayback
 import com.jagr.fridamusic.constants.AutoDownloadOnLikeKey
 import com.jagr.fridamusic.constants.AutoLoadMoreKey
 import com.jagr.fridamusic.constants.AutoSkipNextOnErrorKey
@@ -124,7 +125,6 @@ import com.jagr.fridamusic.constants.SimilarContent
 import com.jagr.fridamusic.constants.SkipSilenceInstantKey
 import com.jagr.fridamusic.constants.SkipSilenceKey
 import com.jagr.fridamusic.constants.IpVersionKey
-import com.jagr.fridamusic.constants.PreloadLyricsEnabledKey
 import com.music.innertube.models.IpVersion
 import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -386,7 +386,14 @@ class MusicService :
 
 
     private val songUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    private val playbackDataCache = ConcurrentHashMap<String, YTPlayerUtils.PlaybackData>()
     private val streamResolutionMutexes = ConcurrentHashMap<String, Mutex>()
+
+    @Volatile
+    private var activeQualityMediaId: String? = null
+
+    @Volatile
+    private var activeRequestedQuality = AudioQuality.OPUS
 
 
     private val bypassCacheForQualityChange = mutableSetOf<String>()
@@ -656,17 +663,8 @@ class MusicService :
 
                     Timber.tag("MusicService").i("QUALITY CHANGED: $oldQuality -> $newQuality. Will take effect starting from the next song.")
 
-                    // Clear cache for upcoming songs so they fetch the new quality, keeping the currently playing track's URL cache entry intact.
-                    val currentMediaId = player.currentMediaItem?.mediaId
-                    val currentCachedEntry = currentMediaId?.let { mediaId ->
-                        songUrlCache.filter { it.key.startsWith("${mediaId}_") }
-                    }
-                    songUrlCache.clear()
-                    if (currentCachedEntry != null) {
-                        songUrlCache.putAll(currentCachedEntry)
-                    }
-
-                    // Re-trigger prefetch to fetch the next songs in the new quality
+                    // Quality-specific keys keep existing URLs isolated; prefetch the next songs
+                    // under the newly selected quality without clearing unrelated cache entries.
                     preloadUpcomingItems()
                 }
         }
@@ -691,7 +689,9 @@ class MusicService :
                     val wasPlaying = player.isPlaying
 
 
-                    songUrlCache.remove("${mediaId}_${audioQuality.name}")
+                    val effectiveQuality = audioQuality.effectiveForPlayback()
+                    songUrlCache.remove("${mediaId}_${effectiveQuality.name}")
+                    playbackDataCache.remove("${mediaId}_${effectiveQuality.name}")
 
 
                     player.stop()
@@ -722,26 +722,25 @@ class MusicService :
 
         combine(
             currentMediaMetadata.distinctUntilChangedBy { it?.id },
-            dataStore.data.map { it[PreloadLyricsEnabledKey] ?: true }.distinctUntilChanged(),
+            dataStore.data.map { it[ShowLyricsKey] ?: false }.distinctUntilChanged(),
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(scope) { (mediaMetadata, showLyrics) ->
-            val existingLyrics = mediaMetadata?.let { database.lyrics(it.id).first() }
-            if (
-                showLyrics &&
-                mediaMetadata != null &&
-                (existingLyrics == null || existingLyrics.lyrics == LyricsEntity.LYRICS_NOT_FOUND)
+            if (showLyrics && mediaMetadata != null && database.lyrics(mediaMetadata.id)
+                    .first() == null
             ) {
                 val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata)
-                if (lyricsWithProvider.lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
-                    database.query {
-                        upsert(
-                            LyricsEntity(
-                                id = mediaMetadata.id,
-                                lyrics = lyricsWithProvider.lyrics,
-                                provider = lyricsWithProvider.provider,
-                            ),
-                        )
+                val song = database.song(mediaMetadata.id).firstOrNull()?.song
+                database.query {
+                    upsert(
+                        LyricsEntity(
+                            id = mediaMetadata.id,
+                            lyrics = lyricsWithProvider.lyrics,
+                            provider = lyricsWithProvider.provider,
+                        ),
+                    )
+                    if (lyricsWithProvider.autoOffsetMs != 0 && song?.lyricsOffset == 0) {
+                        update(song.copy(lyricsOffset = lyricsWithProvider.autoOffsetMs))
                     }
                 }
             }
@@ -1510,6 +1509,41 @@ class MusicService :
         automixItems.value = emptyList()
     }
 
+    fun stopAndClearPlayback() {
+        crossfadeTriggerJob?.cancel()
+        crossfadeJob?.cancel()
+        secondaryPlayer?.runCatching {
+            removeListener(secondaryPlayerListener)
+            stop()
+            clearMediaItems()
+            release()
+        }
+        secondaryPlayer = null
+        fadingPlayer?.runCatching {
+            stop()
+            clearMediaItems()
+            release()
+        }
+        fadingPlayer = null
+        isCrossfading.value = false
+
+        retryJob?.cancel()
+        waitingForNetworkConnection.value = false
+        retryCount = 0
+        consecutivePlaybackErr = 0
+        currentQueue = EmptyQueue
+        queueTitle = null
+        clearAutomix()
+        currentMediaMetadata.value = null
+
+        player.playWhenReady = false
+        player.stop()
+        player.clearMediaItems()
+        abandonAudioFocus()
+        closeAudioEffectSession()
+        clearPersistedQueueFiles()
+    }
+
     fun playNext(items: List<MediaItem>) {
 
         if (player.mediaItemCount == 0 || player.playbackState == STATE_IDLE) {
@@ -1620,29 +1654,6 @@ class MusicService :
         }
 
         player.addMediaItems(items)
-        if (player.shuffleModeEnabled) {
-            val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
-            applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
-        }
-        player.prepare()
-    }
-
-    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
-        if (fromIndex == toIndex) return
-        if (fromIndex !in 0 until player.mediaItemCount) return
-        if (toIndex !in 0 until player.mediaItemCount) return
-
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex == androidx.media3.common.C.INDEX_UNSET) return
-        if (fromIndex == currentIndex) return
-
-        val item = player.getMediaItemAt(fromIndex)
-        val removedBeforeTarget = fromIndex < toIndex
-        val adjustedTarget = if (removedBeforeTarget) (toIndex - 1).coerceAtLeast(0) else toIndex
-
-        player.removeMediaItem(fromIndex)
-        player.addMediaItem(adjustedTarget.coerceIn(0, player.mediaItemCount), item)
-
         if (player.shuffleModeEnabled) {
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
@@ -1828,6 +1839,8 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
+        activeQualityMediaId = mediaItem?.mediaId
+        activeRequestedQuality = audioQuality
 
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
             val repeatMode = runBlocking { dataStore.get(RepeatModeKey, REPEAT_MODE_OFF) }
@@ -2324,6 +2337,7 @@ class MusicService :
 
 
         songUrlCache.keys.removeIf { it.startsWith("${mediaId}_") }
+        playbackDataCache.keys.removeIf { it.startsWith("${mediaId}_") }
 
 
         try {
@@ -2492,6 +2506,7 @@ class MusicService :
 
 
         songUrlCache.keys.removeIf { it.startsWith("${mediaId}_") }
+        playbackDataCache.keys.removeIf { it.startsWith("${mediaId}_") }
         Timber.tag(TAG).d("Cleared cached URL for $mediaId")
 
 
@@ -2756,29 +2771,50 @@ class MusicService :
         val streamUrl: String,
     )
 
+    private fun YTPlayerUtils.PlaybackData.resolvedAudioQuality(): AudioQuality =
+        when {
+            format.mimeType.contains("flac", ignoreCase = true) -> AudioQuality.LOSSLESS
+            isSaavnStream -> AudioQuality.SAAVN
+            else -> AudioQuality.OPUS
+        }
+
+    private fun FormatEntity.storedAudioQuality(): AudioQuality =
+        when {
+            mimeType.contains("flac", ignoreCase = true) || codecs.contains("flac", ignoreCase = true) ->
+                AudioQuality.LOSSLESS
+            itag == 0 && (
+                mimeType.contains("mp4", ignoreCase = true) ||
+                    mimeType.contains("m4a", ignoreCase = true) ||
+                    codecs.contains("mp4a", ignoreCase = true)
+                ) -> AudioQuality.SAAVN
+            else -> AudioQuality.OPUS
+        }
+
     private suspend fun resolvePlaybackShared(
         mediaId: String,
-        quality: AudioQuality,
+        selectedQuality: AudioQuality,
         knownArtist: String?,
         knownTitle: String?,
         knownDurationMs: Long?,
     ): Result<SharedPlaybackResolution> = runCatching {
-        val cacheKey = "${mediaId}_${quality.name}"
+        val effectiveQuality = selectedQuality.effectiveForPlayback()
+        val cacheKey = "${mediaId}_${effectiveQuality.name}"
         val mutex = streamResolutionMutexes.computeIfAbsent(cacheKey) { Mutex() }
         mutex.withLock {
             songUrlCache[cacheKey]
                 ?.takeIf { (_, expiresAt) -> expiresAt > System.currentTimeMillis() }
                 ?.let { (url, _) ->
                     return@withLock SharedPlaybackResolution(
-                        playbackData = null,
+                        playbackData = playbackDataCache[cacheKey],
                         streamUrl = url,
                     )
                 }
             songUrlCache.remove(cacheKey)
+            playbackDataCache.remove(cacheKey)
 
             val playbackData = YTPlayerUtils.playerResponseForPlayback(
                 videoId = mediaId,
-                audioQuality = quality,
+                audioQuality = effectiveQuality,
                 connectivityManager = connectivityManager,
                 context = this@MusicService,
                 knownArtist = knownArtist,
@@ -2787,6 +2823,7 @@ class MusicService :
             ).getOrThrow()
             songUrlCache[cacheKey] = playbackData.streamUrl to
                 (System.currentTimeMillis() + playbackData.streamExpiresInSeconds * 1000L)
+            playbackDataCache[cacheKey] = playbackData
             SharedPlaybackResolution(
                 playbackData = playbackData,
                 streamUrl = playbackData.streamUrl,
@@ -2847,70 +2884,56 @@ class MusicService :
                 return@Factory dataSpec
             }
 
-            val lockedQuality = if (isCurrentlyPlaying && dbFormat != null) {
-                when {
-                    dbFormat.mimeType.contains("flac", ignoreCase = true) -> com.jagr.fridamusic.constants.AudioQuality.LOSSLESS
-                    dbFormat.mimeType.contains("mp4", ignoreCase = true) || dbFormat.mimeType.contains("m4a", ignoreCase = true) -> com.jagr.fridamusic.constants.AudioQuality.SAAVN
-                    else -> com.jagr.fridamusic.constants.AudioQuality.OPUS
-                }
+            if (isFullyDownloaded) {
+                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                return@Factory dataSpec
+            }
+
+            val lockedQuality = if (isCurrentlyPlaying && activeQualityMediaId == mediaId) {
+                activeRequestedQuality
             } else {
                 audioQuality
             }
+            val effectiveQuality = lockedQuality.effectiveForPlayback()
+            val qualityCacheKey = "${mediaId}_${effectiveQuality.name}"
+            val cachedResolvedQuality = playbackDataCache[qualityCacheKey]?.resolvedAudioQuality()
 
             if (!shouldBypassCache && !isFullyDownloaded && dbFormat != null) {
-                val isLosslessCache = dbFormat.codecs == "flac"
-                val isSaavnCache = dbFormat.codecs == "mp4a.40.2" || dbFormat.mimeType.contains("mp4", ignoreCase = true)
-
-                val cacheMatchesTarget = when (lockedQuality) {
-                    com.jagr.fridamusic.constants.AudioQuality.LOSSLESS -> isLosslessCache
-                    com.jagr.fridamusic.constants.AudioQuality.SAAVN -> isSaavnCache
-                    com.jagr.fridamusic.constants.AudioQuality.OPUS -> !isLosslessCache && !isSaavnCache
-                }
+                val cacheMatchesTarget = dbFormat.storedAudioQuality() ==
+                    (cachedResolvedQuality ?: effectiveQuality)
 
                 if (!cacheMatchesTarget) {
                     shouldBypassCache = true
-                    Timber.tag(TAG).i("Quality changed to $lockedQuality for $mediaId. Clearing playerCache to prevent container mismatch.")
+                    Timber.tag(TAG).i(
+                        "Effective quality changed to $effectiveQuality for $mediaId. Clearing playerCache to prevent container mismatch.",
+                    )
                     playerCache.removeResource(mediaId)
                 }
             }
 
             if (!shouldBypassCache) {
-                if (isFullyDownloaded) {
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                    return@Factory dataSpec
-                }
-
                 if (downloadCache.isCached(
                         mediaId,
                         dataSpec.position,
                         if (dataSpec.length >= 0) dataSpec.length else 1
                     )
                 ) {
-                    songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                        scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                        return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
-                    }
                     // Fall through to fetch real URL since it's only partially downloaded
                 }
 
                 if (playerCache.isCached(mediaId, dataSpec.position, CHUNK_LENGTH)) {
-                    songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                        scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                        return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
+                    if (songUrlCache[qualityCacheKey]?.second?.let { it > System.currentTimeMillis() } != true) {
+                        Timber.tag(TAG).w("Ghost cache entry for $mediaId, re-fetching")
+                        playerCache.removeResource(mediaId)
                     }
-                    Timber.tag(TAG).w("Ghost cache entry for $mediaId, re-fetching")
-                    playerCache.removeResource(mediaId)
-                }
-
-                songUrlCache["${mediaId}_${lockedQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                    return@Factory resolveRemoteDataSpec(dataSpec, it.first, dbFormat?.contentLength)
                 }
             } else {
                 Timber.tag("MusicService").i("BYPASSING CACHE for $mediaId due to quality change")
             }
 
-            Timber.tag("MusicService").i("FETCHING STREAM: $mediaId | quality=$lockedQuality")
+            Timber.tag("MusicService").i(
+                "FETCHING STREAM: $mediaId | selected=$lockedQuality | effective=$effectiveQuality",
+            )
             val sharedResolution = runBlocking(Dispatchers.IO) {
                 val dbSong = database.song(mediaId).firstOrNull()
                 val knownArtist = dbSong?.artists?.joinToString { it.name }?.replace(" - Topic", "")
@@ -2919,7 +2942,7 @@ class MusicService :
 
                 resolvePlaybackShared(
                     mediaId = mediaId,
-                    quality = lockedQuality,
+                    selectedQuality = lockedQuality,
                     knownArtist = knownArtist,
                     knownTitle = knownTitle,
                     knownDurationMs = knownDuration,
@@ -2959,13 +2982,15 @@ class MusicService :
             }
             run {
                 val format = nonNullPlayback.format
+                val resolvedQuality = nonNullPlayback.resolvedAudioQuality()
 
-                val isFinalLossless = format.mimeType.contains("flac", ignoreCase = true)
-                val isFinalSaavn = format.mimeType.contains("mp4", ignoreCase = true) || format.mimeType.contains("m4a", ignoreCase = true)
+                val isFinalLossless = resolvedQuality == AudioQuality.LOSSLESS
+                val isFinalSaavn = resolvedQuality == AudioQuality.SAAVN
 
                 if (dbFormat != null && !shouldBypassCache) {
-                    val cacheIsLossless = dbFormat.codecs == "flac"
-                    val cacheIsSaavn = dbFormat.codecs == "mp4a.40.2" || dbFormat.mimeType.contains("mp4", ignoreCase = true)
+                    val storedQuality = dbFormat.storedAudioQuality()
+                    val cacheIsLossless = storedQuality == AudioQuality.LOSSLESS
+                    val cacheIsSaavn = storedQuality == AudioQuality.SAAVN
 
                     if (isFinalLossless != cacheIsLossless || isFinalSaavn != cacheIsSaavn) {
                         Timber.tag(TAG).w("Format fallback detected AFTER fetch. Clearing playerCache to prevent mismatch crash.")
@@ -3015,9 +3040,11 @@ class MusicService :
                 }
 
                 val streamUrl = nonNullPlayback.streamUrl
+                val expiresAt = System.currentTimeMillis() +
+                    (nonNullPlayback.streamExpiresInSeconds * 1000L)
 
-                songUrlCache["${mediaId}_${lockedQuality.name}"] =
-                    streamUrl to System.currentTimeMillis() + (nonNullPlayback.streamExpiresInSeconds * 1000L)
+                songUrlCache[qualityCacheKey] = streamUrl to expiresAt
+                playbackDataCache[qualityCacheKey] = nonNullPlayback
 
                 return@Factory resolveRemoteDataSpec(dataSpec, streamUrl, format.contentLength)
             }
@@ -3301,7 +3328,7 @@ class MusicService :
             try {
                 val playbackData = YTPlayerUtils.playerResponseForPlayback(
                     videoId = mediaId,
-                    audioQuality = audioQuality,
+                    audioQuality = audioQuality.effectiveForPlayback(),
                     connectivityManager = connectivityManager,
                 ).getOrNull()
                 playbackData?.streamUrl
@@ -3541,7 +3568,7 @@ class MusicService :
 
             val preloadLimit = dataStore.get(com.jagr.fridamusic.constants.PreloadNextSongLimitKey, 1)
             val preloadLyrics = dataStore.get(com.jagr.fridamusic.constants.PreloadLyricsEnabledKey, true)
-            val preloadQuality = audioQuality
+            val preloadQuality = audioQuality.effectiveForPlayback()
             val upcomingMediaIds = withContext(Dispatchers.Main) {
                 val currentIndex = player.currentMediaItemIndex
                 if (currentIndex == androidx.media3.common.C.INDEX_UNSET) {
@@ -3570,7 +3597,7 @@ class MusicService :
 
                         resolvePlaybackShared(
                             mediaId = mediaId,
-                            quality = preloadQuality,
+                            selectedQuality = preloadQuality,
                             knownArtist = knownArtist,
                             knownTitle = dbSong?.song?.title,
                             knownDurationMs = dbSong?.song?.duration?.let { if (it > 0) it * 1000L else null },
@@ -3596,7 +3623,16 @@ class MusicService :
                                 )
                                 val lyricsResult = lyricsHelper.getLyrics(metadata)
                                 database.query {
-                                    upsert(com.jagr.fridamusic.db.entities.LyricsEntity(id = mediaId, lyrics = lyricsResult.lyrics))
+                                    upsert(
+                                        com.jagr.fridamusic.db.entities.LyricsEntity(
+                                            id = mediaId,
+                                            lyrics = lyricsResult.lyrics,
+                                            provider = lyricsResult.provider,
+                                        ),
+                                    )
+                                    if (lyricsResult.autoOffsetMs != 0 && dbSong.song.lyricsOffset == 0) {
+                                        update(dbSong.song.copy(lyricsOffset = lyricsResult.autoOffsetMs))
+                                    }
                                 }
                                 Timber.tag(TAG).d("Preloaded lyrics for $mediaId")
                             }

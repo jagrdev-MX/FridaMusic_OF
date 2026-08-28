@@ -1,144 +1,126 @@
 package com.jagr.fridamusic.presentation.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.OndemandVideo
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PlaylistPlay
-import androidx.compose.material.icons.rounded.QueueMusic
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SearchOff
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SearchInput
+import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
 import com.jagr.fridamusic.viewmodels.OnlineSearchViewModel
 import com.music.innertube.YouTube
 import com.music.innertube.models.YTItem
-import com.music.innertube.pages.SearchSummary
-import com.valentinilk.shimmer.shimmer
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
+private data class SearchTab(
+    val label: String,
+    val icon: ImageVector,
+    val filter: YouTube.SearchFilter?,
+)
+
+private val SEARCH_TABS = @Composable {
+    listOf(
+        SearchTab(stringResource(R.string.filter_all), Icons.Rounded.Explore, null),
+        SearchTab(stringResource(R.string.filter_songs), Icons.Rounded.MusicNote, YouTube.SearchFilter.FILTER_SONG),
+        SearchTab(stringResource(R.string.filter_videos), Icons.Rounded.VideoLibrary, YouTube.SearchFilter.FILTER_VIDEO),
+        SearchTab(stringResource(R.string.filter_albums), Icons.Rounded.Album, YouTube.SearchFilter.FILTER_ALBUM),
+        SearchTab(stringResource(R.string.filter_artists), Icons.Rounded.Person, YouTube.SearchFilter.FILTER_ARTIST),
+        SearchTab(
+            stringResource(R.string.filter_featured_playlists),
+            Icons.AutoMirrored.Rounded.PlaylistPlay,
+            YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST,
+        ),
+        SearchTab(
+            stringResource(R.string.filter_community_playlists),
+            Icons.AutoMirrored.Rounded.QueueMusic,
+            YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
+        ),
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchResultScreen(
     onItemClick: (YTItem) -> Unit,
     onBack: () -> Unit,
     viewModel: OnlineSearchViewModel = hiltViewModel(),
+    suggestionViewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
 ) {
+    var searchText by remember(viewModel) { mutableStateOf(viewModel.query) }
+    var isSearchFocused by remember { mutableStateOf(false) }
+    val tabs = SEARCH_TABS()
+    val suggestionState by suggestionViewModel.viewState.collectAsState()
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val coroutineScope = rememberCoroutineScope()
-    val lazyListState = rememberLazyListState()
 
-    val searchFilter by viewModel.filter.collectAsState()
-    val searchSummary = viewModel.summaryPage
-    val itemsPage by remember(searchFilter) {
-        derivedStateOf {
-            searchFilter?.value?.let {
-                viewModel.viewStateMap[it]
-            }
+    fun closeSearchEditor() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+    }
+
+    fun submitQuery(candidate: String) {
+        val newQuery = candidate.trim()
+        if (newQuery.isEmpty()) return
+
+        searchText = newQuery
+        suggestionViewModel.saveSearch(newQuery)
+        viewModel.submitQuery(newQuery)
+        closeSearchEditor()
+    }
+
+    LaunchedEffect(isSearchFocused) {
+        if (isSearchFocused) {
+            suggestionViewModel.query.value = searchText
         }
     }
 
-    val allModeSections = buildList<SearchSummary> {
-        searchSummary?.summaries?.firstOrNull()?.takeIf { it.items.isNotEmpty() }?.let(::add)
-
-        listOf(
-            YouTube.SearchFilter.FILTER_SONG to stringResource(R.string.filter_songs),
-            YouTube.SearchFilter.FILTER_VIDEO to stringResource(R.string.filter_videos),
-            YouTube.SearchFilter.FILTER_ALBUM to stringResource(R.string.filter_albums),
-            YouTube.SearchFilter.FILTER_ARTIST to stringResource(R.string.filter_artists),
-            YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-            YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-        ).forEach { (sectionFilter, sectionTitle) ->
-            viewModel.viewStateMap[sectionFilter.value]
-                ?.items
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { items ->
-                    add(SearchSummary(title = sectionTitle, items = items))
-                }
-        }
-    }
-
-    val isAllModeLoaded = searchSummary != null || listOf(
-        YouTube.SearchFilter.FILTER_SONG, YouTube.SearchFilter.FILTER_VIDEO,
-        YouTube.SearchFilter.FILTER_ALBUM, YouTube.SearchFilter.FILTER_ARTIST,
-        YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST, YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST
-    ).all { viewModel.viewStateMap.containsKey(it.value) }
-
-    LaunchedEffect(lazyListState) {
-        snapshotFlow {
-            lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
-        }.collect { shouldLoadMore ->
-            if (!shouldLoadMore) return@collect
-            viewModel.loadMore()
-        }
-    }
-
-    val ytItemContent: @Composable LazyItemScope.(YTItem) -> Unit = { item ->
-        YTItemRow(item = item, onClick = {
-            keyboardController?.hide()
-            onItemClick(item)
-        })
+    BackHandler(enabled = isSearchFocused) {
+        closeSearchEditor()
     }
 
     Column(
@@ -146,298 +128,367 @@ fun SearchResultScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
+            .imePadding()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = {
+                if (isSearchFocused) closeSearchEditor() else onBack()
+            }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = stringResource(R.string.back),
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            SearchInput(
+                value = searchText,
+                onValueChange = { value ->
+                    searchText = value
+                    suggestionViewModel.query.value = value
+                },
+                onSubmit = ::submitQuery,
+                onClear = {
+                    searchText = ""
+                    suggestionViewModel.query.value = ""
+                    focusRequester.requestFocus()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { isSearchFocused = it.isFocused },
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            key(viewModel.query) {
+                SearchCategoryPager(
+                    tabs = tabs,
+                    viewModel = viewModel,
+                    onItemClick = onItemClick,
+                )
+            }
+
+            if (isSearchFocused) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    SearchSuggestionContent(
+                        text = searchText,
+                        viewState = suggestionState,
+                        onSubmit = ::submitQuery,
+                        onFill = { value ->
+                            searchText = value
+                            suggestionViewModel.query.value = value
+                            focusRequester.requestFocus()
+                        },
+                        onItemClick = { item ->
+                            closeSearchEditor()
+                            onItemClick(item)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SearchCategoryPager(
+    tabs: List<SearchTab>,
+    viewModel: OnlineSearchViewModel,
+    onItemClick: (YTItem) -> Unit,
+) {
+    val initialPage = tabs.indexOfFirst { it.filter == viewModel.filter.value }.coerceAtLeast(0)
+    val pagerState = rememberPagerState(initialPage = initialPage) { tabs.size }
+    val tabListState = rememberLazyListState()
+    val resultListStates = tabs.map { rememberLazyListState() }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val selectedTabIndex = pagerState.targetPage
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.targetPage }.collect { page ->
+            viewModel.selectFilter(tabs[page].filter)
+        }
+    }
+
+    LaunchedEffect(pagerState.settledPage) {
+        val targetIndex = pagerState.settledPage
+        val layoutInfo = snapshotFlow { tabListState.layoutInfo }
+            .first { it.viewportEndOffset > it.viewportStartOffset }
+        val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+        val viewportStart = layoutInfo.viewportStartOffset
+        val viewportEnd = layoutInfo.viewportEndOffset
+        val viewportCenter = (viewportStart + viewportEnd) / 2
+        val targetCenter = targetItem?.let { it.offset + it.size / 2 }
+        val isFullyVisible = targetItem != null &&
+            targetItem.offset >= viewportStart &&
+            targetItem.offset + targetItem.size <= viewportEnd
+        val centerTolerance = with(density) { 24.dp.roundToPx() }
+        val isNearCenter = targetCenter != null && abs(targetCenter - viewportCenter) <= centerTolerance
+
+        if (!isFullyVisible || !isNearCenter) {
+            val estimatedItemWidth = targetItem?.size ?: with(density) { 132.dp.roundToPx() }
+            val centeredOffset = ((viewportEnd - viewportStart - estimatedItemWidth) / 2).coerceAtLeast(0)
+            tabListState.animateScrollToItem(targetIndex, scrollOffset = -centeredOffset)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        LazyRow(
+            state = tabListState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            itemsIndexed(tabs, key = { _, tab -> tab.filter?.value ?: "summary" }) { index, tab ->
+                SearchCategoryChip(
+                    label = tab.label,
+                    icon = tab.icon,
+                    selected = selectedTabIndex == index,
+                    onClick = {
+                        if (index != pagerState.currentPage) {
+                            viewModel.selectFilter(tab.filter)
+                            scope.launch { pagerState.animateScrollToPage(index) }
+                        }
+                    },
+                )
+            }
+        }
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            key = { page -> tabs[page].filter?.value ?: "summary" },
+        ) { page ->
+            val tab = tabs[page]
+            val listState = resultListStates[page]
+            if (tab.filter == null) {
+                SearchSummaryContent(
+                    viewModel = viewModel,
+                    listState = listState,
+                    onItemClick = onItemClick,
+                )
+            } else {
+                SearchFilteredContent(
+                    viewModel = viewModel,
+                    filterValue = tab.filter.value,
+                    listState = listState,
+                    onItemClick = onItemClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchCategoryChip(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else if (selected) 1.03f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "search_chip_scale",
+    )
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "search_chip_container",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "search_chip_content",
+    )
+
+    Box(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .selectable(
+                selected = selected,
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(containerColor)
+                .padding(horizontal = 13.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(17.dp),
+            )
+            Text(
+                text = label,
+                color = contentColor,
+                maxLines = 1,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchSummaryContent(
+    viewModel: OnlineSearchViewModel,
+    listState: LazyListState,
+    onItemClick: (YTItem) -> Unit,
+) {
+    val summaryPage = viewModel.summaryPage
+
+    if (summaryPage == null) {
+        if (viewModel.isLoading) {
+            FridaLoadingIndicator(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 80.dp),
+                contentAlignment = Alignment.TopCenter,
+            )
+        } else {
+            EmptyResults()
+        }
+        return
+    }
+    if (summaryPage.summaries.isEmpty()) {
+        EmptyResults()
+        return
+    }
+
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        summaryPage.summaries.forEach { summary ->
+            item(key = summary.title) {
                 Text(
-                    text = viewModel.query,
+                    text = summary.title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = stringResource(R.string.complete_search),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
                 )
             }
-        }
-
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp,
-            shadowElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            ChipsRow(
-                chips = listOf(
-                    null to stringResource(R.string.filter_all),
-                    YouTube.SearchFilter.FILTER_SONG to stringResource(R.string.filter_songs),
-                    YouTube.SearchFilter.FILTER_VIDEO to stringResource(R.string.filter_videos),
-                    YouTube.SearchFilter.FILTER_ALBUM to stringResource(R.string.filter_albums),
-                    YouTube.SearchFilter.FILTER_ARTIST to stringResource(R.string.filter_artists),
-                    YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                    YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                ),
-                currentValue = searchFilter,
-                onValueUpdate = {
-                    if (viewModel.filter.value != it) {
-                        viewModel.filter.value = it
-                    }
-                    coroutineScope.launch {
-                        lazyListState.animateScrollToItem(0)
-                    }
-                },
-                icons = mapOf(
-                    null to Icons.Rounded.Search,
-                    YouTube.SearchFilter.FILTER_SONG to Icons.Rounded.MusicNote,
-                    YouTube.SearchFilter.FILTER_VIDEO to Icons.Rounded.OndemandVideo,
-                    YouTube.SearchFilter.FILTER_ALBUM to Icons.Rounded.Album,
-                    YouTube.SearchFilter.FILTER_ARTIST to Icons.Rounded.Person,
-                    YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST to Icons.Rounded.QueueMusic,
-                    YouTube.SearchFilter.FILTER_FEATURED_PLAYLIST to Icons.Rounded.PlaylistPlay,
-                ),
-            )
-        }
-
-        LazyColumn(
-            state = lazyListState,
-            contentPadding = WindowInsets.systemBars
-                .only(WindowInsetsSides.Bottom)
-                .asPaddingValues().let {
-                    PaddingValues(
-                        top = 8.dp,
-                        bottom = it.calculateBottomPadding() + 140.dp
-                    )
-                },
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (searchFilter == null) {
-                allModeSections.forEachIndexed { index, summary ->
-                    if (index > 0) {
-                        item(key = "divider_$index") {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                                thickness = 0.5.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-
-                    item(key = "section_header_${summary.title}_$index") {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(3.dp)
-                                    .height(18.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = summary.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-
-                    itemsIndexed(
-                        items = summary.items,
-                        key = { itemIndex, item -> "${summary.title}/${item.id}/$itemIndex" },
-                    ) { _, item ->
-                        ytItemContent(item)
-                    }
-
-                    item(key = "section_spacer_${summary.title}_$index") {
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-
-                if (allModeSections.isEmpty() && isAllModeLoaded) {
-                    item {
-                        EmptyPlaceholder(text = stringResource(R.string.no_results_found))
-                    }
-                }
-            } else {
-                items(
-                    items = itemsPage?.items.orEmpty().distinctBy { it.id },
-                    key = { "filtered_${it.id}" },
-                    itemContent = ytItemContent,
-                )
-
-                if (itemsPage?.continuation != null) {
-                    item(key = "loading") {
-                        ShimmerHost {
-                            repeat(3) { ListItemPlaceHolder() }
-                        }
-                    }
-                }
-
-                if (itemsPage?.items?.isEmpty() == true) {
-                    item {
-                        EmptyPlaceholder(text = stringResource(R.string.no_results_found))
-                    }
-                }
-            }
-
-            if ((searchFilter == null && allModeSections.isEmpty() && !isAllModeLoaded) || (searchFilter != null && itemsPage == null)) {
-                item {
-                    ShimmerHost {
-                        repeat(8) { ListItemPlaceHolder() }
-                    }
-                }
+            items(summary.items, key = { "${summary.title}-${it.id}" }) { item ->
+                YTItemRow(item = item, onClick = { onItemClick(item) })
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun <E> ChipsRow(
-    chips: List<Pair<E, String>>,
-    currentValue: E,
-    onValueUpdate: (E) -> Unit,
-    modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
-    icons: Map<E, ImageVector> = emptyMap(),
+private fun SearchFilteredContent(
+    viewModel: OnlineSearchViewModel,
+    filterValue: String,
+    listState: LazyListState,
+    onItemClick: (YTItem) -> Unit,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-            .horizontalScroll(rememberScrollState()),
-    ) {
-        Spacer(Modifier.width(12.dp))
-        chips.forEach { (value, label) ->
-            val isSelected = currentValue == value
-            val iconVec = icons[value]
+    val viewState = viewModel.viewStateMap[filterValue]
 
-            FilterChip(
-                selected = isSelected,
-                onClick = { onValueUpdate(value) },
-                label = { Text(label) },
-                leadingIcon = {
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Rounded.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    } else if (iconVec != null) {
-                        Icon(
-                            imageVector = iconVec,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                border = null,
-                colors = FilterChipDefaults.filterChipColors(containerColor = containerColor),
+    if (viewState == null) {
+        if (viewModel.isLoading) {
+            FridaLoadingIndicator(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 80.dp),
+                contentAlignment = Alignment.TopCenter,
             )
-            Spacer(Modifier.width(8.dp))
+        } else {
+            EmptyResults()
         }
+        return
     }
-}
+    if (viewState.items.isEmpty()) {
+        EmptyResults()
+        return
+    }
 
-@Composable
-fun ShimmerHost(
-    modifier: Modifier = Modifier,
-    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
-    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(
-        horizontalAlignment = horizontalAlignment,
-        verticalArrangement = verticalArrangement,
-        modifier = modifier
-            .shimmer()
-            .graphicsLayer(alpha = 0.99f)
-            .drawWithContent {
-                drawContent()
-                drawRect(
-                    brush = Brush.verticalGradient(listOf(Color.Black, Color.Transparent)),
-                    blendMode = BlendMode.DstIn,
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        items(viewState.items, key = { it.id }) { item ->
+            YTItemRow(item = item, onClick = { onItemClick(item) })
+        }
+
+
+        if (viewState.continuation != null) {
+            item {
+
+                LaunchedEffect(Unit) {
+                    viewModel.loadMore(filterValue)
+                }
+                FridaLoadingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    indicatorSize = FridaLoadingDefaults.MediumIndicatorSize,
                 )
-            },
-        content = content,
-    )
-}
-
-@Composable
-private fun ListItemPlaceHolder(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-        )
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .height(16.dp)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-            )
-            Spacer(Modifier.height(8.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.4f)
-                    .height(14.dp)
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-            )
+            }
         }
     }
 }
 
 @Composable
-private fun EmptyPlaceholder(text: String, modifier: Modifier = Modifier) {
+private fun EmptyResults() {
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(top = 80.dp, start = 32.dp, end = 32.dp),
+        modifier = Modifier.fillMaxSize().padding(top = 100.dp, start = 32.dp, end = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
         Icon(
             imageVector = Icons.Rounded.SearchOff,
             contentDescription = null,
-            modifier = Modifier.size(64.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.size(64.dp).padding(bottom = 16.dp)
         )
-        Spacer(Modifier.height(16.dp))
         Text(
-            text = text,
+            text = stringResource(R.string.no_results_found),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
             text = stringResource(R.string.no_results_found_desc),

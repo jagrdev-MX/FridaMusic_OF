@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class SetupStep { WELCOME, QUALITY, PRIVACY, SERVICES, DONE }
+enum class SetupStep { WELCOME, QUALITY, PRIVACY, SERVICES, LIBRARY, DONE }
 
 @HiltViewModel
 class SetupViewModel @Inject constructor(

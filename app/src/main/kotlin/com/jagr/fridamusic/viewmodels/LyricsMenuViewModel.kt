@@ -8,8 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.LyricsEntity
-import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
+import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.lyrics.LyricsHelper
 import com.jagr.fridamusic.lyrics.LyricsResult
 import com.jagr.fridamusic.models.MediaMetadata
@@ -20,9 +20,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @HiltViewModel
@@ -75,7 +75,7 @@ constructor(
             viewModelScope.launch(Dispatchers.IO) {
                 lyricsHelper.getAllLyrics(mediaId, title, artist, duration, album) { result ->
                     results.update {
-                        it + result
+                        (it + result).sortedByDescending { candidate -> candidate.score }
                     }
                 }
                 isLoading.value = false
@@ -91,14 +91,30 @@ constructor(
         mediaMetadata: MediaMetadata,
         lyricsEntity: LyricsEntity?,
     ) {
-        database.query {
-            lyricsEntity?.let(::delete)
-            val lyricsWithProvider =
-                runBlocking {
-                    lyricsHelper.getLyrics(mediaMetadata)
+        job?.cancel()
+        job = viewModelScope.launch(Dispatchers.IO) {
+            isLoading.value = true
+            try {
+                lyricsHelper.invalidate(mediaMetadata.id)
+                val lyricsWithProvider = lyricsHelper.getLyrics(mediaMetadata, forceRefresh = true)
+                if (lyricsWithProvider.lyrics == LYRICS_NOT_FOUND && lyricsEntity != null) return@launch
+                val song = database.song(mediaMetadata.id).first()?.song
+                database.query {
+                    upsert(LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider))
+                    if (lyricsWithProvider.autoOffsetMs != 0 && song?.lyricsOffset == 0) {
+                        update(song.copy(lyricsOffset = lyricsWithProvider.autoOffsetMs))
+                    }
                 }
-            if (lyricsWithProvider.lyrics != LYRICS_NOT_FOUND) {
-                upsert(LyricsEntity(mediaMetadata.id, lyricsWithProvider.lyrics, lyricsWithProvider.provider))
+            } finally {
+                isLoading.value = false
+            }
+        }
+    }
+
+    fun selectLyrics(mediaId: String, result: LyricsResult) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.query {
+                upsert(LyricsEntity(mediaId, result.lyrics, result.providerName))
             }
         }
     }

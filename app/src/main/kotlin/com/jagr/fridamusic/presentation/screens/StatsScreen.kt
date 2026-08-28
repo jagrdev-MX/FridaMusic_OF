@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,6 +70,10 @@ import com.jagr.fridamusic.constants.OptionStats
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.SongWithStats
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.viewmodels.StatsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,6 +102,7 @@ fun StatsScreen(
     val firstEvent by viewModel.firstEvent.collectAsState()
 
     var contentTab by remember { mutableIntStateOf(0) }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
 
     Scaffold(
         topBar = {
@@ -165,6 +171,7 @@ fun StatsScreen(
                 topSongItems(
                     songs = topSongsStats,
                     onSongClick = onSongClick,
+                    onMoreClick = { menuContext = it.toSongActionContext() },
                 )
             } else {
                 item(key = "stats_content_$contentTab") {
@@ -189,6 +196,10 @@ fun StatsScreen(
             }
         }
     }
+    UniversalSongActionsHost(
+        context = menuContext,
+        onDismiss = { menuContext = null },
+    )
 }
 
 @Composable
@@ -390,6 +401,7 @@ private fun StatCard(
 private fun LazyListScope.topSongItems(
     songs: List<SongWithStats>,
     onSongClick: (SongWithStats) -> Unit,
+    onMoreClick: (SongWithStats) -> Unit,
 ) {
     val visibleSongs = songs.take(50)
     if (visibleSongs.isEmpty()) {
@@ -413,7 +425,12 @@ private fun LazyListScope.topSongItems(
                     bottom = if (index == visibleSongs.lastIndex) 8.dp else 0.dp,
                 ),
         ) {
-            RankedSongRow(rank = index + 1, song = song, onClick = { onSongClick(song) })
+            RankedSongRow(
+                rank = index + 1,
+                song = song,
+                onClick = { onSongClick(song) },
+                onMoreClick = { onMoreClick(song) },
+            )
             if (index < visibleSongs.lastIndex) {
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 72.dp),
@@ -425,7 +442,12 @@ private fun LazyListScope.topSongItems(
 }
 
 @Composable
-private fun RankedSongRow(rank: Int, song: SongWithStats, onClick: () -> Unit) {
+private fun RankedSongRow(
+    rank: Int,
+    song: SongWithStats,
+    onClick: () -> Unit,
+    onMoreClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -488,6 +510,7 @@ private fun RankedSongRow(rank: Int, song: SongWithStats, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SongOptionsButton(onClick = onMoreClick)
     }
 }
 

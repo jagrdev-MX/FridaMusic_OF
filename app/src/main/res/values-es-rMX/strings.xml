@@ -5,6 +5,10 @@
     <string name="music">Música</string>
     <string name="songs">Canciones</string>
     <string name="artists">Artistas</string>
+    <string name="now_playing_open_album">Abrir álbum de %1$s</string>
+    <string name="now_playing_search_song">Buscar %1$s</string>
+    <string name="now_playing_open_artist">Abrir artista %1$s</string>
+    <string name="now_playing_view_artists">Ver artistas</string>
     <string name="albums">Álbumes</string>
     <string name="playlists">Listas de reproducción</string>
 
@@ -62,6 +66,10 @@
     <string name="library_song_empty">Las canciones de tu biblioteca aparecerán aquí</string>
     <string name="library_artist_empty">Los artistas de tu biblioteca aparecerán aquí</string>
     <string name="library_album_empty">Los álbumes de tu biblioteca aparecerán aquí</string>
+    <string name="add_album_to_library">Añadir álbum a la biblioteca</string>
+    <string name="remove_album_from_library">Quitar álbum de la biblioteca</string>
+    <string name="follow_artist">Seguir artista</string>
+    <string name="unfollow_artist">Dejar de seguir artista</string>
     <string name="library_playlist_empty">Tus listas de reproducción aparecerán aquí</string>
 
     <!-- Pantalla de Artista -->
@@ -115,6 +123,7 @@
     <string name="refetch">Actualizar datos</string>
     <string name="share">Compartir</string>
     <string name="more_options">Más opciones</string>
+    <string name="reorder_queue">Reordenar cola</string>
     <string name="more_label">Más</string>
     <string name="releases_for_you">Lanzamientos para ti</string>
     <string name="delete">Eliminar</string>
@@ -244,6 +253,7 @@
 
     <!-- Reproductor -->
     <string name="lyrics_not_found">Letras no encontradas</string>
+    <string name="instrumental">Instrumental</string>
     <string name="sleep_timer">Temporizador</string>
     <string name="end_of_song">Al terminar la canción</string>
     <plurals name="minute">
@@ -534,7 +544,7 @@
     <string name="group_history">Historial</string>
     <string name="group_screen">Pantalla</string>
     <string name="group_proxy">Proxy</string>
-    <string name="lyrics_order_desc">El primer proveedor que encuentre letras sincronizadas gana. Toca ↑↓ para reordenar.</string>
+    <string name="lyrics_order_desc">El orden es una preferencia; FridaMusic valida y selecciona el mejor resultado. Toca ↑↓ para reordenar.</string>
     <string name="use_proxy">Usar proxy</string>
     <string name="proxy_restart_note">Los cambios se aplican al reiniciar la app.</string>
     <string name="playback">Reproducción</string>
@@ -559,6 +569,13 @@
     <string name="audio_offload_desc">Ahorra batería delegando la reproducción al hardware</string>
     <string name="streaming_quality">Calidad de streaming</string>
     <string name="download_quality">Calidad de descarga</string>
+    <string name="quality_normal">Normal</string>
+    <string name="quality_medium">Media</string>
+    <string name="quality_high">Alta</string>
+    <string name="quality_normal_description">Equilibrio entre calidad, velocidad y compatibilidad.</string>
+    <string name="quality_medium_description">Preferencia de calidad equilibrada.</string>
+    <string name="quality_high_description">Preferencia por la mejor experiencia disponible.</string>
+    <string name="audio_quality_fallback">La calidad seleccionada no está disponible para esta canción. Usando una opción compatible.</string>
     <string name="opus_recommended">Opus (recomendado)</string>
     <string name="saavn">Saavn</string>
     <string name="lossless">Sin pérdida</string>
@@ -653,6 +670,17 @@
     <string name="onboarding_privacy_subtitle">Todo bajo tu control.</string>
     <string name="onboarding_services_title">Servicios Externos</string>
     <string name="onboarding_services_subtitle">Desactivados por defecto. Activa lo que quieras ahora o desde Ajustes.</string>
+    <string name="onboarding_library_title">Haz FridaMusic más tuyo</string>
+    <string name="onboarding_library_subtitle">Esto es solo el comienzo.</string>
+    <string name="onboarding_library_description">Cuando entres a la app, visita Ajustes para descubrir opciones adicionales de biblioteca, reproducción, privacidad y servicios. Todo es opcional y puedes cambiarlo cuando quieras.</string>
+    <string name="onboarding_discover_library_title">Tu biblioteca</string>
+    <string name="onboarding_discover_library_desc">Recupera y organiza contenido adicional.</string>
+    <string name="onboarding_discover_experience_title">Tu experiencia</string>
+    <string name="onboarding_discover_experience_desc">Descubre más formas de adaptar FridaMusic.</string>
+    <string name="onboarding_discover_control_title">A tu ritmo</string>
+    <string name="onboarding_discover_control_desc">Decide qué quieres usar y cuándo.</string>
+    <string name="onboarding_discover_settings_title">Explora Ajustes después</string>
+    <string name="onboarding_discover_settings_desc">Hay más opciones disponibles una vez dentro de FridaMusic.</string>
     <string name="onboarding_done_title">¡Todo listo!</string>
     <string name="onboarding_done_subtitle">FridaMusic está configurado.\nPuedes cambiar cualquier ajuste\nen cualquier momento.</string>
     <string name="granted">Concedido</string>
@@ -1841,4 +1869,44 @@
         <item>%1$s podría sonar justo como necesitas esta noche.</item>
         <item>%1$s está aquí por si quieres una canción más.</item>
     </string-array>
+    <string name="share_now_playing">Comparte lo que escuchas</string>
+    <string name="song_share_link">Compartir enlace de %1$s</string>
+    <string name="song_share_file">Compartir archivo de audio</string>
+    <string name="song_share_card_theme">Tema de la tarjeta</string>
+    <string name="song_share_instagram">Historia de Instagram</string>
+    <string name="song_share_save_card">Guardar tarjeta</string>
+    <string name="song_share_song_link">Enlace de la canción</string>
+    <string name="song_share_more">Compartir más</string>
+    <string name="song_share_qr">QR / Enlace</string>
+    <string name="song_share_link_copied">Enlace de FridaMusic copiado.</string>
+    <string name="song_share_card_saved">Tarjeta guardada en Imágenes/FridaMusic.</string>
+    <string name="song_share_failed">No se pudo generar la tarjeta.</string>
+    <string name="by_frida_labs">by Frida Labs</string>
+    <string name="open_listen">Abrir / Escuchar</string>
+    <string name="listen_on_fridamusic">Escuchar en FridaMusic</string>
+    <string name="song_details_identity">Identidad</string>
+    <string name="song_details_music">Música</string>
+    <string name="song_details_file">Archivo</string>
+    <string name="song_details_dates">Fechas</string>
+    <string name="song_date_created">Fecha de creación</string>
+    <string name="song_release_date">Fecha de lanzamiento</string>
+    <string name="music_recognition_title">¿Qué canción está sonando?</string>
+    <string name="music_recognition_tap_to_listen">Toca para escuchar</string>
+    <string name="music_recognition_listening">Escuchando…</string>
+    <string name="music_recognition_processing">Identificando…</string>
+    <string name="music_recognition_listen_again">Escuchar de nuevo</string>
+    <string name="music_recognition_no_match">No se encontró coincidencia</string>
+    <string name="music_recognition_recognition_failed">Falló el reconocimiento</string>
+    <string name="music_recognition_timeout">El reconocimiento agotó el tiempo. Intenta acercarte a la música.</string>
+    <string name="music_recognition_open_shazam">Abrir Shazam</string>
+    <string name="music_recognition_permission_title">Permiso de micrófono</string>
+    <string name="music_recognition_permission_desc">Permite el acceso al micrófono para reconocer música cercana.</string>
+    <string name="music_recognition_permission_permanent">El acceso al micrófono está bloqueado. Actívalo en los ajustes de la app para volver a intentarlo.</string>
+    <string name="music_recognition_permission_action">Permitir</string>
+    <string name="music_recognition_open_settings">Abrir ajustes</string>
+    <string name="music_recognition_error">Algo salió mal</string>
+    <string name="music_recognition_play">Reproducir</string>
+    <string name="music_recognition_powered_by">Proporcionado por Frida Labs AI</string>
+    <string name="global_shuffle_empty">Todavía no hay contenido reproducible disponible.</string>
+    <string name="global_shuffle_error">No se pudo iniciar la reproducción aleatoria.</string>
 </resources>

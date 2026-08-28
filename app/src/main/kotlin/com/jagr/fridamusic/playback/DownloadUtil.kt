@@ -19,9 +19,11 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import com.music.innertube.YouTube
-import com.jagr.fridamusic.constants.AudioQuality
-import com.jagr.fridamusic.constants.AudioQualityKey
+import com.jagr.fridamusic.constants.DownloadQuality
+import com.jagr.fridamusic.constants.DownloadQualityKey
 import com.jagr.fridamusic.constants.IpVersionKey
+import com.jagr.fridamusic.constants.effectiveAudioQuality
+import com.jagr.fridamusic.constants.effectiveForDownload
 import com.music.innertube.models.IpVersion
 import okhttp3.Dns
 import java.net.InetAddress
@@ -65,7 +67,7 @@ constructor(
     @PlayerCache val playerCache: SimpleCache,
 ) {
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
-    private val downloadQuality by enumPreference(context, com.jagr.fridamusic.constants.DownloadQualityKey, com.jagr.fridamusic.constants.DownloadQuality.YOUTUBE)
+    private val downloadQuality by enumPreference(context, DownloadQualityKey, DownloadQuality.YOUTUBE)
     private val ipVersion by enumPreference(context, IpVersionKey, IpVersion.AUTO)
     private val songUrlCache = HashMap<String, Pair<String, Long>>()
 
@@ -99,19 +101,19 @@ constructor(
                     ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+            val requestedDownloadQuality = downloadQuality
+            val effectiveDownloadQuality = requestedDownloadQuality.effectiveForDownload()
+            val effectiveAudioQuality = requestedDownloadQuality.effectiveAudioQuality()
+            val qualityCacheKey = "${mediaId}_${effectiveDownloadQuality.name}"
 
-            songUrlCache["${mediaId}_${downloadQuality.name}"]?.takeIf { it.second > System.currentTimeMillis() }?.let {
+            songUrlCache[qualityCacheKey]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                 return@Factory dataSpec.withUri(it.first.toUri())
             }
 
             val playbackData = runBlocking(Dispatchers.IO) {
                 YTPlayerUtils.playerResponseForPlayback(
                     mediaId,
-                    audioQuality = when (downloadQuality) {
-                        com.jagr.fridamusic.constants.DownloadQuality.LOSSLESS -> AudioQuality.LOSSLESS
-                        com.jagr.fridamusic.constants.DownloadQuality.SAAVN -> AudioQuality.SAAVN
-                        else -> AudioQuality.OPUS
-                    },
+                    audioQuality = effectiveAudioQuality,
                     connectivityManager = connectivityManager,
                     context = context,
                     isDownload = true
@@ -169,7 +171,8 @@ constructor(
 
             val streamUrl = playbackData.streamUrl
 
-            songUrlCache["${mediaId}_${downloadQuality.name}"] = streamUrl to playbackData.streamExpiresInSeconds * 1000L
+            songUrlCache[qualityCacheKey] = streamUrl to
+                (System.currentTimeMillis() + playbackData.streamExpiresInSeconds * 1000L)
             dataSpec.withUri(streamUrl.toUri())
         }
 

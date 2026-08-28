@@ -1,114 +1,78 @@
 package com.jagr.fridamusic.presentation.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
-import com.jagr.fridamusic.models.toMediaMetadata
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.SearchInput
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.resize
-import com.jagr.fridamusic.presentation.LocalPlayerConnection
-import com.jagr.fridamusic.presentation.components.SearchBar
-import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.viewmodels.OnlineSearchSuggestionViewModel
+import com.jagr.fridamusic.viewmodels.SearchSuggestionViewState
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
-    navController: NavController,
     onSearchSubmit: (String) -> Unit,
     onItemClick: (YTItem) -> Unit,
     onBack: (() -> Unit)? = null,
-    onToggleToLocalSearch: (() -> Unit)? = null,
-    pureBlack: Boolean = false,
+    reselectToken: Int = 0,
     viewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
 ) {
-    var text by rememberSaveable { mutableStateOf("") }
-    var active by rememberSaveable { mutableStateOf(false) }
-
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val haptic = LocalHapticFeedback.current
-    val playerConnection = LocalPlayerConnection.current ?: return
-    val coroutineScope = rememberCoroutineScope()
+    var text by remember { mutableStateOf("") }
     val viewState by viewModel.viewState.collectAsState()
-    val lazyListState = rememberLazyListState()
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val listState = rememberLazyListState()
+    var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
 
     LaunchedEffect(Unit) {
-        snapshotFlow { lazyListState.firstVisibleItemScrollOffset }
-            .drop(1)
-            .collect {
-                keyboardController?.hide()
-            }
+        focusRequester.requestFocus()
     }
 
-    LaunchedEffect(text) {
-        viewModel.query.value = text
+    LaunchedEffect(reselectToken) {
+        val shouldScroll = reselectToken != handledReselectToken
+        handledReselectToken = reselectToken
+        if (
+            shouldScroll &&
+            (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)
+        ) {
+            listState.animateReselectScrollToTop(directAnimationItemLimit = 24)
+        }
     }
 
     fun submit(query: String) {
@@ -116,144 +80,126 @@ fun SearchScreen(
         keyboardController?.hide()
         viewModel.saveSearch(query)
         onSearchSubmit(query)
-        active = false
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (pureBlack) Color.Black else MaterialTheme.colorScheme.background)
-            .statusBarsPadding(),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+            .imePadding()
     ) {
-        if (onBack != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 8.dp, top = 8.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (onBack != null) {
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = stringResource(R.string.back),
-                        tint = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface
+                        tint = MaterialTheme.colorScheme.onBackground,
                     )
                 }
             }
+            SearchInput(
+                value = text,
+                onValueChange = {
+                    text = it
+                    viewModel.query.value = it
+                },
+                onSubmit = ::submit,
+                onClear = {
+                    text = ""
+                    viewModel.query.value = ""
+                    focusRequester.requestFocus()
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+            )
         }
 
-        SearchBar(
-            query = text,
-            onQueryChange = {
-                text = it
-                active = true
+        SearchSuggestionContent(
+            text = text,
+            viewState = viewState,
+            onSubmit = { query ->
+                text = query
+                submit(query)
             },
-            onSearch = { submit(it) },
-            active = active,
-            onActiveChange = { active = it },
-            onToggleMode = onToggleToLocalSearch,
-            toggleContentDescription = stringResource(R.string.search_library),
-            toggleIcon = Icons.Rounded.Language,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            LazyColumn(
-                state = lazyListState,
-                contentPadding = PaddingValues(
-                    top = 8.dp,
-                    bottom = WindowInsets.systemBars.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding() + 140.dp
-                ),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(viewState.history, key = { "history_${it.query}" }) { history ->
-                    SuggestionItem(
-                        query = history.query,
-                        online = false,
-                        onClick = {
-                            text = history.query
-                            submit(history.query)
-                        },
-                        onDelete = {
-                        },
-                        onFillTextField = {
-                            text = history.query
-                            active = true
-                        },
-                        modifier = Modifier.animateItem(),
-                        pureBlack = pureBlack
+            onFill = { query ->
+                text = query
+                viewModel.query.value = query
+            },
+            onItemClick = { item ->
+                keyboardController?.hide()
+                onItemClick(item)
+            },
+            listState = listState,
+        )
+    }
+}
+
+@Composable
+internal fun SearchSuggestionContent(
+    text: String,
+    viewState: SearchSuggestionViewState,
+    onSubmit: (String) -> Unit,
+    onFill: (String) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+) {
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(bottom = 140.dp),
+        modifier = modifier.fillMaxSize(),
+    ) {
+        if (text.isBlank()) {
+            if (viewState.history.isNotEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.recent_searches),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
                     )
                 }
-
-                items(viewState.suggestions, key = { "suggestion_$it" }) { query ->
-                    SuggestionItem(
-                        query = query,
-                        online = true,
-                        onClick = {
-                            text = query
-                            submit(query)
-                        },
-                        onFillTextField = {
-                            text = query
-                            active = true
-                        },
-                        modifier = Modifier.animateItem(),
-                        pureBlack = pureBlack
+                items(viewState.history, key = { it.id }) { history ->
+                    SuggestionRow(
+                        icon = Icons.Rounded.History,
+                        text = history.query,
+                        onClick = { onSubmit(history.query) },
+                        onFillClick = { onFill(history.query) },
                     )
                 }
+            }
+        } else {
+            items(viewState.suggestions) { suggestion ->
+                SuggestionRow(
+                    icon = Icons.Rounded.Search,
+                    text = suggestion,
+                    onClick = { onSubmit(suggestion) },
+                    onFillClick = { onFill(suggestion) },
+                )
+            }
 
-                if (viewState.items.isNotEmpty() && viewState.history.size + viewState.suggestions.size > 0) {
-                    item {
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(3.dp)
-                                    .height(16.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                text = "Top Results",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (pureBlack) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-
-                items(viewState.items.distinctBy { it.id }, key = { "item_${it.id}" }) { item ->
-                    YTItemRow(
-                        item = item,
-                        onClick = {
-                            keyboardController?.hide()
-                            when (item) {
-                                is SongItem -> {
-                                    playerConnection.playQueue(YouTubeQueue.radio(item.toMediaMetadata()))
-                                    active = false
-                                }
-                                is AlbumItem -> {
-                                    navController.navigate("album/${item.id}")
-                                    active = false
-                                }
-                                is ArtistItem -> {
-                                    navController.navigate("artist/${item.id}")
-                                    active = false
-                                }
-                                is PlaylistItem -> {
-                                    navController.navigate("online_playlist/${item.id}")
-                                    active = false
-                                }
-                                else -> onItemClick(item)
-                            }
-                        },
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }
+            if (viewState.items.isNotEmpty()) {
+                item {
+                    Text(
+                        text = stringResource(R.string.direct_results),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
                     )
+                }
+                items(viewState.items, key = { it.id }) { item ->
+                    YTItemRow(item = item, onClick = { onItemClick(item) })
                 }
             }
         }
@@ -261,91 +207,51 @@ fun SearchScreen(
 }
 
 @Composable
-fun SuggestionItem(
-    modifier: Modifier = Modifier,
-    query: String,
-    online: Boolean,
+private fun SuggestionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
     onClick: () -> Unit,
-    onDelete: () -> Unit = {},
-    onFillTextField: () -> Unit,
-    pureBlack: Boolean
+    onFillClick: () -> Unit,
 ) {
-    val iconContainerColor = if (pureBlack) {
-        Color.White.copy(alpha = 0.08f)
-    } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-    }
-
-    val iconTint = if (pureBlack) {
-        Color.White.copy(alpha = 0.7f)
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
     Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .focusable()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(40.dp)
-                .background(
-                    color = iconContainerColor,
-                    shape = RoundedCornerShape(12.dp)
-                )
-        ) {
-            Icon(
-                imageVector = if (online) Icons.Rounded.Search else Icons.Rounded.History,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(Modifier.width(14.dp))
-
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
         Text(
-            text = query,
+            text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (pureBlack) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-
-        if (!online) {
-            IconButton(onClick = onDelete) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = null,
-                    tint = if (pureBlack) Color.White.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
-        IconButton(onClick = onFillTextField) {
+        IconButton(
+            onClick = onFillClick,
+            modifier = Modifier.size(32.dp)
+        ) {
             Icon(
                 imageVector = Icons.Rounded.NorthWest,
-                contentDescription = null,
-                tint = if (pureBlack) Color.White.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp)
+                contentDescription = stringResource(R.string.complete_search),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun YTItemRow(
     item: YTItem,
     onClick: () -> Unit,
-    onLongClick: () -> Unit = {},
 ) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
@@ -355,16 +261,22 @@ fun YTItemRow(
         else -> null
     }
     val isRound = item is ArtistItem
+    val isSong = item is SongItem
+
+    var menuContext by remember(item.id) { mutableStateOf<SongActionContext?>(null) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onLongClick
+                onLongClick = {
+                    if (item is SongItem) menuContext = item.toSongActionContext()
+                },
             )
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         AsyncImage(
             model = item.thumbnail?.resize(width = 96),
@@ -375,12 +287,12 @@ fun YTItemRow(
                 .clip(if (isRound) CircleShape else RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         )
-        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -394,5 +306,17 @@ fun YTItemRow(
                 )
             }
         }
+        if (isSong) {
+            SongOptionsButton(
+                onClick = {
+                    if (item is SongItem) menuContext = item.toSongActionContext()
+                },
+            )
+        }
     }
+
+    UniversalSongActionsHost(
+        context = menuContext,
+        onDismiss = { menuContext = null },
+    )
 }

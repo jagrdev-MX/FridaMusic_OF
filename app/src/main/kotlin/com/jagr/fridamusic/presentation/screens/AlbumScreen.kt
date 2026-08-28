@@ -29,6 +29,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
+import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongNavigationTarget
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
@@ -43,22 +51,29 @@ fun AlbumScreen(
 ) {
     val playerConnection = LocalPlayerConnection.current
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val isBookmarkUpdating by viewModel.isBookmarkUpdating.collectAsState()
     val description by viewModel.description.collectAsState()
     val otherVersions by viewModel.otherVersions.collectAsState()
     val releasesForYou by viewModel.releasesForYou.collectAsState()
 
     val album = albumWithSongs
 
-    if (album == null) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+    if (album == null || (isLoading && album.songs.isEmpty())) {
+        FridaLoadingIndicator(
+            modifier = Modifier.fillMaxSize(),
+            indicatorSize = FridaLoadingDefaults.LargeIndicatorSize,
+        )
         return
     }
 
     val songs = album.songs
     val thumbnailUrl = album.album.thumbnailUrl
     val artistName = album.artists.joinToString(", ") { it.name }
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
+    val albumArtists = remember(album.artists) {
+        album.artists.map { SongNavigationTarget(name = it.name, id = it.id) }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -68,14 +83,12 @@ fun AlbumScreen(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(380.dp)
+                    .matchParentSize()
                     .blur(60.dp),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(380.dp)
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
@@ -98,6 +111,7 @@ fun AlbumScreen(
                         .fillMaxWidth()
                         .statusBarsPadding()
                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -106,6 +120,19 @@ fun AlbumScreen(
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+                    AnimatedLibraryHeartButton(
+                        isSaved = album.album.bookmarkedAt != null,
+                        enabled = !isBookmarkUpdating,
+                        contentDescription = stringResource(
+                            if (album.album.bookmarkedAt != null) {
+                                R.string.remove_album_from_library
+                            } else {
+                                R.string.add_album_to_library
+                            }
+                        ),
+                        onClick = viewModel::toggleBookmark,
+                    )
                 }
             }
 
@@ -226,6 +253,11 @@ fun AlbumScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    SongOptionsButton(
+                        onClick = {
+                            menuContext = song.toSongActionContext(albumArtists = albumArtists)
+                        },
+                    )
                 }
             }
 
@@ -304,6 +336,10 @@ fun AlbumScreen(
                 }
             }
         }
+        UniversalSongActionsHost(
+            context = menuContext,
+            onDismiss = { menuContext = null },
+        )
     }
 }
 

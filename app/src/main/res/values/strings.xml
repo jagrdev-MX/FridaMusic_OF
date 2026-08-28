@@ -12,6 +12,10 @@
     <string name="music">Music</string>
     <string name="songs">Songs</string>
     <string name="artists">Artists</string>
+    <string name="now_playing_open_album">Open album for %1$s</string>
+    <string name="now_playing_search_song">Search for %1$s</string>
+    <string name="now_playing_open_artist">Open artist %1$s</string>
+    <string name="now_playing_view_artists">View artists</string>
     <string name="albums">Albums</string>
     <string name="playlists">Playlists</string>
 
@@ -67,6 +71,10 @@
     <string name="library_song_empty">Library songs will show up here</string>
     <string name="library_artist_empty">Library artists will show up here</string>
     <string name="library_album_empty">Library albums will show up here</string>
+    <string name="add_album_to_library">Add album to library</string>
+    <string name="remove_album_from_library">Remove album from library</string>
+    <string name="follow_artist">Follow artist</string>
+    <string name="unfollow_artist">Unfollow artist</string>
     <string name="library_playlist_empty">Your playlists will show up here</string>
 
     <!-- Artist screen -->
@@ -120,6 +128,7 @@
     <string name="refetch">Refetch</string>
     <string name="share">Share</string>
     <string name="more_options">More options</string>
+    <string name="reorder_queue">Reorder queue</string>
     <string name="more_label">More</string>
     <string name="releases_for_you">Releases for you</string>
     <string name="delete">Delete</string>
@@ -242,6 +251,7 @@
 
     <!-- Player -->
     <string name="lyrics_not_found">Lyrics not found</string>
+    <string name="instrumental">Instrumental</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
     <plurals name="minute">
@@ -530,7 +540,7 @@
     <string name="group_history">History</string>
     <string name="group_screen">Screen</string>
     <string name="group_proxy">Proxy</string>
-    <string name="lyrics_order_desc">The first provider that finds synced lyrics wins. Tap ↑↓ to reorder.</string>
+    <string name="lyrics_order_desc">Provider order is a preference; FridaMusic validates and selects the best result. Tap ↑↓ to reorder.</string>
     <string name="use_proxy">Use proxy</string>
     <string name="proxy_restart_note">Changes apply after restarting the app.</string>
     <string name="playback">Playback</string>
@@ -555,6 +565,13 @@
     <string name="audio_offload_desc">Save battery by delegating playback to hardware</string>
     <string name="streaming_quality">Streaming quality</string>
     <string name="download_quality">Download quality</string>
+    <string name="quality_normal">Normal</string>
+    <string name="quality_medium">Medium</string>
+    <string name="quality_high">High</string>
+    <string name="quality_normal_description">Balance between quality, speed, and compatibility.</string>
+    <string name="quality_medium_description">Balanced quality preference.</string>
+    <string name="quality_high_description">Preference for the best experience available.</string>
+    <string name="audio_quality_fallback">The selected quality is not available for this song. Using a compatible option.</string>
     <string name="opus_recommended">Opus (recommended)</string>
     <string name="saavn">Saavn</string>
     <string name="lossless">Lossless</string>
@@ -649,6 +666,17 @@
     <string name="onboarding_privacy_subtitle">Everything under your control.</string>
     <string name="onboarding_services_title">External Services</string>
     <string name="onboarding_services_subtitle">Disabled by default. Enable what you want now or from Settings.</string>
+    <string name="onboarding_library_title">Make FridaMusic yours</string>
+    <string name="onboarding_library_subtitle">This is just the beginning.</string>
+    <string name="onboarding_library_description">Once you’re inside the app, visit Settings to discover additional options for your library, playback, privacy, and services. Everything is optional and you can change it whenever you want.</string>
+    <string name="onboarding_discover_library_title">Your library</string>
+    <string name="onboarding_discover_library_desc">Recover and organize additional content.</string>
+    <string name="onboarding_discover_experience_title">Your experience</string>
+    <string name="onboarding_discover_experience_desc">Discover more ways to adapt FridaMusic.</string>
+    <string name="onboarding_discover_control_title">At your pace</string>
+    <string name="onboarding_discover_control_desc">Decide what you want to use and when.</string>
+    <string name="onboarding_discover_settings_title">Explore Settings later</string>
+    <string name="onboarding_discover_settings_desc">More options are available once you’re inside FridaMusic.</string>
     <string name="onboarding_done_title">All set!</string>
     <string name="onboarding_done_subtitle">FridaMusic is configured.\nYou can change any setting\nat any time.</string>
     <string name="granted">Granted</string>
@@ -1833,4 +1861,44 @@
         <item>%1$s might sound just right tonight.</item>
         <item>%1$s is here whenever you want one more song.</item>
     </string-array>
+    <string name="share_now_playing">Share what you are listening to</string>
+    <string name="song_share_link">Share %1$s link</string>
+    <string name="song_share_file">Share audio file</string>
+    <string name="song_share_card_theme">Card theme</string>
+    <string name="song_share_instagram">Instagram Story</string>
+    <string name="song_share_save_card">Save card</string>
+    <string name="song_share_song_link">Song link</string>
+    <string name="song_share_more">Share more</string>
+    <string name="song_share_qr">QR / Link</string>
+    <string name="song_share_link_copied">FridaMusic link copied.</string>
+    <string name="song_share_card_saved">Card saved to Pictures/FridaMusic.</string>
+    <string name="song_share_failed">The share card could not be generated.</string>
+    <string name="by_frida_labs">by Frida Labs</string>
+    <string name="open_listen">Open / Listen</string>
+    <string name="listen_on_fridamusic">Listen on FridaMusic</string>
+    <string name="song_details_identity">Identity</string>
+    <string name="song_details_music">Music</string>
+    <string name="song_details_file">File</string>
+    <string name="song_details_dates">Dates</string>
+    <string name="song_date_created">Date created</string>
+    <string name="song_release_date">Release date</string>
+    <string name="music_recognition_title">What song is playing?</string>
+    <string name="music_recognition_tap_to_listen">Tap to listen</string>
+    <string name="music_recognition_listening">Listening…</string>
+    <string name="music_recognition_processing">Identifying…</string>
+    <string name="music_recognition_listen_again">Listen again</string>
+    <string name="music_recognition_no_match">No match found</string>
+    <string name="music_recognition_recognition_failed">Recognition failed</string>
+    <string name="music_recognition_timeout">Recognition timed out. Try again closer to the music.</string>
+    <string name="music_recognition_open_shazam">Open Shazam</string>
+    <string name="music_recognition_permission_title">Microphone permission</string>
+    <string name="music_recognition_permission_desc">Allow microphone access to recognize nearby music.</string>
+    <string name="music_recognition_permission_permanent">Microphone access is blocked. Enable it from the app settings to try again.</string>
+    <string name="music_recognition_permission_action">Allow</string>
+    <string name="music_recognition_open_settings">Open settings</string>
+    <string name="music_recognition_error">Something went wrong</string>
+    <string name="music_recognition_play">Play</string>
+    <string name="music_recognition_powered_by">Powered by Frida Labs AI</string>
+    <string name="global_shuffle_empty">There is no playable content available yet.</string>
+    <string name="global_shuffle_error">Couldn’t start random playback.</string>
 </resources>

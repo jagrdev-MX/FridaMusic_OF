@@ -1,6 +1,8 @@
 package com.jagr.fridamusic.notifications
 
 import android.net.Uri
+import com.jagr.fridamusic.constants.AlbumSortType
+import com.jagr.fridamusic.constants.ArtistSortType
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.Song
 import kotlinx.coroutines.flow.first
@@ -56,18 +58,35 @@ internal class NotificationCandidateProvider(
             limit = RECENT_SONG_QUERY_LIMIT,
         ).first()
         val recentlyPlayedIds = recentlyPlayedSongs.mapTo(hashSetOf()) { song -> song.id }
+        val favoriteAlbums = database
+            .albumsLiked(AlbumSortType.CREATE_DATE, descending = true)
+            .first()
+            .filterNot { album -> album.album.isLocal }
+            .take(TYPE_LIMIT)
         val discoveryAlbums = database.notificationDiscoveryAlbums(limit = QUERY_LIMIT).first()
         val cachedAlbums = database.notificationUnplayedCachedAlbums(limit = ALBUM_QUERY_LIMIT).first()
-        val albums = (discoveryAlbums + cachedAlbums)
+        val albumDiscoveryPool = (discoveryAlbums + cachedAlbums)
             .distinctBy { album -> album.id }
             .rotateForDay(now, salt = ALBUM_ROTATION_SALT)
+        val albums = (favoriteAlbums + albumDiscoveryPool)
+            .distinctBy { album -> album.id }
             .take(TYPE_LIMIT)
-        val artists = database.notificationDiscoveryArtists(limit = QUERY_LIMIT).first()
+        val followedArtists = database
+            .artistsBookmarked(ArtistSortType.CREATE_DATE, descending = true)
+            .first()
+            .filterNot { artist -> artist.artist.isLocal }
+            .take(TYPE_LIMIT)
+        val artists = (
+            followedArtists + database.notificationDiscoveryArtists(limit = QUERY_LIMIT).first()
+        )
+            .distinctBy { artist -> artist.id }
+            .take(TYPE_LIMIT)
         val playlists = database.notificationDiscoveryPlaylists(limit = QUERY_LIMIT).first()
 
         val candidates = buildList {
             releases.mapNotNullTo(this) { album ->
                 if (album.id.isBlank() || album.title.isBlank()) return@mapNotNullTo null
+                val isFromFollowedArtist = album.artists.any { artist -> artist.bookmarkedAt != null }
                 NotificationCandidate(
                     id = "new_release:${album.id}",
                     type = NotificationCandidateType.NEW_RELEASE,
@@ -78,8 +97,16 @@ internal class NotificationCandidateProvider(
                     artistName = album.artists.joinToString(", ") { artist -> artist.name },
                     artworkUrl = album.thumbnailUrl,
                     deepLink = deepLink("album", album.id),
-                    source = "local_current_year_unheard_release",
-                    reason = "Current-year unheard album from a familiar artist, recently cached",
+                    source = if (isFromFollowedArtist) {
+                        "followed_artist_current_year_release"
+                    } else {
+                        "local_current_year_unheard_release"
+                    },
+                    reason = if (isFromFollowedArtist) {
+                        "Current-year unheard album from a followed artist, recently cached"
+                    } else {
+                        "Current-year unheard album from a familiar artist, recently cached"
+                    },
                     timestamp = album.album.lastUpdateTime
                         .atZone(ZoneId.systemDefault())
                         .toInstant()
@@ -124,6 +151,7 @@ internal class NotificationCandidateProvider(
             }
             albums.mapNotNullTo(this) { album ->
                 if (album.album.isLocal || album.id.isBlank() || album.title.isBlank()) return@mapNotNullTo null
+                val isFavorite = album.album.bookmarkedAt != null
                 NotificationCandidate(
                     id = "album:${album.id}",
                     type = NotificationCandidateType.ALBUM,
@@ -134,8 +162,12 @@ internal class NotificationCandidateProvider(
                     artistName = album.artists.joinToString(", ") { it.name },
                     artworkUrl = album.thumbnailUrl,
                     deepLink = deepLink("album", album.id),
-                    source = "cached_unheard_related_albums",
-                    reason = "Unheard album connected to cached recommendations",
+                    source = if (isFavorite) "liked_album_library" else "cached_unheard_related_albums",
+                    reason = if (isFavorite) {
+                        "Album explicitly saved in the local library"
+                    } else {
+                        "Unheard album connected to cached recommendations"
+                    },
                     timestamp = now,
                 )
             }
@@ -146,6 +178,7 @@ internal class NotificationCandidateProvider(
                     artist.id.isBlank() ||
                     artist.title.isBlank()
                 ) return@mapNotNullTo null
+                val isFollowed = artist.artist.bookmarkedAt != null
                 NotificationCandidate(
                     id = "artist:${artist.id}",
                     type = NotificationCandidateType.ARTIST,
@@ -155,8 +188,12 @@ internal class NotificationCandidateProvider(
                     contentType = NotificationContentType.ARTIST,
                     artworkUrl = artist.thumbnailUrl ?: artistArtworkFallbacks[artist.id],
                     deepLink = deepLink("artist", artist.id),
-                    source = "cached_unheard_related_artists",
-                    reason = "Unheard artist connected to cached recommendations",
+                    source = if (isFollowed) "followed_artist_library" else "cached_unheard_related_artists",
+                    reason = if (isFollowed) {
+                        "Artist explicitly followed in the local library"
+                    } else {
+                        "Unheard artist connected to cached recommendations"
+                    },
                     timestamp = now,
                 )
             }

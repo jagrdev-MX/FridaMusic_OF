@@ -3,6 +3,7 @@
 package com.jagr.fridamusic.playback
 
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -12,7 +13,9 @@ import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
 import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.extensions.currentMetadata
 import com.jagr.fridamusic.extensions.getCurrentQueueIndex
@@ -290,17 +293,63 @@ class PlayerConnection(
         }
     }
 
-    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
-        if (shouldBlockPlaybackChanges?.invoke() == true) {
+    @UnstableApi
+    fun moveQueueItem(
+        fromWindow: Timeline.Window,
+        toWindow: Timeline.Window,
+    ): Boolean {
+        if (!allowInternalSync && shouldBlockPlaybackChanges?.invoke() == true) {
             Timber.tag(TAG).d("moveQueueItem blocked - Listen Together guest")
-            return
+            return false
         }
-        try {
-            service.moveQueueItem(fromIndex, toIndex)
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error in moveQueueItem")
-            throw e
+
+        val queuePlayer = player
+        if (!queuePlayer.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return false
+
+        val timeline = queuePlayer.currentTimeline
+        if (timeline.isEmpty || timeline.windowCount != queuePlayer.mediaItemCount) return false
+
+        fun windowIndexOf(uid: Any): Int {
+            val window = Timeline.Window()
+            for (index in 0 until timeline.windowCount) {
+                if (timeline.getWindow(index, window).uid == uid) return index
+            }
+            return C.INDEX_UNSET
         }
+
+        val fromIndex = windowIndexOf(fromWindow.uid)
+        val toIndex = windowIndexOf(toWindow.uid)
+        if (fromIndex == C.INDEX_UNSET || toIndex == C.INDEX_UNSET || fromIndex == toIndex) {
+            return false
+        }
+
+        if (!queuePlayer.shuffleModeEnabled) {
+            queuePlayer.moveMediaItem(fromIndex, toIndex)
+            return true
+        }
+
+        val playbackOrder = queuePlayer.getQueueWindows().toMutableList()
+        val fromOrderIndex = playbackOrder.indexOfFirst { it.uid == fromWindow.uid }
+        val toOrderIndex = playbackOrder.indexOfFirst { it.uid == toWindow.uid }
+        if (fromOrderIndex == -1 || toOrderIndex == -1 || fromOrderIndex == toOrderIndex) {
+            return false
+        }
+
+        playbackOrder.add(toOrderIndex, playbackOrder.removeAt(fromOrderIndex))
+        val reorderedWindowIndices = IntArray(playbackOrder.size)
+        val seenWindowIndices = BooleanArray(timeline.windowCount)
+        playbackOrder.forEachIndexed { orderIndex, window ->
+            val windowIndex = windowIndexOf(window.uid)
+            if (windowIndex == C.INDEX_UNSET || seenWindowIndices[windowIndex]) return false
+            seenWindowIndices[windowIndex] = true
+            reorderedWindowIndices[orderIndex] = windowIndex
+        }
+        if (reorderedWindowIndices.size != timeline.windowCount) return false
+
+        queuePlayer.setShuffleOrder(
+            DefaultShuffleOrder(reorderedWindowIndices, System.currentTimeMillis()),
+        )
+        return true
     }
 
     fun toggleLike() {

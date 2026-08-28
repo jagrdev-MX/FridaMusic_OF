@@ -12,11 +12,14 @@ import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
 import com.music.shazamkit.Shazam
 import com.music.shazamkit.models.RecognitionStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteOrder
@@ -31,10 +34,11 @@ object MusicRecognitionService {
     
     
     
-    private const val RECORDING_DURATION_MS = 10000L
+    private const val RECORDING_DURATION_MS = 4200L
     
     private val _recognitionStatus = MutableStateFlow<RecognitionStatus>(RecognitionStatus.Ready)
     val recognitionStatus: StateFlow<RecognitionStatus> = _recognitionStatus.asStateFlow()
+    private val recognitionMutex = Mutex()
     
     fun hasRecordPermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -45,7 +49,8 @@ object MusicRecognitionService {
     
     
     @SuppressLint("MissingPermission")
-    suspend fun recognize(context: Context): RecognitionStatus = withContext(Dispatchers.IO) {
+    suspend fun recognize(context: Context): RecognitionStatus = recognitionMutex.withLock {
+        withContext(Dispatchers.IO) {
         if (!hasRecordPermission(context)) {
             return@withContext RecognitionStatus.Error("Microphone permission not granted")
         }
@@ -103,7 +108,9 @@ object MusicRecognitionService {
                 },
                 onFailure = { error ->
                     val message = error.message ?: "Unknown error"
-                    _recognitionStatus.value = if (message.contains("No match", ignoreCase = true)) {
+                    _recognitionStatus.value = if (
+                        message.contains("No match", ignoreCase = true) || message.contains("404")
+                    ) {
                         RecognitionStatus.NoMatch("No matches found. Try again with clearer audio.")
                     } else {
                         RecognitionStatus.Error(message)
@@ -112,9 +119,12 @@ object MusicRecognitionService {
             )
             
             _recognitionStatus.value
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             _recognitionStatus.value = RecognitionStatus.Error(e.message ?: "Recognition failed")
             _recognitionStatus.value
+        }
         }
     }
     
@@ -125,6 +135,7 @@ object MusicRecognitionService {
             CHANNEL_CONFIG, 
             AUDIO_FORMAT
         )
+        require(bufferSize > 0) { "Microphone configuration is not supported" }
         
         val audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
@@ -134,12 +145,20 @@ object MusicRecognitionService {
             bufferSize
         )
         
+        require(audioRecord.state == AudioRecord.STATE_INITIALIZED) {
+            audioRecord.release()
+            "Microphone could not be initialized"
+        }
+
         val outputStream = ByteArrayOutputStream()
         val buffer = ByteArray(bufferSize)
         val startTime = System.currentTimeMillis()
+        var started = false
         
         try {
             audioRecord.startRecording()
+            started = audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING
+            require(started) { "Microphone did not start recording" }
             
             while (System.currentTimeMillis() - startTime < RECORDING_DURATION_MS && isActive) {
                 val bytesRead = audioRecord.read(buffer, 0, bufferSize)
@@ -148,11 +167,13 @@ object MusicRecognitionService {
                 }
             }
         } finally {
-            audioRecord.stop()
-            audioRecord.release()
+            if (started) runCatching { audioRecord.stop() }
+            runCatching { audioRecord.release() }
         }
-        
-        outputStream.toByteArray()
+
+        outputStream.toByteArray().also {
+            require(it.isNotEmpty()) { "No microphone audio was captured" }
+        }
     }
     
     fun reset() {

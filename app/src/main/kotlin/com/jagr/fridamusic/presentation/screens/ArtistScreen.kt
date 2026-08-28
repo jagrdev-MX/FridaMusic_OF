@@ -34,6 +34,12 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
@@ -55,6 +61,7 @@ fun ArtistScreen(
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
+    val isBookmarkUpdating by viewModel.isBookmarkUpdating.collectAsState()
     val artistPage = viewModel.artistPage
 
 
@@ -73,6 +80,7 @@ fun ArtistScreen(
         .filterIsInstance<AlbumItem>()
 
     val isLoadingRemote = viewModel.isLoadingRemote
+    var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -82,14 +90,12 @@ fun ArtistScreen(
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
+                    .matchParentSize()
                     .blur(60.dp),
             )
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
+                    .matchParentSize()
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
@@ -121,6 +127,19 @@ fun ArtistScreen(
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+                    AnimatedLibraryHeartButton(
+                        isSaved = libraryArtist?.artist?.bookmarkedAt != null,
+                        enabled = !isBookmarkUpdating && (libraryArtist != null || artistPage != null),
+                        contentDescription = stringResource(
+                            if (libraryArtist?.artist?.bookmarkedAt != null) {
+                                R.string.unfollow_artist
+                            } else {
+                                R.string.follow_artist
+                            }
+                        ),
+                        onClick = viewModel::toggleFollow,
+                    )
                 }
             }
 
@@ -193,12 +212,9 @@ fun ArtistScreen(
                     enter = fadeIn(),
                     exit = fadeOut(),
                 ) {
-                    Box(
+                    FridaLoadingIndicator(
                         modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
-                    }
+                    )
                 }
             }
 
@@ -231,6 +247,7 @@ fun ArtistScreen(
                         RemoteSongRow(
                             song = song,
                             onClick = { playerConnection?.playYTItem(song) },
+                            onMoreClick = { menuContext = song.toSongActionContext() },
                         )
                     }
                 }
@@ -359,10 +376,17 @@ fun ArtistScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        SongOptionsButton(
+                            onClick = { menuContext = song.toSongActionContext() },
+                        )
                     }
                 }
             }
         }
+        UniversalSongActionsHost(
+            context = menuContext,
+            onDismiss = { menuContext = null },
+        )
     }
 }
 
@@ -370,6 +394,7 @@ fun ArtistScreen(
 private fun RemoteSongRow(
     song: SongItem,
     onClick: () -> Unit,
+    onMoreClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -404,6 +429,7 @@ private fun RemoteSongRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        SongOptionsButton(onClick = onMoreClick)
     }
 }
 

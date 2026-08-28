@@ -6,15 +6,29 @@ import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.compose.animation.*
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.AnchoredDraggableDefaults
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,12 +38,9 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.rounded.AllInclusive
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.LibraryAdd
-import androidx.compose.material.icons.rounded.LibraryAddCheck
-import androidx.compose.material.icons.rounded.Menu
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -39,42 +50,64 @@ import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Format
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
-import com.jagr.fridamusic.constants.FastAnimationSpec
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
+import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
+import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.utils.resize
+import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
+import com.jagr.fridamusic.viewmodels.LyricsMenuViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -83,13 +116,16 @@ import kotlin.time.Duration.Companion.milliseconds
 fun NowPlayingScreen(
     playerConnection: PlayerConnection,
     onBack: () -> Unit,
+    onNavigateFromPlayer: (() -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+    collapseDragModifier: Modifier = Modifier,
+    playlistsViewModel: PlaylistsViewModel? = null,
 ) {
     val context = LocalContext.current
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
-    val karaokePositionMs by playerConnection.playbackPositionMs.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
     val playbackError by playerConnection.error.collectAsState()
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
@@ -99,6 +135,7 @@ fun NowPlayingScreen(
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentMediaItemIndex by playerConnection.currentMediaItemIndex.collectAsState()
+    val currentQueueIndex by playerConnection.currentWindowIndex.collectAsState()
     val sleepTimer = playerConnection.service.sleepTimer
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -110,6 +147,38 @@ fun NowPlayingScreen(
     }
 
     val song = mediaMetadata ?: run { onBack(); return }
+    val navigation = LocalSongActionsNavigation.current
+    val navigableAlbumId = remember(song.album?.id) {
+        song.album?.id?.trim()?.takeIf(::isNavigableAlbumId)
+    }
+    val searchQuery = remember(song.id, song.title, song.artists) {
+        listOfNotNull(
+            song.title.trim().takeIf(String::isNotEmpty),
+            song.artists.firstOrNull()?.name?.trim()?.takeIf(String::isNotEmpty),
+        ).joinToString(" ")
+    }
+    val artistsText = remember(song.id, song.artists) {
+        song.artists.joinToString(", ") { it.name }
+    }
+    val singleArtistId = remember(song.id, song.artists) {
+        song.artists.singleOrNull()?.id?.trim()?.takeIf(String::isNotEmpty)
+    }
+    val titleActionDescription = if (navigableAlbumId != null) {
+        stringResource(R.string.now_playing_open_album, song.title)
+    } else {
+        stringResource(R.string.now_playing_search_song, song.title)
+    }
+    val artistActionDescription = when {
+        song.artists.size > 1 -> stringResource(R.string.now_playing_view_artists)
+        singleArtistId != null -> stringResource(
+            R.string.now_playing_open_artist,
+            song.artists.single().name,
+        )
+        else -> null
+    }
+    val titleInteractionSource = remember(song.id) { MutableInteractionSource() }
+    val artistInteractionSource = remember(song.id) { MutableInteractionSource() }
+    var showArtistPicker by remember(song.id) { mutableStateOf(false) }
 
     var positionMs by remember { mutableLongStateOf(playerConnection.player.currentPosition) }
     var durationMs by remember { mutableLongStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
@@ -128,12 +197,59 @@ fun NowPlayingScreen(
         }
     }
 
-    var showQueuePanel by remember { mutableStateOf(false) }
-    var showLyricsView by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
-    var showOverflowMenu by remember { mutableStateOf(false) }
+    var queueMenuSelection by remember { mutableStateOf<QueueMenuSelection?>(null) }
 
     val hasLyrics = currentLyrics != null
+    val coroutineScope = rememberCoroutineScope()
+    val panelMotion = remember { PlayerPanelMotionState() }
+    val panelMotionSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        )
+    }
+    val panelFlingBehavior = AnchoredDraggableDefaults.flingBehavior(
+        state = panelMotion.draggableState,
+        positionalThreshold = { distance -> distance * 0.32f },
+        animationSpec = panelMotionSpec,
+    )
+    val panelNestedScrollConnection = remember(panelMotion.draggableState, panelFlingBehavior) {
+        PlayerPanelNestedScrollConnection(
+            state = panelMotion.draggableState,
+            flingBehavior = panelFlingBehavior,
+        )
+    }
+    val queueInteractionSource = remember { MutableInteractionSource() }
+    val lyricsInteractionSource = remember { MutableInteractionSource() }
+    val panelHandleInteractionSource = remember { MutableInteractionSource() }
+    val queueIconDragged by queueInteractionSource.collectIsDraggedAsState()
+    val lyricsIconDragged by lyricsInteractionSource.collectIsDraggedAsState()
+    val panelHandleDragged by panelHandleInteractionSource.collectIsDraggedAsState()
+    val anyPanelDrag = queueIconDragged || lyricsIconDragged || panelHandleDragged
+
+    LaunchedEffect(queueInteractionSource) {
+        queueInteractionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                panelMotion.prepare(PlayerPanel.Queue)
+            }
+        }
+    }
+    LaunchedEffect(lyricsInteractionSource, hasLyrics) {
+        lyricsInteractionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start && hasLyrics) {
+                panelMotion.prepare(PlayerPanel.Lyrics)
+            }
+        }
+    }
+    LaunchedEffect(panelMotion, anyPanelDrag) {
+        snapshotFlow {
+            panelMotion.draggableState.offset to panelMotion.draggableState.settledValue
+        }.collect {
+            panelMotion.clearClosedPanelIfIdle(anyPanelDrag)
+        }
+    }
+
     val audioQualityLabel = remember(currentFormat, liveAudioFormat) {
         val codec = sequenceOf(liveAudioFormat?.codecs, currentFormat?.codecs)
             .mapNotNull { value ->
@@ -185,43 +301,17 @@ fun NowPlayingScreen(
         listOfNotNull(audioQualityLabel, bitrate, fileSize).joinToString("  •  ")
     }
 
-    val artworkScale by animateFloatAsState(
-        targetValue = if (showLyricsView) 0f else 1f,
-        animationSpec = tween(220),
-        label = "artwork_scale"
-    )
-
-    var swipeOffsetY by remember { mutableFloatStateOf(0f) }
-    val animatedSwipeOffsetY by animateFloatAsState(
-        targetValue = swipeOffsetY,
-        animationSpec = FastAnimationSpec,
-        label = "swipe_animation"
-    )
+    var panelHeightPx by remember { mutableFloatStateOf(0f) }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .offset { IntOffset(0, animatedSwipeOffsetY.roundToInt()) }
-            .pointerInput(showQueuePanel, showLyricsView) {
-                if (!showQueuePanel && !showLyricsView) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (swipeOffsetY > 300f) {
-                                onBack()
-                            } else {
-                                swipeOffsetY = 0f
-                            }
-                        },
-                        onDragCancel = { swipeOffsetY = 0f }
-                    ) { change, dragAmount ->
-                        change.consume()
-                        if (swipeOffsetY + dragAmount > 0) {
-                            swipeOffsetY += dragAmount
-                        }
-                    }
-                }
+            .onSizeChanged { size ->
+                panelHeightPx = size.height.toFloat()
+                panelMotion.updateAnchors(panelHeightPx)
             }
     ) {
+        // Fondo súper desenfocado
         AsyncImage(
             model = song.thumbnailUrl?.resize(width = 400),
             contentDescription = null,
@@ -231,6 +321,7 @@ fun NowPlayingScreen(
                 .blur(80.dp)
         )
 
+        // Capa oscura para contraste global
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -241,54 +332,31 @@ fun NowPlayingScreen(
             containerColor = Color.Transparent,
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { scaffoldPadding ->
-            if (showQueuePanel || showLyricsView) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(scaffoldPadding),
+            ) {
                 Column(
-                    modifier = Modifier.fillMaxSize().padding(scaffoldPadding).statusBarsPadding().padding(horizontal = 20.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val progress = panelMotion.progress(panelHeightPx)
+                            alpha = (1f - progress).coerceIn(0f, 1f)
+                            val playerScale = 1f - (progress * 0.035f)
+                            scaleX = playerScale
+                            scaleY = playerScale
+                        },
                 ) {
-                    Column(
+                    Box(
                         modifier = Modifier
+                            .weight(1.14f)
                             .fillMaxWidth()
-                            .padding(bottom = 16.dp)
-                            .clickable {
-                                showQueuePanel = false
-                                showLyricsView = false
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .then(
+                                if (panelMotion.activePanel == null) collapseDragModifier
+                                else Modifier,
+                            ),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(vertical = 12.dp)
-                                .width(48.dp)
-                                .height(5.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.4f))
-                        )
-                        Text(
-                            text = if (showQueuePanel) stringResource(R.string.queue) else stringResource(R.string.lyrics),
-                            color = Color.White.copy(alpha = 0.65f),
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-
-                    Box(Modifier.weight(1f)) {
-                        if (showQueuePanel) {
-                            MusicQueueView(song, queueWindows, currentMediaItemIndex, shuffleEnabled,
-                                { playerConnection.player.shuffleModeEnabled = !shuffleEnabled }, repeatMode,
-                                { playerConnection.player.repeatMode = when (repeatMode) {
-                                    Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-                                    Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
-                                    else -> Player.REPEAT_MODE_OFF
-                                } }, { playerConnection.player.seekTo(it, 0) })
-                        } else {
-                            KaraokeLyricsOnly(currentLyrics?.lyrics.orEmpty(), karaokePositionMs,
-                                currentSong?.song?.lyricsOffset?.toLong() ?: 0L, { playerConnection.player.seekTo(it) })
-                        }
-                    }
-                }
-            } else {
-                Column(modifier = Modifier.fillMaxSize().padding(scaffoldPadding)) {
-
-                    Box(modifier = Modifier.weight(1.14f).fillMaxWidth()) {
 
                         Box(
                             modifier = Modifier
@@ -297,6 +365,7 @@ fun NowPlayingScreen(
                                 .drawWithContent {
                                     drawContent()
 
+                                    // Gradiente que actúa como borrador: difumina el 15% inferior de la carátula
                                     drawRect(
                                         brush = Brush.verticalGradient(
                                             0.85f to Color.Transparent,
@@ -308,7 +377,7 @@ fun NowPlayingScreen(
                         ) {
                             AsyncImage(
                                 model = song.thumbnailUrl?.resize(width = 1200), contentDescription = song.title,
-                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().scale(artworkScale),
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                             )
 
                             Box(
@@ -323,6 +392,7 @@ fun NowPlayingScreen(
                             )
                         }
 
+                        // --- INDICADOR DE GESTO SWIPE-TO-DISMISS (Píldora superior) ---
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
@@ -333,6 +403,7 @@ fun NowPlayingScreen(
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.4f))
                         )
+                        // --------------------------------------------------------------
 
                         Row(
                             modifier = Modifier
@@ -348,45 +419,67 @@ fun NowPlayingScreen(
                                     style = MaterialTheme.typography.headlineSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(
+                                            enabled = navigableAlbumId != null || searchQuery.isNotEmpty(),
+                                            interactionSource = titleInteractionSource,
+                                            role = Role.Button,
+                                        ) {
+                                            onNavigateFromPlayer {
+                                                if (navigableAlbumId != null) {
+                                                    navigation.openAlbum(navigableAlbumId)
+                                                } else {
+                                                    navigation.openSearchResult(searchQuery)
+                                                }
+                                            }
+                                        }
+                                        .semantics(mergeDescendants = true) {
+                                            contentDescription = titleActionDescription
+                                        }
+                                        .heightIn(min = 40.dp)
+                                        .padding(vertical = 4.dp),
                                 )
                                 MarqueeText(
-                                    text = song.artists.joinToString(", ") { it.name },
+                                    text = artistsText,
                                     style = MaterialTheme.typography.titleMedium,
                                     color = Color.White.copy(alpha = 0.88f),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable(
+                                            enabled = song.artists.size > 1 || singleArtistId != null,
+                                            interactionSource = artistInteractionSource,
+                                            role = Role.Button,
+                                        ) {
+                                            if (song.artists.size > 1) {
+                                                showArtistPicker = true
+                                            } else if (singleArtistId != null) {
+                                                onNavigateFromPlayer {
+                                                    navigation.openArtist(singleArtistId)
+                                                }
+                                            }
+                                        }
+                                        .then(
+                                            artistActionDescription?.let { description ->
+                                                Modifier.semantics(mergeDescendants = true) {
+                                                    contentDescription = description
+                                                }
+                                            } ?: Modifier,
+                                        )
+                                        .heightIn(min = 40.dp)
+                                        .padding(vertical = 4.dp),
                                 )
                             }
-                            Box {
-                                NowPlayingRoundButton({ showOverflowMenu = true }, Icons.Rounded.MoreVert, stringResource(R.string.more_options))
-                                MaterialTheme(
-                                    shapes = MaterialTheme.shapes.copy(extraSmall = RoundedCornerShape(16.dp))
-                                ) {
-                                    DropdownMenu(
-                                        expanded = showOverflowMenu,
-                                        onDismissRequest = { showOverflowMenu = false },
-                                        modifier = Modifier.background(Color(0xFF252525))
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = if (currentSong?.song?.inLibrary != null) stringResource(R.string.remove_from_library_label) else stringResource(R.string.add_to_library_label),
-                                                    color = Color.White
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = if (currentSong?.song?.inLibrary != null) Icons.Rounded.LibraryAddCheck else Icons.Rounded.LibraryAdd,
-                                                    contentDescription = null,
-                                                    tint = Color.White
-                                                )
-                                            },
-                                            onClick = {
-                                                playerConnection.toggleLibrary()
-                                                showOverflowMenu = false
-                                            },
-                                        )
+                            NowPlayingRoundButton(
+                                onClick = {
+                                    playerConnection.player.currentMediaItem?.let { mediaItem ->
+                                        queueMenuSelection = QueueMenuSelection(mediaItem, currentMediaItemIndex, isCurrent = true)
                                     }
-                                }
-                            }
+                                },
+                                icon = Icons.Rounded.MoreVert,
+                                contentDescription = stringResource(R.string.more_options),
+                                enabled = playerConnection.player.currentMediaItem != null,
+                            )
                             Spacer(Modifier.width(12.dp))
                             NowPlayingRoundButton({ playerConnection.toggleLike() }, if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.action_like))
                         }
@@ -438,8 +531,42 @@ fun NowPlayingScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                NowPlayingRoundButton({ showQueuePanel = true }, Icons.AutoMirrored.Rounded.QueueMusic, stringResource(R.string.queue))
-                                NowPlayingRoundButton({ if (hasLyrics) showLyricsView = true }, Icons.AutoMirrored.Rounded.Notes, stringResource(R.string.lyrics), enabled = hasLyrics)
+                                NowPlayingRoundButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            panelMotion.open(PlayerPanel.Queue, panelMotionSpec)
+                                        }
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                                    contentDescription = stringResource(R.string.queue),
+                                    modifier = Modifier.anchoredDraggable(
+                                        state = panelMotion.draggableState,
+                                        orientation = Orientation.Vertical,
+                                        interactionSource = queueInteractionSource,
+                                        flingBehavior = panelFlingBehavior,
+                                    ),
+                                    interactionSource = queueInteractionSource,
+                                )
+                                NowPlayingRoundButton(
+                                    onClick = {
+                                        if (hasLyrics) {
+                                            coroutineScope.launch {
+                                                panelMotion.open(PlayerPanel.Lyrics, panelMotionSpec)
+                                            }
+                                        }
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.Notes,
+                                    contentDescription = stringResource(R.string.lyrics),
+                                    enabled = hasLyrics,
+                                    modifier = Modifier.anchoredDraggable(
+                                        state = panelMotion.draggableState,
+                                        orientation = Orientation.Vertical,
+                                        enabled = hasLyrics,
+                                        interactionSource = lyricsInteractionSource,
+                                        flingBehavior = panelFlingBehavior,
+                                    ),
+                                    interactionSource = lyricsInteractionSource,
+                                )
                                 NowPlayingRoundButton({ showSleepTimerDialog = true }, Icons.Rounded.Bedtime, stringResource(R.string.sleep_timer), selected = sleepTimer.isActive)
                             }
 
@@ -500,8 +627,147 @@ fun NowPlayingScreen(
                         }
                     }
                 }
+
+                panelMotion.activePanel?.let { activePanel ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .offset {
+                                IntOffset(
+                                    x = 0,
+                                    y = panelMotion.offset(panelHeightPx).roundToInt(),
+                                )
+                            }
+                            .graphicsLayer {
+                                val progress = panelMotion.progress(panelHeightPx)
+                                alpha = 0.35f + (progress * 0.65f)
+                            }
+                            .nestedScroll(panelNestedScrollConnection)
+                            .statusBarsPadding()
+                            .padding(horizontal = 20.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                                .anchoredDraggable(
+                                    state = panelMotion.draggableState,
+                                    orientation = Orientation.Vertical,
+                                    interactionSource = panelHandleInteractionSource,
+                                    flingBehavior = panelFlingBehavior,
+                                )
+                                .clickable {
+                                    coroutineScope.launch {
+                                        panelMotion.close(panelMotionSpec)
+                                    }
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(vertical = 12.dp)
+                                    .width(48.dp)
+                                    .height(5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.4f)),
+                            )
+                            Text(
+                                text = when (activePanel) {
+                                    PlayerPanel.Queue -> stringResource(R.string.queue)
+                                    PlayerPanel.Lyrics -> stringResource(R.string.lyrics)
+                                },
+                                color = Color.White.copy(alpha = 0.65f),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+
+                        Box(Modifier.weight(1f)) {
+                            when (activePanel) {
+                                PlayerPanel.Queue -> {
+                                    AppleMusicQueueView(
+                                        currentSong = song,
+                                        currentMediaItem = playerConnection.player.currentMediaItem,
+                                        windows = queueWindows,
+                                        currentIndex = currentMediaItemIndex,
+                                        currentQueueIndex = currentQueueIndex,
+                                        shuffleEnabled = shuffleEnabled,
+                                        onToggleShuffle = {
+                                            playerConnection.player.shuffleModeEnabled = !shuffleEnabled
+                                        },
+                                        repeatMode = repeatMode,
+                                        onToggleRepeat = {
+                                            playerConnection.player.repeatMode = when (repeatMode) {
+                                                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                                else -> Player.REPEAT_MODE_OFF
+                                            }
+                                        },
+                                        onItemClick = { playerConnection.player.seekTo(it, 0) },
+                                        onMoveItem = playerConnection::moveQueueItem,
+                                        onMoreClick = { mediaItem, index, isCurrent ->
+                                            queueMenuSelection = QueueMenuSelection(
+                                                mediaItem,
+                                                index,
+                                                isCurrent,
+                                            )
+                                        },
+                                    )
+                                }
+
+                                PlayerPanel.Lyrics -> {
+                                    KaraokeLyricsOnly(
+                                        playerConnection = playerConnection,
+                                        mediaMetadata = song,
+                                        lyricsEntity = currentLyrics,
+                                        lyrics = currentLyrics?.lyrics.orEmpty(),
+                                        durationMs = durationMs,
+                                        lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
+                                        isPlaying = isPlaying,
+                                        onSeekTo = { playerConnection.player.seekTo(it) },
+                                        onOffsetChange = { newOffset ->
+                                            currentSong?.song?.let { songEntity ->
+                                                coroutineScope.launch {
+                                                    playerConnection.database.query {
+                                                        update(songEntity.copy(lyricsOffset = newOffset))
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    queueMenuSelection?.let { selection ->
+        UniversalSongActionsHost(
+            context = selection.mediaItem.toSongActionContext(),
+            onDismiss = { queueMenuSelection = null },
+            onRemoveFromQueue = if (!selection.isCurrent) {
+                {
+                    if (selection.index in 0 until playerConnection.player.mediaItemCount) {
+                        playerConnection.player.removeMediaItem(selection.index)
+                    }
+                }
+            } else null,
+        )
+    }
+
+    if (showArtistPicker) {
+        NowPlayingArtistPickerSheet(
+            artists = song.artists,
+            onDismiss = { showArtistPicker = false },
+            onSelect = { artistId ->
+                showArtistPicker = false
+                onNavigateFromPlayer {
+                    navigation.openArtist(artistId)
+                }
+            },
+        )
     }
 
     if (showSleepTimerDialog) {
@@ -514,6 +780,234 @@ fun NowPlayingScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NowPlayingArtistPickerSheet(
+    artists: List<MediaMetadata.Artist>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.artists),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            artists.forEachIndexed { index, artist ->
+                val artistId = artist.id?.trim()?.takeIf(String::isNotEmpty)
+                val actionDescription = stringResource(
+                    R.string.now_playing_open_artist,
+                    artist.name,
+                )
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = artist.name,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    },
+                    leadingContent = {
+                        Icon(
+                            imageVector = Icons.Rounded.Person,
+                            contentDescription = null,
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = artistId != null,
+                            role = Role.Button,
+                        ) {
+                            artistId?.let(onSelect)
+                        }
+                        .then(
+                            if (artistId != null) {
+                                Modifier.semantics(mergeDescendants = true) {
+                                    contentDescription = actionDescription
+                                }
+                            } else {
+                                Modifier.graphicsLayer { alpha = 0.45f }
+                            },
+                        ),
+                )
+                if (index < artists.lastIndex) {
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun isNavigableAlbumId(id: String): Boolean =
+    id.startsWith("MPREb_") || id.startsWith("LOCAL_ALBUM_")
+
+private enum class PlayerPanel {
+    Queue,
+    Lyrics,
+}
+
+private enum class PlayerPanelAnchor {
+    Open,
+    Closed,
+}
+
+@Stable
+private class PlayerPanelMotionState {
+    val draggableState = AnchoredDraggableState(PlayerPanelAnchor.Closed)
+
+    var activePanel by mutableStateOf<PlayerPanel?>(null)
+        private set
+
+    var isProgrammaticTransition by mutableStateOf(false)
+        private set
+
+    private var closedAnchorPx by mutableFloatStateOf(0f)
+
+    fun updateAnchors(heightPx: Float) {
+        if (heightPx <= 0f) return
+        closedAnchorPx = heightPx
+        draggableState.updateAnchors(
+            newAnchors = DraggableAnchors {
+                PlayerPanelAnchor.Open at 0f
+                PlayerPanelAnchor.Closed at heightPx
+            },
+            newTarget = if (activePanel == null) {
+                PlayerPanelAnchor.Closed
+            } else {
+                draggableState.targetValue
+            },
+        )
+    }
+
+    fun prepare(panel: PlayerPanel) {
+        if (activePanel == null || draggableState.settledValue == PlayerPanelAnchor.Closed) {
+            activePanel = panel
+        }
+    }
+
+    suspend fun open(panel: PlayerPanel, animationSpec: AnimationSpec<Float>) {
+        isProgrammaticTransition = true
+        activePanel = panel
+        try {
+            draggableState.animateTo(PlayerPanelAnchor.Open, animationSpec)
+        } finally {
+            isProgrammaticTransition = false
+        }
+    }
+
+    suspend fun close(animationSpec: AnimationSpec<Float>) {
+        isProgrammaticTransition = true
+        try {
+            draggableState.animateTo(PlayerPanelAnchor.Closed, animationSpec)
+        } finally {
+            if (isAtClosedAnchor()) activePanel = null
+            isProgrammaticTransition = false
+        }
+    }
+
+    fun clearClosedPanelIfIdle(isDragging: Boolean) {
+        if (!isDragging && !isProgrammaticTransition &&
+            !draggableState.isAnimationRunning && isAtClosedAnchor()
+        ) {
+            activePanel = null
+        }
+    }
+
+    fun offset(fallbackHeightPx: Float): Float =
+        draggableState.offset.takeUnless(Float::isNaN) ?: fallbackHeightPx
+
+    fun progress(fallbackHeightPx: Float): Float {
+        val height = closedAnchorPx.takeIf { it > 0f } ?: fallbackHeightPx
+        if (height <= 0f) return 0f
+        return (1f - (offset(height) / height)).coerceIn(0f, 1f)
+    }
+
+    private fun isAtClosedAnchor(): Boolean {
+        val currentOffset = draggableState.offset
+        return closedAnchorPx > 0f && !currentOffset.isNaN() &&
+            currentOffset >= closedAnchorPx - 0.5f &&
+            draggableState.settledValue == PlayerPanelAnchor.Closed
+    }
+}
+
+private class PlayerPanelNestedScrollConnection(
+    private val state: AnchoredDraggableState<PlayerPanelAnchor>,
+    private val flingBehavior: FlingBehavior,
+) : NestedScrollConnection {
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val delta = available.y
+        return if (delta < 0f && source == NestedScrollSource.UserInput) {
+            Offset(x = 0f, y = state.dispatchRawDelta(delta))
+        } else {
+            Offset.Zero
+        }
+    }
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset = if (source == NestedScrollSource.UserInput) {
+        Offset(x = 0f, y = state.dispatchRawDelta(available.y))
+    } else {
+        Offset.Zero
+    }
+
+    override suspend fun onPreFling(available: Velocity): Velocity {
+        val currentOffset = state.offset
+        val minAnchor = state.anchors.minPosition()
+        return if (available.y < 0f && !currentOffset.isNaN() && currentOffset > minAnchor) {
+            state.performPanelFling(flingBehavior, available.y)
+            available
+        } else {
+            Velocity.Zero
+        }
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        val remainingVelocity = state.performPanelFling(flingBehavior, available.y)
+        return Velocity(x = consumed.x, y = remainingVelocity)
+    }
+}
+
+private suspend fun <T> AnchoredDraggableState<T>.performPanelFling(
+    flingBehavior: FlingBehavior,
+    initialVelocity: Float,
+): Float {
+    var remainingVelocity = 0f
+    anchoredDrag { latestAnchors ->
+        val scrollScope = object : ScrollScope {
+            override fun scrollBy(pixels: Float): Float {
+                val currentOffset = offset
+                val newOffset = (currentOffset + pixels).coerceIn(
+                    latestAnchors.minPosition(),
+                    latestAnchors.maxPosition(),
+                )
+                val consumed = newOffset - currentOffset
+                dragTo(newOffset)
+                return consumed
+            }
+        }
+        remainingVelocity = with(flingBehavior) {
+            scrollScope.performFling(initialVelocity)
+        }
+    }
+    return remainingVelocity
+}
+
 @Composable
 private fun NowPlayingRoundButton(
     onClick: () -> Unit,
@@ -521,13 +1015,46 @@ private fun NowPlayingRoundButton(
     contentDescription: String,
     enabled: Boolean = true,
     selected: Boolean = false,
+    modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource? = null,
 ) {
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    val isPressed by resolvedInteractionSource.collectIsPressedAsState()
+    val isDragged by resolvedInteractionSource.collectIsDraggedAsState()
+    val feedbackScale by animateFloatAsState(
+        targetValue = when {
+            isDragged -> 0.88f
+            isPressed -> 0.94f
+            else -> 1f
+        },
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "now_playing_button_feedback",
+    )
+    val backgroundAlpha = when {
+        selected -> 0.22f
+        isDragged -> 0.24f
+        isPressed -> 0.18f
+        else -> 0.12f
+    }
+
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(48.dp)
+            .graphicsLayer {
+                scaleX = feedbackScale
+                scaleY = feedbackScale
+            }
             .clip(CircleShape)
-            .background(if (selected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.12f))
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(Color.White.copy(alpha = backgroundAlpha))
+            .clickable(
+                interactionSource = resolvedInteractionSource,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -541,10 +1068,15 @@ private fun NowPlayingRoundButton(
 
 @Composable
 private fun KaraokeLyricsOnly(
+    playerConnection: PlayerConnection,
+    mediaMetadata: MediaMetadata,
+    lyricsEntity: LyricsEntity?,
     lyrics: String,
-    positionMs: Long,
+    durationMs: Long,
     lyricsOffsetMs: Long,
+    isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
+    onOffsetChange: (Int) -> Unit,
 ) {
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -553,33 +1085,192 @@ private fun KaraokeLyricsOnly(
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    KaraokeLyrics(
-        lyrics = lyrics,
-        positionMs = positionMs,
-        offsetMs = lyricsOffsetMs,
-        onSeekTo = onSeekTo,
-        modifier = Modifier.fillMaxSize(),
-    )
+    val positionState = playerConnection.playbackPositionMs.collectAsState()
+    val positionProvider = remember(positionState) { { positionState.value } }
+    var showSources by remember(mediaMetadata.id) { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize()) {
+        KaraokeLyrics(
+            mediaId = mediaMetadata.id,
+            lyrics = lyrics,
+            positionProvider = positionProvider,
+            durationMs = durationMs,
+            offsetMs = lyricsOffsetMs,
+            isPlaying = isPlaying,
+            onSeekTo = onSeekTo,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color.Black.copy(alpha = 0.28f)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { onOffsetChange((lyricsOffsetMs - 250L).coerceAtLeast(-15_000L).toInt()) }) {
+                Text("−250", color = Color.White)
+            }
+            TextButton(onClick = { onOffsetChange(0) }) {
+                Text(
+                    text = if (lyricsOffsetMs >= 0L) "+${lyricsOffsetMs} ms" else "${lyricsOffsetMs} ms",
+                    color = Color.White.copy(alpha = 0.82f),
+                )
+            }
+            TextButton(onClick = { onOffsetChange((lyricsOffsetMs + 250L).coerceAtMost(15_000L).toInt()) }) {
+                Text("+250", color = Color.White)
+            }
+            IconButton(onClick = { showSources = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = stringResource(R.string.lyrics_providers_label),
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+
+    if (showSources) {
+        LyricsSourceSheet(
+            mediaMetadata = mediaMetadata,
+            lyricsEntity = lyricsEntity,
+            onDismiss = { showSources = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LyricsSourceSheet(
+    mediaMetadata: MediaMetadata,
+    lyricsEntity: LyricsEntity?,
+    onDismiss: () -> Unit,
+    viewModel: LyricsMenuViewModel = hiltViewModel(),
+) {
+    val results by viewModel.results.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    LaunchedEffect(mediaMetadata.id) {
+        viewModel.search(
+            mediaId = mediaMetadata.id,
+            title = mediaMetadata.title,
+            artist = mediaMetadata.artists.joinToString { it.name },
+            duration = mediaMetadata.duration,
+            album = mediaMetadata.album?.title,
+        )
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.lyrics_providers_label),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = lyricsEntity?.provider.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.refetchLyrics(mediaMetadata, lyricsEntity)
+                        onDismiss()
+                    },
+                ) {
+                    Text(stringResource(R.string.refetch))
+                }
+            }
+
+            when {
+                isLoading && results.isEmpty() -> FridaLoadingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(128.dp),
+                )
+
+                results.isEmpty() -> Text(
+                    text = stringResource(R.string.lyrics_not_found),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 28.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                else -> LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp),
+                ) {
+                    items(
+                        items = results,
+                        key = { result -> "${result.providerName}:${result.lyrics.hashCode()}" },
+                    ) { result ->
+                        ListItem(
+                            headlineContent = {
+                                Text(result.providerName, fontWeight = FontWeight.SemiBold)
+                            },
+                            supportingContent = {
+                                Text("${result.syncType.name.replace('_', ' ')} · ${result.score}")
+                            },
+                            modifier = Modifier.clickable {
+                                viewModel.selectLyrics(mediaMetadata.id, result)
+                                onDismiss()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun MusicQueueView(
+private fun AppleMusicQueueView(
     currentSong: MediaMetadata?,
+    currentMediaItem: MediaItem?,
     windows: List<androidx.media3.common.Timeline.Window>,
     currentIndex: Int,
+    currentQueueIndex: Int,
     shuffleEnabled: Boolean,
     onToggleShuffle: () -> Unit,
     repeatMode: Int,
     onToggleRepeat: () -> Unit,
     onItemClick: (Int) -> Unit,
+    onMoveItem: (androidx.media3.common.Timeline.Window, androidx.media3.common.Timeline.Window) -> Boolean,
+    onMoreClick: (MediaItem, Int, Boolean) -> Unit,
 ) {
-    val upcoming = remember(windows, currentIndex) {
-        windows.withIndex().filter { it.index > currentIndex }
+    val hapticFeedback = LocalHapticFeedback.current
+    val lazyListState = rememberLazyListState()
+    val upcoming = remember(windows, currentQueueIndex) {
+        if (currentQueueIndex in windows.indices) {
+            windows.drop(currentQueueIndex + 1)
+        } else {
+            emptyList()
+        }
     }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        val fromWindow = windows.firstOrNull { it.saveableQueueKey() == from.key }
+        val toWindow = windows.firstOrNull { it.saveableQueueKey() == to.key }
+        if (fromWindow != null && toWindow != null && onMoveItem(fromWindow, toWindow)) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
     LazyColumn(
-        state = listState,
         modifier = Modifier.fillMaxSize(),
+        state = lazyListState,
         contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
     ) {
         item {
@@ -617,9 +1308,11 @@ private fun MusicQueueView(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = { }) {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = stringResource(R.string.more_label), tint = Color.White)
-                }
+                SongOptionsButton(
+                    onClick = { currentMediaItem?.let { onMoreClick(it, currentIndex, true) } },
+                    enabled = currentMediaItem != null,
+                    iconColor = Color.White,
+                )
             }
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -649,32 +1342,54 @@ private fun MusicQueueView(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-            items(
-                count = upcoming.size,
-                key = { index -> "queue_${upcoming[index].index}" },
-            ) { index ->
-                val indexedWindow = upcoming[index]
-                val window = indexedWindow.value
-                val metadata = window.mediaItem.metadata
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onItemClick(indexedWindow.index) }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            items(upcoming, key = { it.saveableQueueKey() }) { window ->
+                ReorderableItem(
+                    state = reorderableState,
+                    key = window.saveableQueueKey(),
                 ) {
-                    AsyncImage(
-                        model = metadata?.thumbnailUrl?.resize(width = 96),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val metadata = window.mediaItem.metadata
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onItemClick(window.firstPeriodIndex) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = metadata?.thumbnailUrl?.resize(width = 96),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        SongOptionsButton(
+                            onClick = { onMoreClick(window.mediaItem, window.firstPeriodIndex, false) },
+                            iconColor = Color.White.copy(alpha = 0.8f),
+                        )
+                        IconButton(
+                            onClick = {},
+                            enabled = upcoming.size > 1,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .draggableHandle(
+                                    enabled = upcoming.size > 1,
+                                    onDragStarted = {
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    },
+                                ),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.drag_handle),
+                                contentDescription = stringResource(R.string.reorder_queue),
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
                     }
-                    Icon(imageVector = Icons.Rounded.Menu, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
                 }
             }
         } else {
@@ -684,6 +1399,15 @@ private fun MusicQueueView(
         }
     }
 }
+
+private fun androidx.media3.common.Timeline.Window.saveableQueueKey(): String =
+    "${mediaItem.mediaId}:${uid.hashCode()}"
+
+private data class QueueMenuSelection(
+    val mediaItem: MediaItem,
+    val index: Int,
+    val isCurrent: Boolean,
+)
 
 @Composable
 private fun QueueActionButton(icon: ImageVector, isActive: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {

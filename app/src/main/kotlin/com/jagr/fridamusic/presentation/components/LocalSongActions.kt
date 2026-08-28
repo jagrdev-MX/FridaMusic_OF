@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,38 +26,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
-import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.Block
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Lyrics
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material.icons.rounded.Queue
-import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SupervisorAccount
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -169,17 +142,14 @@ fun LocalSongListItem(
             if (trailingContent != null) {
                 trailingContent()
             } else {
-                IconButton(onClick = onMoreClick, modifier = Modifier.size(38.dp)) {
-                    Icon(
-                        imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = stringResource(R.string.more_options),
-                        tint = if (isCurrent) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
+                SongOptionsButton(
+                    onClick = onMoreClick,
+                    iconColor = if (isCurrent) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
         }
     }
@@ -221,21 +191,12 @@ fun LocalSongGridItem(
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 )
-                IconButton(
+                SongOptionsButton(
                     onClick = onMoreClick,
                     modifier = Modifier.align(Alignment.TopEnd),
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.MoreVert,
-                            contentDescription = stringResource(R.string.more_options),
-                            modifier = Modifier.padding(7.dp).size(20.dp),
-                        )
-                    }
-                }
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    iconColor = MaterialTheme.colorScheme.onSurface,
+                )
                 if (isCurrent) {
                     Surface(
                         modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
@@ -314,200 +275,8 @@ fun LocalPlayingBars(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LocalSongActionsSheet(
-    song: Song,
-    onDismiss: () -> Unit,
-    metadata: LocalSongSortMetadata? = null,
-    isPinned: Boolean = false,
-    onToggleFavorite: (() -> Unit)? = null,
-    onPlayNext: (() -> Unit)? = null,
-    onAddToQueue: (() -> Unit)? = null,
-    onAddToPlaylist: (() -> Unit)? = null,
-    onTogglePinned: (() -> Unit)? = null,
-    onGoToAlbum: (() -> Unit)? = null,
-    onGoToArtist: (() -> Unit)? = null,
-    onGoToAlbumArtist: (() -> Unit)? = null,
-    onGoToFolder: (() -> Unit)? = null,
-    onEditMetadata: (() -> Unit)? = null,
-    onEditLyrics: (() -> Unit)? = null,
-    onBlacklist: (() -> Unit)? = null,
-    onDetails: (() -> Unit)? = null,
-    onShare: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null,
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val hasQueueActions = onPlayNext != null || onAddToQueue != null ||
-        onAddToPlaylist != null || onTogglePinned != null
-    val hasNavigationActions = onGoToAlbum != null || onGoToArtist != null ||
-        onGoToAlbumArtist != null || onGoToFolder != null
-    val hasEditActions = onEditMetadata != null || onEditLyrics != null
-    val hasOtherActions = onBlacklist != null || onDetails != null ||
-        onShare != null || onDelete != null
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.92f)
-                .navigationBarsPadding(),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AsyncImage(
-                    model = song.thumbnailUrl?.resize(width = 112),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(54.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = song.song.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = buildString {
-                            append(song.artists.joinToString(", ") { it.name })
-                            val album = metadata?.album ?: song.song.albumName
-                            if (!album.isNullOrBlank()) {
-                                if (isNotEmpty()) append("  ·  ")
-                                append(album)
-                            }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (onToggleFavorite != null) {
-                    FilledTonalIconButton(onClick = onToggleFavorite, modifier = Modifier.size(48.dp)) {
-                        Icon(
-                            imageVector = if (song.song.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                            contentDescription = stringResource(
-                                if (song.song.liked) R.string.local_song_remove_favorite else R.string.local_song_add_favorite,
-                            ),
-                            tint = if (song.song.liked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (hasQueueActions) item {
-                    LocalSongActionGroup {
-                        onPlayNext?.let { LocalSongAction(Icons.Rounded.SkipNext, stringResource(R.string.play_next), it) }
-                        onAddToQueue?.let { LocalSongAction(Icons.Rounded.Queue, stringResource(R.string.add_to_queue), it) }
-                        onAddToPlaylist?.let {
-                            LocalSongAction(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.add_to_playlist), it)
-                        }
-                        onTogglePinned?.let {
-                            LocalSongAction(
-                                Icons.Rounded.PushPin,
-                                stringResource(if (isPinned) R.string.local_song_unpin else R.string.local_song_pin),
-                                it,
-                            )
-                        }
-                    }
-                }
-                if (hasNavigationActions) item {
-                    LocalSongActionGroup {
-                        onGoToAlbum?.let { LocalSongAction(Icons.Rounded.Album, stringResource(R.string.local_song_go_to_album), it) }
-                        onGoToArtist?.let { LocalSongAction(Icons.Rounded.Person, stringResource(R.string.local_song_go_to_artist), it) }
-                        onGoToAlbumArtist?.let {
-                            LocalSongAction(Icons.Rounded.SupervisorAccount, stringResource(R.string.local_song_go_to_album_artist), it)
-                        }
-                        onGoToFolder?.let { LocalSongAction(Icons.Rounded.FolderOpen, stringResource(R.string.local_song_go_to_folder), it) }
-                    }
-                }
-                if (hasEditActions) item {
-                    LocalSongActionGroup {
-                        onEditMetadata?.let { LocalSongAction(Icons.Rounded.Edit, stringResource(R.string.local_song_edit_information), it) }
-                        onEditLyrics?.let { LocalSongAction(Icons.Rounded.Lyrics, stringResource(R.string.edit_lyrics), it) }
-                    }
-                }
-                if (hasOtherActions) item {
-                    LocalSongActionGroup {
-                        onBlacklist?.let { LocalSongAction(Icons.Rounded.Block, stringResource(R.string.local_song_blacklist), it) }
-                        onDetails?.let { LocalSongAction(Icons.Rounded.Info, stringResource(R.string.details), it) }
-                        onShare?.let { LocalSongAction(Icons.Rounded.Share, stringResource(R.string.share), it) }
-                        onDelete?.let {
-                            LocalSongAction(Icons.Rounded.Delete, stringResource(R.string.local_song_delete_from_device), it, destructive = true)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LocalSongActionGroup(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 0.dp,
-    ) {
-        Column(content = content)
-    }
-}
-
-@Composable
-private fun LocalSongAction(
-    icon: ImageVector,
-    label: String,
-    onClick: (() -> Unit)?,
-    destructive: Boolean = false,
-) {
-    val enabled = onClick != null
-    val contentColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        destructive -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                enabled = enabled,
-                onClick = { onClick?.invoke() },
-                onLongClick = {},
-            )
-            .padding(horizontal = 20.dp, vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(23.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            color = contentColor,
-        )
-    }
-}
-
-@Composable
-fun LocalPlaylistPickerDialog(
+fun SongPlaylistPickerDialog(
     playlists: List<Playlist>,
     onDismiss: () -> Unit,
     onSelect: (Playlist) -> Unit,

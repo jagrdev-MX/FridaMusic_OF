@@ -7,6 +7,13 @@ val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
+
+fun providerSetting(name: String, defaultValue: String = ""): String =
+    localProperties.getProperty(name) ?: System.getenv(name) ?: defaultValue
+
+fun buildConfigString(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 plugins {
     id("com.android.application")
     alias(libs.plugins.hilt)
@@ -33,8 +40,8 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.0.9.126"
+        versionCode = 13
+        versionName = "1.0.11.181"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -44,6 +51,29 @@ android {
 
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastFmKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastFmSecret\"")
+
+        buildConfigField(
+            "String",
+            "FRIDA_SAAVN_API_BASE_URL",
+            buildConfigString(providerSetting("FRIDA_SAAVN_API_BASE_URL")),
+        )
+        buildConfigField(
+            "String",
+            "FRIDA_SAAVN_API_TOKEN",
+            buildConfigString(providerSetting("FRIDA_SAAVN_API_TOKEN")),
+        )
+        buildConfigField(
+            "String",
+            "QOBUZ_API_BASE_URL",
+            buildConfigString(providerSetting("QOBUZ_API_BASE_URL", "https://www.qobuz.com/api.json/0.2")),
+        )
+        buildConfigField("String", "QOBUZ_APP_ID", buildConfigString(providerSetting("QOBUZ_APP_ID")))
+        buildConfigField("String", "QOBUZ_APP_SECRET", buildConfigString(providerSetting("QOBUZ_APP_SECRET")))
+        buildConfigField(
+            "String",
+            "QOBUZ_USER_AUTH_TOKEN",
+            buildConfigString(providerSetting("QOBUZ_USER_AUTH_TOKEN")),
+        )
 
         buildConfigField("String", "FLOW_NEURO_BASE_URL", project.findProperty("FLOW_NEURO_BASE_URL")?.toString()?.let { "\"$it\"" } ?: "\"https://api.flowneuroengine.com\"")
         buildConfigField("String", "FLOW_NEURO_API_KEY", project.findProperty("FLOW_NEURO_API_KEY")?.toString()?.let { "\"$it\"" } ?: "\"\"")

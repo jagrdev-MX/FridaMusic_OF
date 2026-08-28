@@ -5,6 +5,7 @@ package com.jagr.fridamusic.viewmodels
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
 import com.jagr.fridamusic.constants.AddToPlaylistSortDescendingKey
 import com.jagr.fridamusic.constants.AddToPlaylistSortTypeKey
 import com.jagr.fridamusic.constants.PlaylistSortType
@@ -13,6 +14,7 @@ import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.PlaylistEntity
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toEnum
+import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.toMediaMetadata
 import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
@@ -64,6 +66,16 @@ constructor(
         viewModelScope.launch {
             database.query {
                 addSongToPlaylist(playlist, listOf(song.song.id))
+            }
+        }
+    }
+
+    fun addSongToPlaylist(playlist: Playlist, mediaItem: MediaItem) {
+        val mediaMetadata = mediaItem.metadata ?: return
+        viewModelScope.launch {
+            database.query {
+                insert(mediaMetadata)
+                addSongToPlaylist(playlist, listOf(mediaMetadata.id))
             }
         }
     }

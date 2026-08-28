@@ -47,30 +47,37 @@ import androidx.compose.ui.unit.dp
 import com.jagr.fridamusic.constants.FastAnimationSpec
 
 private data class FloatingNavigationItem(
-    val route: String,
+    val destination: RootDestination,
     val label: String,
     val icon: ImageVector,
 )
 
+enum class RootDestination(val route: String) {
+    HOME("home"),
+    SEARCH("search"),
+    LIBRARY("library"),
+    ;
+
+    companion object {
+        fun fromRoute(route: String?): RootDestination? =
+            entries.firstOrNull { destination -> destination.route == route }
+    }
+}
+
 @Composable
 fun ModernBottomNav(
-    currentRoute: String,
-    onNavigate: (String) -> Unit,
+    currentRoot: RootDestination,
+    onNavigate: (RootDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val items = remember {
         listOf(
-            FloatingNavigationItem("home", "Inicio", Icons.Rounded.Home),
-            FloatingNavigationItem("search", "Buscar", Icons.Rounded.Search),
-            FloatingNavigationItem("library", "Biblioteca", Icons.Rounded.LibraryMusic),
+            FloatingNavigationItem(RootDestination.HOME, "Inicio", Icons.Rounded.Home),
+            FloatingNavigationItem(RootDestination.SEARCH, "Buscar", Icons.Rounded.Search),
+            FloatingNavigationItem(RootDestination.LIBRARY, "Biblioteca", Icons.Rounded.LibraryMusic),
         )
     }
-    val activeIndex = when {
-        currentRoute == "home" -> 0
-        currentRoute == "search" || currentRoute.startsWith("search_result") -> 1
-        currentRoute == "library" -> 2
-        else -> -1
-    }
+    val activeIndex = items.indexOfFirst { item -> item.destination == currentRoot }
 
     Box(
         modifier = modifier
@@ -96,7 +103,7 @@ fun ModernBottomNav(
                     InteractiveNavigationItem(
                         item = item,
                         isSelected = index == activeIndex,
-                        onClick = { onNavigate(item.route) },
+                        onClick = { onNavigate(item.destination) },
                     )
                 }
             }

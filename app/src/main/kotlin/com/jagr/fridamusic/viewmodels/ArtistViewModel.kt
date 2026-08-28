@@ -18,6 +18,7 @@ import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.HideYoutubeShortsKey
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.ArtistEntity
 import com.jagr.fridamusic.extensions.filterExplicit
 import com.jagr.fridamusic.extensions.filterExplicitAlbums
 import com.jagr.fridamusic.utils.dataStore
@@ -26,8 +27,11 @@ import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -42,7 +46,7 @@ import kotlinx.coroutines.flow.StateFlow
 @HiltViewModel
 class ArtistViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    database: MusicDatabase,
+    private val database: MusicDatabase,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
     val artistId = savedStateHandle.get<String>("artistId")!!
@@ -55,6 +59,8 @@ class ArtistViewModel @Inject constructor(
 
     private val _artistVideoSong = MutableStateFlow<com.music.innertube.models.SongItem?>(null)
     val artistVideoSong: StateFlow<com.music.innertube.models.SongItem?> = _artistVideoSong
+    private val _isBookmarkUpdating = MutableStateFlow(false)
+    val isBookmarkUpdating = _isBookmarkUpdating.asStateFlow()
     
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -95,6 +101,9 @@ class ArtistViewModel @Inject constructor(
         viewModelScope.launch {
             isLoadingRemote = true
             try {
+                val currentArtist = database.artist(artistId).first()
+                if (currentArtist?.artist?.isLocal == true) return@launch
+
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
                 val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
@@ -107,6 +116,28 @@ class ArtistViewModel @Inject constructor(
                             .filter { section -> section.items.isNotEmpty() }
 
                         artistPage = page.copy(sections = filteredSections)
+
+                        database.withTransaction {
+                            val current = getArtistById(artistId)
+                            if (current == null) {
+                                insert(
+                                    ArtistEntity(
+                                        id = artistId,
+                                        name = page.artist.title,
+                                        thumbnailUrl = page.artist.thumbnail,
+                                        channelId = page.artist.channelId,
+                                    )
+                                )
+                            } else {
+                                update(
+                                    current.copy(
+                                        name = page.artist.title,
+                                        thumbnailUrl = page.artist.thumbnail ?: current.thumbnailUrl,
+                                        channelId = page.artist.channelId ?: current.channelId,
+                                    )
+                                )
+                            }
+                        }
 
 
                         val topSongsSection = page.sections.find { it.items.firstOrNull() is com.music.innertube.models.SongItem }
@@ -128,6 +159,38 @@ class ArtistViewModel @Inject constructor(
                     }
             } finally {
                 isLoadingRemote = false
+            }
+        }
+    }
+
+    fun toggleFollow() {
+        if (_isBookmarkUpdating.value) return
+        _isBookmarkUpdating.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                database.withTransaction {
+                    val current = getArtistById(artistId)
+                    if (current != null) {
+                        update(current.localToggleLike())
+                    } else {
+                        val remoteArtist = artistPage?.artist ?: return@withTransaction
+                        insert(
+                            ArtistEntity(
+                                id = artistId,
+                                name = remoteArtist.title,
+                                thumbnailUrl = remoteArtist.thumbnail,
+                                channelId = remoteArtist.channelId,
+                            ).localToggleLike()
+                        )
+                        getArtistById(artistId)
+                            ?.takeIf { it.bookmarkedAt == null }
+                            ?.let { update(it.localToggleLike()) }
+                    }
+                }
+            } catch (error: Exception) {
+                reportException(error)
+            } finally {
+                _isBookmarkUpdating.value = false
             }
         }
     }
