@@ -76,6 +76,14 @@ data class LocalCollectionActionContext(
     val onOpen: () -> Unit,
 )
 
+internal suspend fun resolveRemoteArtistPage(candidateIds: List<String?>) =
+    candidateIds
+        .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+        .distinct()
+        .firstNotNullOfOrNull { artistId ->
+            YouTube.artist(artistId).getOrNull()
+        }
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.universalMediaClickable(
@@ -319,13 +327,7 @@ private fun UniversalArtistActionsSheet(
             }
 
             val resolvedPage = if (initialEndpoint == null) {
-                listOfNotNull(artist.id, artist.channelId)
-                    .map(String::trim)
-                    .filter(String::isNotEmpty)
-                    .distinct()
-                    .firstNotNullOfOrNull { artistId ->
-                        YouTube.artist(artistId).getOrNull()
-                    }
+                resolveRemoteArtistPage(listOf(artist.id, artist.channelId))
             } else null
             val endpoint = initialEndpoint ?: resolvedPage?.artist?.let {
                 if (shuffle) {

@@ -447,14 +447,19 @@ object YouTube {
 
     suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatching {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
-        val sectionContent = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-            ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-        
-        val gridRenderer = sectionContent?.gridRenderer
-        val musicCarouselShelfRenderer = sectionContent?.musicCarouselShelfRenderer
-        val musicPlaylistShelfRenderer = sectionContent?.musicPlaylistShelfRenderer
-        val musicShelfRenderer = sectionContent?.musicShelfRenderer
-        
+        val sectionContents = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+        val gridRenderer = sectionContents.firstNotNullOfOrNull { content ->
+            content.gridRenderer
+                ?: content.itemSectionRenderer?.contents.orEmpty().firstNotNullOfOrNull { it.gridRenderer }
+        }
+        val musicCarouselShelfRenderer = sectionContents.firstNotNullOfOrNull { it.musicCarouselShelfRenderer }
+        val musicPlaylistShelfRenderer = sectionContents.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
+        val musicShelfRenderer = sectionContents.firstNotNullOfOrNull { content ->
+            content.musicShelfRenderer
+                ?: content.itemSectionRenderer?.contents.orEmpty().firstNotNullOfOrNull { it.musicShelfRenderer }
+        }
+
         when {
             gridRenderer != null -> {
                 ArtistItemsPage(
@@ -480,24 +485,19 @@ object YouTube {
                     continuation = null
                 )
             }
-            musicShelfRenderer != null -> {
-                ArtistItemsPage(
-                    title = musicShelfRenderer.title?.runs?.firstOrNull()?.text 
-                        ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text 
-                        ?: "",
-                    items = musicShelfRenderer.contents?.getItems()?.mapNotNull {
-                        ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                    } ?: emptyList(),
-                    continuation = musicShelfRenderer.continuations?.getContinuation()
-                )
-            }
             else -> {
+                val shelfContents = musicPlaylistShelfRenderer?.contents
+                    ?: musicShelfRenderer?.contents.orEmpty()
                 ArtistItemsPage(
-                    title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text ?: "",
-                    items = musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
+                    title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                        ?: musicShelfRenderer?.title?.runs?.firstOrNull()?.text
+                        ?: "",
+                    items = shelfContents.getItems().mapNotNull {
                         ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                    } ?: emptyList(),
-                    continuation = musicPlaylistShelfRenderer?.contents?.getContinuation()
+                    },
+                    continuation = shelfContents.getContinuation()
+                        ?: musicPlaylistShelfRenderer?.continuations?.getContinuation()
+                        ?: musicShelfRenderer?.continuations?.getContinuation()
                 )
             }
         }
@@ -898,11 +898,28 @@ object YouTube {
             }
 
             content.itemSectionRenderer != null -> {
+                val nestedContents = content.itemSectionRenderer.contents.orEmpty()
                 BrowseResult.Item(
-                    title = null,
-                    items = content.itemSectionRenderer.contents.orEmpty()
-                        .mapNotNull { it.musicResponsiveListItemRenderer }
-                        .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer),
+                    title = nestedContents.firstNotNullOfOrNull { nested ->
+                        nested.gridRenderer?.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                            ?: nested.musicShelfRenderer?.title?.runs?.firstOrNull()?.text
+                    },
+                    items = nestedContents.flatMap { nested ->
+                        buildList {
+                            nested.musicResponsiveListItemRenderer
+                                ?.let(RelatedPage.Companion::fromMusicResponsiveListItemRenderer)
+                                ?.let(::add)
+                            nested.gridRenderer?.items.orEmpty()
+                                .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
+                                .mapNotNullTo(this, ::fromBrowseMusicTwoRowItemRenderer)
+                            nested.musicShelfRenderer?.contents.orEmpty()
+                                .getItems()
+                                .mapNotNullTo(
+                                    this,
+                                    RelatedPage.Companion::fromMusicResponsiveListItemRenderer,
+                                )
+                        }
+                    },
                 )
             }
 
@@ -962,8 +979,15 @@ object YouTube {
         sectionListRenderer: SectionListRenderer?,
     ): String? = sectionListRenderer?.contents.orEmpty().firstNotNullOfOrNull { content ->
         content.gridRenderer?.continuations?.getContinuation()
+            ?: content.musicShelfRenderer?.contents?.getContinuation()
             ?: content.musicShelfRenderer?.continuations?.getContinuation()
+            ?: content.musicPlaylistShelfRenderer?.contents?.getContinuation()
             ?: content.musicPlaylistShelfRenderer?.continuations?.getContinuation()
+            ?: content.itemSectionRenderer?.contents.orEmpty().firstNotNullOfOrNull { nested ->
+                nested.gridRenderer?.continuations?.getContinuation()
+                    ?: nested.musicShelfRenderer?.contents?.getContinuation()
+                    ?: nested.musicShelfRenderer?.continuations?.getContinuation()
+            }
     } ?: sectionListRenderer?.continuations?.getContinuation()
 
     suspend fun browse(browseId: String, params: String?): Result<BrowseResult> = runCatching {

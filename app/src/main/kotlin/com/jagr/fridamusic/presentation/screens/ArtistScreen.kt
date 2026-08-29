@@ -1,5 +1,10 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +19,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,30 +46,38 @@ import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.HomeSectionHeader
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.components.universalMediaClickable
+import com.jagr.fridamusic.presentation.components.resolveRemoteArtistPage
+import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.presentation.playYTItem
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.ArtistViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.BrowseEndpoint
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
+import kotlinx.coroutines.launch
 
 @Composable
 fun ArtistScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onRemoteItemClick: (YTItem) -> Unit,
+    onBrowseClick: (BrowseEndpoint, String, Int?, Boolean) -> Unit,
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
+    val coroutineScope = rememberCoroutineScope()
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
@@ -71,6 +89,10 @@ fun ArtistScreen(
     val artistThumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
     val subscriberCount = artistPage?.subscriberCountText
     val description = artistPage?.description
+    val artistLink = resolveArtistShareLink(
+        remoteArtist = artistPage?.artist,
+        fallbackChannelId = libraryArtist?.artist?.channelId,
+    )
 
 
     val remoteSections = artistPage?.sections ?: emptyList()
@@ -84,6 +106,11 @@ fun ArtistScreen(
     val isLoadingRemote = viewModel.isLoadingRemote
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
+    var isResolvingRadio by remember { mutableStateOf(false) }
+
+    fun showLinkUnavailable() {
+        Toast.makeText(context, R.string.artist_link_unavailable, Toast.LENGTH_SHORT).show()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -127,10 +154,55 @@ fun ArtistScreen(
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = stringResource(R.string.back),
-                            tint = MaterialTheme.colorScheme.onBackground,
+                            tint = Color.White,
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = {
+                            val link = artistLink
+                            if (link == null) {
+                                showLinkUnavailable()
+                            } else {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText(artistName, link)
+                                )
+                                Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Link,
+                            contentDescription = stringResource(R.string.copy_link),
+                            tint = Color.White,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val link = artistLink
+                            if (link == null) {
+                                showLinkUnavailable()
+                            } else {
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, link)
+                                }
+                                runCatching {
+                                    context.startActivity(
+                                        Intent.createChooser(intent, context.getString(R.string.share))
+                                    )
+                                }.onFailure { showLinkUnavailable() }
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = stringResource(R.string.share),
+                            tint = Color.White,
+                        )
+                    }
                     AnimatedLibraryHeartButton(
                         isSaved = libraryArtist?.artist?.bookmarkedAt != null,
                         enabled = !isBookmarkUpdating && (libraryArtist != null || artistPage != null),
@@ -181,27 +253,98 @@ fun ArtistScreen(
 
                     if (remoteSongs.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             Button(
                                 onClick = { playerConnection?.playYTItem(remoteSongs.first()) },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
                             ) {
-                                Text(stringResource(R.string.play))
+                                Icon(
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.play),
+                                    maxLines = 1,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    val connection = playerConnection
+                                    if (connection == null || isResolvingRadio) return@OutlinedButton
+
+                                    val immediateEndpoint = artistPage?.artist?.radioEndpoint
+                                    if (immediateEndpoint != null) {
+                                        connection.playQueue(YouTubeQueue(immediateEndpoint))
+                                    } else {
+                                        coroutineScope.launch {
+                                            isResolvingRadio = true
+                                            try {
+                                                val resolvedPage = resolveRemoteArtistPage(
+                                                    listOf(
+                                                        artistPage?.artist?.id,
+                                                        artistPage?.artist?.channelId,
+                                                        viewModel.artistId,
+                                                        libraryArtist?.artist?.channelId,
+                                                    )
+                                                )
+                                                val radioEndpoint = resolvedPage?.artist?.radioEndpoint
+                                                if (radioEndpoint == null) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        R.string.recommendation_unavailable,
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                                } else {
+                                                    connection.playQueue(YouTubeQueue(radioEndpoint))
+                                                }
+                                            } finally {
+                                                isResolvingRadio = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isResolvingRadio,
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Radio,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.radio),
+                                    maxLines = 1,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
                             }
                             OutlinedButton(
                                 onClick = {
                                     remoteSongs.shuffled().firstOrNull()
                                         ?.let { playerConnection?.playYTItem(it) }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
                             ) {
                                 Icon(
                                     Icons.Rounded.Shuffle,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(stringResource(R.string.shuffle))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.shuffle),
+                                    maxLines = 1,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
                             }
                         }
                     }
@@ -229,12 +372,19 @@ fun ArtistScreen(
 
                 if (section.items.isNotEmpty()) {
                     item(key = "section_title_${sectionIndex}_${section.title}") {
-                        Text(
-                            text = section.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                        HomeSectionHeader(
+                            title = section.title,
+                            onSeeAll = section.moreEndpoint?.let { endpoint ->
+                                {
+                                    onBrowseClick(
+                                        endpoint,
+                                        section.title,
+                                        if (section.items.all { it is SongItem }) 50 else null,
+                                        true,
+                                    )
+                                }
+                            },
+                            modifier = Modifier.padding(start = 4.dp, end = 8.dp),
                         )
                     }
                 }
@@ -400,6 +550,21 @@ fun ArtistScreen(
             onOpen = { remoteMenuItem?.let(onRemoteItemClick) },
         )
     }
+}
+
+private fun resolveArtistShareLink(
+    remoteArtist: ArtistItem?,
+    fallbackChannelId: String?,
+): String? {
+    remoteArtist?.shareLink
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let { return it }
+
+    val channelId = listOf(remoteArtist?.channelId, fallbackChannelId)
+        .firstNotNullOfOrNull { it?.trim()?.takeIf(String::isNotEmpty) }
+        ?: return null
+    return "https://music.youtube.com/channel/$channelId"
 }
 
 @Composable

@@ -48,6 +48,7 @@ import com.music.innertube.models.YTItem
 @Composable
 fun BrowseScreen(
     requestedTitle: String?,
+    maxItems: Int?,
     onItemClick: (YTItem) -> Unit,
     onPlayItem: (YTItem) -> Unit,
     onBack: () -> Unit,
@@ -61,9 +62,11 @@ fun BrowseScreen(
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
     var menuItem by remember { mutableStateOf<YTItem?>(null) }
-    val items = result?.items.orEmpty()
+    val allItems = result?.items.orEmpty()
         .flatMap { section -> section.items }
         .distinctBy { item -> "${item.javaClass.name}:${item.id}" }
+    val items = maxItems?.takeIf { it > 0 }?.let(allItems::take) ?: allItems
+    val reachedItemLimit = maxItems?.takeIf { it > 0 }?.let { allItems.size >= it } == true
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
@@ -145,7 +148,7 @@ fun BrowseScreen(
                         )
                     }
 
-                    result?.continuation?.let { continuation ->
+                    result?.continuation?.takeUnless { reachedItemLimit }?.let { continuation ->
                         item(
                             key = "browse_continuation_$continuation",
                             span = { GridItemSpan(maxLineSpan) },

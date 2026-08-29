@@ -72,9 +72,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -527,6 +529,7 @@ fun SongActionsSheet(
     var subview by remember(context.mediaId) { mutableStateOf(SongActionsSubview.NONE) }
     var duplicatePlaylist by remember(context.mediaId) { mutableStateOf<Playlist?>(null) }
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     val capabilities = resolveSongActionCapabilities(
         context = context,
         availability = SongActionAvailability(
@@ -596,7 +599,13 @@ fun SongActionsSheet(
                     )
                 }
                 actions.onToggleFavorite?.let { toggle ->
-                    FilledTonalIconButton(onClick = toggle, modifier = Modifier.size(48.dp)) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            toggle()
+                        },
+                        modifier = Modifier.size(48.dp),
+                    ) {
                         val favorite = actions.localSong?.song?.liked == true
                         Icon(
                             imageVector = if (favorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,

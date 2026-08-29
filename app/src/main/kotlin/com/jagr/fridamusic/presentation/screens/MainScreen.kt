@@ -256,7 +256,7 @@ fun MainScreen(
                 )
             }
             composable(
-                route = "browse/{browseId}?params={params}&title={title}",
+                route = "browse/{browseId}?params={params}&title={title}&maxItems={maxItems}&artistItems={artistItems}",
                 arguments = listOf(
                     navArgument("browseId") { type = NavType.StringType },
                     navArgument("params") {
@@ -269,10 +269,19 @@ fun MainScreen(
                         nullable = true
                         defaultValue = null
                     },
+                    navArgument("maxItems") {
+                        type = NavType.IntType
+                        defaultValue = 0
+                    },
+                    navArgument("artistItems") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    },
                 ),
             ) { entry ->
                 BrowseScreen(
                     requestedTitle = entry.arguments?.getString("title"),
+                    maxItems = entry.arguments?.getInt("maxItems")?.takeIf { it > 0 },
                     onItemClick = { item ->
                         navController.handleYTItemClick(
                             item = item,
@@ -474,6 +483,9 @@ fun MainScreen(
                             },
                         )
                     },
+                    onBrowseClick = { endpoint, title, maxItems, artistItems ->
+                        navController.navigateToBrowse(endpoint, title, maxItems, artistItems)
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -641,6 +653,8 @@ private fun NavHostController.navigateToSearchResult(query: String) {
 private fun NavHostController.navigateToBrowse(
     endpoint: BrowseEndpoint,
     title: String,
+    maxItems: Int? = null,
+    artistItems: Boolean = false,
 ) {
     if (endpoint.browseId.isBlank()) return
 
@@ -651,6 +665,10 @@ private fun NavHostController.navigateToBrowse(
         title.takeIf(String::isNotBlank)?.let { value ->
             add("title=${Uri.encode(value)}")
         }
+        maxItems?.takeIf { it > 0 }?.let { value ->
+            add("maxItems=$value")
+        }
+        if (artistItems) add("artistItems=true")
     }
     val query = queryArguments.takeIf { it.isNotEmpty() }
         ?.joinToString(prefix = "?", separator = "&")

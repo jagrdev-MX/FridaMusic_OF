@@ -177,6 +177,7 @@ fun NowPlayingScreen(
         )
         else -> null
     }
+    val likeHaptic = LocalHapticFeedback.current
     val titleInteractionSource = remember(song.id) { MutableInteractionSource() }
     val artistInteractionSource = remember(song.id) { MutableInteractionSource() }
     var showArtistPicker by remember(song.id) { mutableStateOf(false) }
@@ -477,7 +478,14 @@ fun NowPlayingScreen(
                                 enabled = playerConnection.player.currentMediaItem != null,
                             )
                             Spacer(Modifier.width(12.dp))
-                            NowPlayingRoundButton({ playerConnection.toggleLike() }, if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, stringResource(R.string.action_like))
+                            NowPlayingRoundButton(
+                                onClick = {
+                                    likeHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    playerConnection.toggleLike()
+                                },
+                                icon = if (currentSong?.song?.liked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = stringResource(R.string.action_like),
+                            )
                         }
                     }
 

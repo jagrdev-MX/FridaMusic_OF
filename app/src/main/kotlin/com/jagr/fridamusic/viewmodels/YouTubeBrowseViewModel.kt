@@ -7,6 +7,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
+import com.music.innertube.models.BrowseEndpoint
+import com.music.innertube.models.YTItem
 import com.music.innertube.pages.BrowseResult
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
@@ -31,6 +33,7 @@ constructor(
 ) : ViewModel() {
     private val browseId = savedStateHandle.get<String>("browseId")!!
     private val params = savedStateHandle.get<String>("params")
+    private val artistItems = savedStateHandle.get<Boolean>("artistItems") ?: false
 
     val result = MutableStateFlow<BrowseResult?>(null)
     val isLoading = MutableStateFlow(true)
@@ -41,9 +44,7 @@ constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                result.value = YouTube.browse(browseId, params)
-                    .getOrThrow()
-                    .applyContentFilters()
+                result.value = loadInitialPage()
             } catch (error: Throwable) {
                 loadFailed.value = true
                 reportException(error)
@@ -61,14 +62,28 @@ constructor(
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             isLoadingMore.value = true
             try {
-                val next = YouTube.browseContinuation(continuation)
-                    .getOrThrow()
-                    .applyContentFilters()
                 val current = result.value ?: return@launch
-                result.value = current.copy(
-                    items = current.items + next.items,
-                    continuation = next.continuation.takeUnless { it == continuation },
-                )
+                if (artistItems) {
+                    val next = YouTube.artistItemsContinuation(continuation).getOrThrow()
+                    val filteredNextItems = next.items.applyContentFilters()
+                    val firstSection = current.items.firstOrNull()
+                    result.value = current.copy(
+                        items = if (firstSection == null) {
+                            listOf(BrowseResult.Item(null, filteredNextItems))
+                        } else {
+                            listOf(firstSection.copy(items = firstSection.items + filteredNextItems))
+                        },
+                        continuation = next.continuation.takeUnless { it == continuation },
+                    )
+                } else {
+                    val next = YouTube.browseContinuation(continuation)
+                        .getOrThrow()
+                        .applyContentFilters()
+                    result.value = current.copy(
+                        items = current.items + next.items,
+                        continuation = next.continuation.takeUnless { it == continuation },
+                    )
+                }
             } catch (error: Throwable) {
                 reportException(error)
                 result.value = result.value?.copy(continuation = null)
@@ -85,5 +100,31 @@ constructor(
         return filterExplicit(hideExplicit)
             .filterVideoSongs(hideVideoSongs)
             .filterYoutubeShorts(hideYoutubeShorts)
+    }
+
+    private suspend fun List<YTItem>.applyContentFilters(): List<YTItem> =
+        BrowseResult(null, listOf(BrowseResult.Item(null, this)))
+            .applyContentFilters()
+            .items
+            .flatMap { it.items }
+
+    private suspend fun loadInitialPage(): BrowseResult {
+        if (!artistItems) {
+            return YouTube.browse(browseId, params)
+                .getOrThrow()
+                .applyContentFilters()
+        }
+
+        val page = YouTube.artistItems(
+            BrowseEndpoint(
+                browseId = browseId,
+                params = params,
+            ),
+        ).getOrThrow()
+        return BrowseResult(
+            title = page.title,
+            items = listOf(BrowseResult.Item(page.title, page.items)).filter { it.items.isNotEmpty() },
+            continuation = page.continuation,
+        ).applyContentFilters()
     }
 }

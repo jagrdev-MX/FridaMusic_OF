@@ -792,6 +792,7 @@
     <string name="dislike_all">No me gusta a todo</string>
     <string name="sort_by_last_updated">Fecha de actualización</string>
     <string name="link_copied">Enlace copiado al portapapeles</string>
+    <string name="artist_link_unavailable">No se pudo obtener el enlace del artista</string>
     <string name="starting_radio">Iniciando radio</string>
     <string name="now_playing">Reproduciendo ahora</string>
     <string name="lyrics">Letras</string>

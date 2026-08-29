@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,7 @@ fun AnimatedLibraryHeartButton(
     contentDescription: String,
     onClick: () -> Unit,
 ) {
+    val haptic = LocalHapticFeedback.current
     var previousSaved by remember { mutableStateOf<Boolean?>(null) }
     val scale = remember { Animatable(1f) }
     val rotation = remember { Animatable(0f) }
@@ -86,7 +89,10 @@ fun AnimatedLibraryHeartButton(
     }
 
     IconButton(
-        onClick = onClick,
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            onClick()
+        },
         enabled = enabled,
         modifier = Modifier.semantics { this.contentDescription = contentDescription },
     ) {
