@@ -177,6 +177,7 @@ fun BrowseScreen(
 internal fun YTItem.playAction(onPlayItem: (YTItem) -> Unit): (() -> Unit)? = when (this) {
     is SongItem -> ({ onPlayItem(this) })
     is AlbumItem -> playlistId.takeIf(String::isNotBlank)?.let { { onPlayItem(this) } }
-    is ArtistItem,
-    is PlaylistItem -> null
+    is PlaylistItem -> (playEndpoint ?: radioEndpoint ?: shuffleEndpoint)
+        ?.let { { onPlayItem(this) } }
+    is ArtistItem -> null
 }

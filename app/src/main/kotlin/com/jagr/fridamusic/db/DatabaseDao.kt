@@ -1304,6 +1304,69 @@ interface DatabaseDao {
         }
     }
 
+    @Transaction
+    fun prependSongToPlaylist(
+        playlistId: String,
+        songId: String,
+    ) {
+        val orderedSongs = playlistSongMapsByPlaylist(playlistId)
+        val existingEntries = orderedSongs.filter { it.songId == songId }
+        val firstExistingEntry = existingEntries.firstOrNull()
+
+        if (firstExistingEntry == null) {
+            orderedSongs.forEachIndexed { index, map ->
+                update(map.copy(position = index + 1))
+            }
+            insert(
+                PlaylistSongMap(
+                    playlistId = playlistId,
+                    songId = songId,
+                    position = 0,
+                ),
+            )
+            return
+        }
+
+        // Re-adding an existing song moves its single entry to the front.
+        // Remove stale duplicates left by older versions before normalizing order.
+        existingEntries.drop(1).forEach(::delete)
+        update(firstExistingEntry.copy(position = 0))
+        orderedSongs
+            .filter { it.id != firstExistingEntry.id && it.songId != songId }
+            .forEachIndexed { index, map ->
+                update(map.copy(position = index + 1))
+            }
+    }
+
+    @Query(
+        "SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position, id",
+    )
+    fun playlistSongMapsByPlaylist(playlistId: String): List<PlaylistSongMap>
+
+    @Query("SELECT * FROM playlist_song_map WHERE id = :entryId LIMIT 1")
+    fun playlistSongMapById(entryId: Int): PlaylistSongMap?
+
+    @Query(
+        "UPDATE playlist_song_map SET position = position - 1 " +
+            "WHERE playlistId = :playlistId AND position > :position",
+    )
+    fun shiftPlaylistSongsAfterRemoval(playlistId: String, position: Int)
+
+    @Transaction
+    fun removeSongFromPlaylist(
+        playlistId: String,
+        songId: String,
+        entryId: Int? = null,
+    ) {
+        val map = entryId
+            ?.let { playlistSongMapById(it) }
+            ?.takeIf { it.playlistId == playlistId && it.songId == songId }
+            ?: playlistSongMapsByPlaylist(playlistId).firstOrNull { it.songId == songId }
+            ?: return
+        delete(map)
+        shiftPlaylistSongsAfterRemoval(playlistId, map.position)
+    }
+
     fun downloadedSongs(
         sortType: SongSortType,
         descending: Boolean

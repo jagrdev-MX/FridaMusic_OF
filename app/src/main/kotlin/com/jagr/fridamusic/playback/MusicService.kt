@@ -583,7 +583,9 @@ class MusicService :
 
         audioQuality = dataStore.get(AudioQualityKey).toEnum(com.jagr.fridamusic.constants.AudioQuality.OPUS)
         ipVersion = dataStore.get(IpVersionKey).toEnum(IpVersion.AUTO)
-        playerVolume = MutableStateFlow(dataStore.get(PlayerVolumeKey, 1f).coerceIn(0f, 1f))
+        playerVolume = MutableStateFlow(
+            dataStore.get(PlayerVolumeKey, DEFAULT_PLAYER_VOLUME).audibleVolumeOrDefault(),
+        )
 
 
         initializeCast()
@@ -876,7 +878,9 @@ class MusicService :
 
 
 
-                        playerVolume.value = playerState.volume
+                        // player.volume can be zero temporarily while muted, ducking or fading.
+                        // Restore the stable application gain instead of reviving a silent session.
+                        playerVolume.value = playerState.volume.audibleVolumeOrDefault()
 
 
                         if (playerState.currentMediaItemIndex < player.mediaItemCount) {
@@ -3151,7 +3155,8 @@ class MusicService :
                 playWhenReady = player.playWhenReady,
                 repeatMode = player.repeatMode,
                 shuffleModeEnabled = player.shuffleModeEnabled,
-                volume = player.volume,
+                // Persist the stable gain. player.volume may contain a transient mute/duck/fade.
+                volume = playerVolume.value.audibleVolumeOrDefault(),
                 currentPosition = player.currentPosition,
                 currentMediaItemIndex = player.currentMediaItemIndex,
                 playbackState = player.playbackState
@@ -3529,6 +3534,7 @@ class MusicService :
     }
 
     companion object {
+        private const val DEFAULT_PLAYER_VOLUME = 1f
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"
@@ -3557,6 +3563,11 @@ class MusicService :
         var isRunning = false
             private set
     }
+
+    private fun Float.audibleVolumeOrDefault(): Float =
+        takeIf { it.isFinite() && it > 0f }
+            ?.coerceIn(0f, 1f)
+            ?: DEFAULT_PLAYER_VOLUME
 
     private var preloadJob: kotlinx.coroutines.Job? = null
 

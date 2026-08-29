@@ -132,7 +132,8 @@ fun LocalPlaylistScreen(
         error = null,
         onRetry = {},
     ) {
-        itemsIndexed(songs, key = { index, it -> "${index}_${it.song.id}" }) { _, song ->
+        itemsIndexed(playlistSongs, key = { _, it -> "playlist_song_${it.map.id}" }) { _, playlistSong ->
+            val song = playlistSong.song
             PlaylistSongRow(
                 title = song.song.title,
                 artist = song.artists.joinToString(", ") { it.name },
@@ -141,7 +142,12 @@ fun LocalPlaylistScreen(
                 isCurrent = currentSongId == song.song.id,
                 isPlaying = isPlaying,
                 onClick = { playFromPlaylist(song, songs) },
-                onMoreClick = { menuContext = song.toSongActionContext() },
+                onMoreClick = {
+                    menuContext = song.toSongActionContext(
+                        playlistId = viewModel.playlistId,
+                        playlistEntryId = playlistSong.map.id,
+                    )
+                },
             )
         }
     }
@@ -242,7 +248,14 @@ fun OnlinePlaylistScreen(
                 isCurrent = currentSongId == song.id,
                 isPlaying = isPlaying,
                 onClick = { playerConnection?.playYTItem(song) },
-                onMoreClick = { menuContext = song.toSongActionContext() },
+                onMoreClick = {
+                    menuContext = song.toSongActionContext(
+                        playlistId = cachedPlaylist
+                            ?.takeIf { it.playlist.isEditable }
+                            ?.playlist
+                            ?.id,
+                    )
+                },
             )
         }
 

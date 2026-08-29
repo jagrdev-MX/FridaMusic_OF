@@ -270,11 +270,18 @@ fun PlaylistLibraryListItem(
                     modifier = Modifier.size(25.dp),
                 )
             } else if (isCurrent) {
-                LocalPlayingBars(
-                    active = isPlaying,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(25.dp),
-                )
+                Surface(
+                    onClick = onPlay,
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    LocalPlayingBars(
+                        active = isPlaying,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(7.dp).size(24.dp),
+                    )
+                }
             } else {
                 FilledIconButton(
                     onClick = onPlay,
@@ -361,9 +368,10 @@ fun PlaylistLibraryGridItem(
                     }
                 } else if (isCurrent) {
                     Surface(
+                        onClick = onPlay,
                         modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
                     ) {
                         LocalPlayingBars(
                             active = isPlaying,

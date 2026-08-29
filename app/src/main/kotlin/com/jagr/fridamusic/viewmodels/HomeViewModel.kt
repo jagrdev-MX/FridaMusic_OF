@@ -36,6 +36,7 @@ import com.jagr.fridamusic.db.entities.SpeedDialItem
 import com.jagr.fridamusic.extensions.filterVideoSongs
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.models.SimilarRecommendation
+import com.jagr.fridamusic.localmedia.LocalAudioPreferencesRepository
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
 import com.jagr.fridamusic.utils.reportException
@@ -78,7 +79,8 @@ sealed interface GlobalShuffleSelection {
 class HomeViewModel @Inject constructor(
     @ApplicationContext val context: Context,
     val database: MusicDatabase,
-    val echoBrainEngine: com.jagr.fridamusic.engine.EchoBrainEngine
+    val echoBrainEngine: com.jagr.fridamusic.engine.EchoBrainEngine,
+    localAudioPreferencesRepository: LocalAudioPreferencesRepository,
 ) : ViewModel() {
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
@@ -103,6 +105,30 @@ class HomeViewModel @Inject constructor(
 
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
     val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
+
+    val pinnedItems: StateFlow<List<YTItem>> =
+        combine(
+            database.speedDialDao.getAll(),
+            localAudioPreferencesRepository.pinnedSongIds,
+            database.localSongs(),
+        ) { speedDial, pinnedLocalIds, localSongs ->
+            buildList {
+                addAll(speedDial.map { it.toYTItem() })
+                addAll(
+                    localSongs
+                        .filter { it.id in pinnedLocalIds }
+                        .map { song ->
+                            SongItem(
+                                id = song.id,
+                                title = song.title,
+                                artists = song.artists.map { Artist(name = it.name, id = it.id) },
+                                thumbnail = song.thumbnailUrl.orEmpty(),
+                                explicit = song.song.explicit,
+                            )
+                        },
+                )
+            }.distinctBy { item -> "${item::class.qualifiedName}:${item.id}" }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val speedDialItems: StateFlow<List<YTItem>> =
         combine(
@@ -256,11 +282,7 @@ class HomeViewModel @Inject constructor(
                                 .take(NOTIFICATION_RECOMMENDATIONS_PER_SEED)
                             database.cacheNotificationCandidates(seed.id, freshCandidates)
 
-                            val recommendation = freshCandidates.firstOrNull { rec ->
-                                rec.id != seed.id
-                            }
-
-                            if (recommendation != null) {
+                            freshCandidates.take(4).forEach { recommendation ->
                                 items.add(
                                     DailyDiscoverItem(
                                         seed = seed,
@@ -313,14 +335,19 @@ class HomeViewModel @Inject constructor(
                 val combined = (relatedSongs + forgotten + ytSimilarSongs)
                     .distinctBy { it.id }
                     .shuffled()
-                    .take(20)
+                    .take(HOME_COLLECTION_TARGET_SIZE)
 
-                quickPicks.value = combined.ifEmpty { relatedSongs.shuffled().take(20) }
+                quickPicks.value = combined.ifEmpty {
+                    relatedSongs.shuffled().take(HOME_COLLECTION_TARGET_SIZE)
+                }
             }
             QuickPicks.LAST_LISTEN -> {
                 val song = database.events().first().firstOrNull()?.song
                 if (song != null && database.hasRelatedSongs(song.id)) {
-                    quickPicks.value = database.getRelatedSongs(song.id).first().filterVideoSongs(hideVideoSongs).shuffled().take(20)
+                    quickPicks.value = database.getRelatedSongs(song.id).first()
+                        .filterVideoSongs(hideVideoSongs)
+                        .shuffled()
+                        .take(HOME_COLLECTION_TARGET_SIZE)
                 }
             }
         }
@@ -378,13 +405,19 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        val uniqueCandidates = candidatePlaylists.distinctBy { it.id }.shuffled().take(5)
+        val uniqueCandidates = candidatePlaylists.distinctBy { it.id }
+            .shuffled()
+            .take(HOME_COMMUNITY_PLAYLIST_LIMIT)
 
         val playlists = java.util.Collections.synchronizedList(mutableListOf<CommunityPlaylistItem>())
 
         kotlinx.coroutines.coroutineScope {
-            uniqueCandidates.map { playlist ->
+            uniqueCandidates.mapIndexed { index, playlist ->
                 launch(Dispatchers.IO) {
+                    if (index >= HOME_COMMUNITY_VALIDATION_LIMIT) {
+                        playlists.add(CommunityPlaylistItem(playlist, emptyList()))
+                        return@launch
+                    }
                     YouTube.playlist(playlist.id).onSuccess { page ->
                         val songs = page.songs.take(10)
                         if (songs.isNotEmpty()) {
@@ -443,15 +476,15 @@ class HomeViewModel @Inject constructor(
         getQuickPicks()
 
         forgottenFavorites.value = database.forgottenFavorites().first()
-            .filterVideoSongs(hideVideoSongs).shuffled().take(20)
+            .filterVideoSongs(hideVideoSongs).shuffled().take(HOME_COLLECTION_TARGET_SIZE)
 
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
-        val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5).first()
-            .filterVideoSongs(hideVideoSongs).shuffled().take(10)
-        val keepListeningAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 8, offset = 2).first()
-            .filter { it.album.thumbnailUrl != null }.shuffled().take(5)
-        val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp).first()
-            .filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }.shuffled().take(5)
+        val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 20, offset = 5).first()
+            .filterVideoSongs(hideVideoSongs).shuffled().take(15)
+        val keepListeningAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 12, offset = 2).first()
+            .filter { it.album.thumbnailUrl != null }.shuffled().take(8)
+        val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first()
+            .filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }.shuffled().take(7)
         keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
 
         allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
@@ -485,7 +518,7 @@ class HomeViewModel @Inject constructor(
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
                                 .shuffled()
-                                .take(12)
+                                .take(HOME_SIMILAR_ITEMS_LIMIT)
                                 .ifEmpty { return@async null }
                         )
                     }
@@ -545,7 +578,7 @@ class HomeViewModel @Inject constructor(
                                 .filterExplicit(hideExplicit)
                                 .filterVideoSongs(hideVideoSongs)
                                 .shuffled()
-                                .take(10)
+                                .take(HOME_SIMILAR_ITEMS_LIMIT)
                                 .ifEmpty { return@async null }
                         )
                     }
@@ -678,6 +711,10 @@ class HomeViewModel @Inject constructor(
 
     private companion object {
         const val GLOBAL_SHUFFLE_QUEUE_LIMIT = 200
+        const val HOME_COLLECTION_TARGET_SIZE = 30
+        const val HOME_COMMUNITY_PLAYLIST_LIMIT = 15
+        const val HOME_COMMUNITY_VALIDATION_LIMIT = 5
+        const val HOME_SIMILAR_ITEMS_LIMIT = 20
         const val NOTIFICATION_RECOMMENDATIONS_PER_SEED = 20
         const val NOTIFICATION_ITEMS_PER_REMOTE_SOURCE = 30
         const val NOTIFICATION_HOME_CACHE_LIMIT = 80

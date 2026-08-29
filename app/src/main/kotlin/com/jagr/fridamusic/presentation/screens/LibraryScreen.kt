@@ -1265,7 +1265,10 @@ private fun PlaylistsTab(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuPlaylist = playlist
                         },
-                        onPlay = { playPlaylist(playlist) },
+                        onPlay = {
+                            if (isCurrent) playerConnection?.togglePlayPause()
+                            else playPlaylist(playlist)
+                        },
                         onMoreClick = { menuPlaylist = playlist },
                     )
                 }
@@ -1313,7 +1316,10 @@ private fun PlaylistsTab(
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             menuPlaylist = playlist
                         },
-                        onPlay = { playPlaylist(playlist) },
+                        onPlay = {
+                            if (isCurrent) playerConnection?.togglePlayPause()
+                            else playPlaylist(playlist)
+                        },
                         onMoreClick = { menuPlaylist = playlist },
                     )
                 }

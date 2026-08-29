@@ -95,6 +95,8 @@ data class SongActionContext(
     val durationMs: Long? = null,
     val mediaItem: MediaItem,
     val databaseSong: Song? = null,
+    val playlistId: String? = null,
+    val playlistEntryId: Int? = null,
 ) {
     fun withLocalMetadata(localMetadata: LocalSongSortMetadata?): SongActionContext {
         if (localMetadata == null || source != SongActionSource.LOCAL_FILE) return this
@@ -246,6 +248,8 @@ object FridaAppLinks {
 fun Song.toSongActionContext(
     localMetadata: LocalSongSortMetadata? = null,
     albumArtists: List<SongNavigationTarget> = emptyList(),
+    playlistId: String? = null,
+    playlistEntryId: Int? = null,
 ): SongActionContext {
     val item = toMediaItem()
     val isPhysicalLocal = song.isLocal && song.id.isLocalMediaId()
@@ -292,11 +296,13 @@ fun Song.toSongActionContext(
         durationMs = song.duration.takeIf { it >= 0 }?.times(1_000L),
         mediaItem = item,
         databaseSong = this,
+        playlistId = playlistId,
+        playlistEntryId = playlistEntryId,
     )
     return base.withLocalMetadata(localMetadata)
 }
 
-fun SongItem.toSongActionContext(): SongActionContext {
+fun SongItem.toSongActionContext(playlistId: String? = null): SongActionContext {
     val item = toMediaItem()
     return SongActionContext(
         mediaId = id,
@@ -308,6 +314,7 @@ fun SongItem.toSongActionContext(): SongActionContext {
         remoteIds = SongRemoteIds(youtubeVideoId = id.takeIf(::isYouTubeVideoId)),
         durationMs = duration?.takeIf { it >= 0 }?.times(1_000L),
         mediaItem = item,
+        playlistId = playlistId,
     )
 }
 

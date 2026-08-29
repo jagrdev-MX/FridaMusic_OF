@@ -20,13 +20,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +43,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.utils.isLocalMediaId
 import com.jagr.fridamusic.utils.resize
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
@@ -139,10 +144,15 @@ fun YTContentCard(
     onClick: () -> Unit,
     onPlay: (() -> Unit)? = null,
     onMore: ((YTItem) -> Unit)? = null,
+    isLocal: Boolean = false,
     thumbnailWidth: Int = 480,
     fillMaxWidth: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val currentQueueTitle = LocalPlayerConnection.current
+        ?.queueTitle
+        ?.collectAsState()
+        ?.value
     val type = when (item) {
         is SongItem -> HomeContentType.SONG
         is AlbumItem -> HomeContentType.ALBUM
@@ -159,8 +169,8 @@ fun YTContentCard(
     val isActive = when (item) {
         is SongItem -> item.id == currentMediaId
         is AlbumItem -> item.browseId == currentAlbumId
-        is ArtistItem,
-        is PlaylistItem -> false
+        is PlaylistItem -> currentMediaId != null && item.title == currentQueueTitle
+        is ArtistItem -> false
     }
 
     HomeMediaCard(
@@ -173,6 +183,7 @@ fun YTContentCard(
         onClick = onClick,
         onPlay = onPlay,
         onMoreClick = onMore?.let { showMenu -> { showMenu(item) } },
+        isLocal = isLocal || item.id.isLocalMediaId(),
         fillMaxWidth = fillMaxWidth,
         modifier = modifier,
     )
@@ -189,9 +200,16 @@ fun HomeMediaCard(
     onClick: () -> Unit,
     onPlay: (() -> Unit)? = null,
     onMoreClick: (() -> Unit)? = null,
+    isLocal: Boolean = false,
     fillMaxWidth: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val playerConnection = LocalPlayerConnection.current
+    val dedicatedAction = if (isActive && playerConnection != null) {
+        playerConnection::togglePlayPause
+    } else {
+        onPlay
+    }
     val cardModifier = if (fillMaxWidth) {
         modifier.fillMaxWidth()
     } else {
@@ -242,16 +260,47 @@ fun HomeMediaCard(
                 )
             }
 
+            if (isLocal) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(7.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Smartphone,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.filter_local),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+
             when (type) {
                 HomeContentType.SONG -> {
                     if (isActive) {
                         ActiveContentIndicator(
                             isPlaying = isPlaying,
+                            onClick = dedicatedAction,
                             modifier = Modifier.align(Alignment.Center),
                         )
-                    } else if (onPlay != null) {
-                        ArtworkPlayButton(
-                            onClick = onPlay,
+                    } else if (dedicatedAction != null) {
+                        ArtworkActionButton(
+                            icon = Icons.Rounded.PlayArrow,
+                            contentDescription = stringResource(R.string.play),
+                            onClick = dedicatedAction,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     }
@@ -261,13 +310,16 @@ fun HomeMediaCard(
                     if (isActive) {
                         ActiveContentIndicator(
                             isPlaying = isPlaying,
+                            onClick = dedicatedAction,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(7.dp),
                         )
-                    } else if (onPlay != null) {
-                        ArtworkPlayButton(
-                            onClick = onPlay,
+                    } else if (dedicatedAction != null) {
+                        ArtworkActionButton(
+                            icon = Icons.Rounded.Album,
+                            contentDescription = stringResource(R.string.play),
+                            onClick = dedicatedAction,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(7.dp),
@@ -276,20 +328,22 @@ fun HomeMediaCard(
                 }
 
                 HomeContentType.PLAYLIST -> {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.58f),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.QueueMusic,
-                            contentDescription = null,
-                            tint = Color.White,
+                    if (isActive) {
+                        ActiveContentIndicator(
+                            isPlaying = isPlaying,
+                            onClick = dedicatedAction,
                             modifier = Modifier
-                                .padding(8.dp)
-                                .size(19.dp),
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
+                        )
+                    } else {
+                        ArtworkActionButton(
+                            icon = Icons.Rounded.QueueMusic,
+                            contentDescription = stringResource(R.string.playlists),
+                            onClick = dedicatedAction,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp),
                         )
                     }
                 }
@@ -324,22 +378,24 @@ fun HomeMediaCard(
 }
 
 @Composable
-private fun ArtworkPlayButton(
-    onClick: () -> Unit,
+private fun ArtworkActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = Color.Black.copy(alpha = 0.68f),
-        contentColor = Color.White,
+        color = Color.Black.copy(alpha = 0.38f),
+        contentColor = MaterialTheme.colorScheme.primary,
         shape = CircleShape,
         modifier = modifier
             .size(48.dp)
-            .clickable(onClick = onClick),
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
-                imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = stringResource(R.string.play),
+                imageVector = icon,
+                contentDescription = contentDescription,
                 modifier = Modifier.size(26.dp),
             )
         }
@@ -349,18 +405,21 @@ private fun ArtworkPlayButton(
 @Composable
 private fun ActiveContentIndicator(
     isPlaying: Boolean,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
+        color = Color.Black.copy(alpha = 0.38f),
+        contentColor = Color.White,
         shape = CircleShape,
-        modifier = modifier.size(44.dp),
+        modifier = modifier
+            .size(44.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Box(contentAlignment = Alignment.Center) {
             LocalPlayingBars(
                 active = isPlaying,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(25.dp),
             )
         }

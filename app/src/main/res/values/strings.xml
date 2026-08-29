@@ -211,6 +211,7 @@
     <string name="add_anyway">Add anyway</string>
     <string name="duplicates_description_single">The song is already in your playlist</string>
     <string name="duplicates_description_multiple">%d songs are already in your playlist</string>
+    <string name="duplicate_song_readd_description">This song is already in "%1$s". Add it again at the beginning and keep the existing copy?</string>
 
     <!-- Noun -->
     <plurals name="n_song">
@@ -1450,6 +1451,7 @@
     <string name="discord_advanced_mode">Advanced mode</string>
     <string name="discord_advanced_mode_description">Show additional customization options for Rich Presence</string>
     <string name="speed_dial">Speed dial</string>
+    <string name="pinned_items">Pinned</string>
     <string name="pin_to_speed_dial">Pin to Speed dial</string>
     <string name="unpin_from_speed_dial">Unpin from Speed dial</string>
     <string name="pin_playlist">Pin playlist</string>

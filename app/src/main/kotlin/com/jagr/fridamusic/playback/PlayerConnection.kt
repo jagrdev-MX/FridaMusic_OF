@@ -88,8 +88,11 @@ class PlayerConnection(
         
         val initialState = try {
             val initialPlayer = getPlayerSafe()
-            Triple(initialPlayer.playbackState, initialPlayer.playWhenReady, 
-                   initialPlayer.playWhenReady && initialPlayer.playbackState != STATE_ENDED)
+            Triple(
+                initialPlayer.playbackState,
+                initialPlayer.playWhenReady,
+                initialPlayer.playWhenReady && initialPlayer.playbackState == Player.STATE_READY,
+            )
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error during PlayerConnection initialization, using defaults")
             Triple(Player.STATE_IDLE, false, false)
@@ -98,7 +101,7 @@ class PlayerConnection(
         playbackState = MutableStateFlow(initialState.first)
         playWhenReady = MutableStateFlow(initialState.second)
         isPlaying = combine(playbackState, playWhenReady) { state, ready ->
-            ready && state != STATE_ENDED
+            ready && state == Player.STATE_READY
         }.stateIn(
             scope,
             SharingStarted.Lazily,

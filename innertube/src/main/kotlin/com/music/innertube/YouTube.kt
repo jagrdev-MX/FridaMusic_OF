@@ -862,7 +862,7 @@ object YouTube {
                     title = content.gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text,
                     items = content.gridRenderer.items
                         .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-                        .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer),
+                        .mapNotNull(::fromBrowseMusicTwoRowItemRenderer),
                 )
             }
 
@@ -870,8 +870,12 @@ object YouTube {
                 BrowseResult.Item(
                     title = content.musicCarouselShelfRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
                     items = content.musicCarouselShelfRenderer.contents
-                        .mapNotNull(MusicCarouselShelfRenderer.Content::musicTwoRowItemRenderer)
-                        .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer),
+                        .mapNotNull { item ->
+                            item.musicTwoRowItemRenderer?.let(::fromBrowseMusicTwoRowItemRenderer)
+                                ?: item.musicResponsiveListItemRenderer?.let(
+                                    RelatedPage.Companion::fromMusicResponsiveListItemRenderer,
+                                )
+                        },
                 )
             }
 
@@ -893,9 +897,66 @@ object YouTube {
                 )
             }
 
+            content.itemSectionRenderer != null -> {
+                BrowseResult.Item(
+                    title = null,
+                    items = content.itemSectionRenderer.contents.orEmpty()
+                        .mapNotNull { it.musicResponsiveListItemRenderer }
+                        .mapNotNull(RelatedPage.Companion::fromMusicResponsiveListItemRenderer),
+                )
+            }
+
             else -> null
         }
     }.filter { it.items.isNotEmpty() }
+
+    private fun fromBrowseMusicTwoRowItemRenderer(renderer: MusicTwoRowItemRenderer): YTItem? {
+        RelatedPage.fromMusicTwoRowItemRenderer(renderer)?.let { return it }
+
+        val browseId = renderer.navigationEndpoint.browseEndpoint?.browseId ?: return null
+        if (!renderer.isPlaylist && !browseId.startsWith("VL")) return null
+
+        val playlistId = renderer.thumbnailOverlay
+            ?.musicItemThumbnailOverlayRenderer
+            ?.content
+            ?.musicPlayButtonRenderer
+            ?.playNavigationEndpoint
+            ?.watchPlaylistEndpoint
+            ?.playlistId
+            ?: browseId.removePrefix("VL").takeIf(String::isNotBlank)
+            ?: return null
+        val menuItems = renderer.menu?.menuRenderer?.items.orEmpty()
+        val playEndpoint = renderer.thumbnailOverlay
+            ?.musicItemThumbnailOverlayRenderer
+            ?.content
+            ?.musicPlayButtonRenderer
+            ?.playNavigationEndpoint
+            ?.watchPlaylistEndpoint
+            ?: WatchEndpoint(playlistId = playlistId)
+
+        return PlaylistItem(
+            id = browseId.removePrefix("VL"),
+            title = renderer.title.runs?.firstOrNull()?.text ?: return null,
+            author = renderer.subtitle?.runs?.lastOrNull()?.text?.let {
+                Artist(name = it, id = null)
+            },
+            songCountText = renderer.subtitle?.extractCountText(),
+            thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl(),
+            playEndpoint = playEndpoint,
+            shuffleEndpoint = menuItems.firstNotNullOfOrNull { item ->
+                item.menuNavigationItemRenderer
+                    ?.takeIf { it.icon?.iconType == "MUSIC_SHUFFLE" }
+                    ?.navigationEndpoint
+                    ?.watchPlaylistEndpoint
+            },
+            radioEndpoint = menuItems.firstNotNullOfOrNull { item ->
+                item.menuNavigationItemRenderer
+                    ?.takeIf { it.icon?.iconType == "MIX" }
+                    ?.navigationEndpoint
+                    ?.watchPlaylistEndpoint
+            },
+        )
+    }
 
     private fun browseContinuationFromSections(
         sectionListRenderer: SectionListRenderer?,
@@ -907,12 +968,22 @@ object YouTube {
 
     suspend fun browse(browseId: String, params: String?): Result<BrowseResult> = runCatching {
         val response = innerTube.browse(WEB_REMIX, browseId = browseId, params = params).body<BrowseResponse>()
-        val sectionListRenderer = response.contents?.singleColumnBrowseResultsRenderer
-            ?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer
+        val sectionListRenderers = buildList {
+            response.contents?.sectionListRenderer?.let(::add)
+            response.contents?.singleColumnBrowseResultsRenderer?.tabs.orEmpty()
+                .mapNotNullTo(this) { it.tabRenderer.content?.sectionListRenderer }
+            response.contents?.twoColumnBrowseResultsRenderer?.tabs.orEmpty()
+                .mapNotNullTo(this) { it?.tabRenderer?.content?.sectionListRenderer }
+            response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents
+                ?.sectionListRenderer
+                ?.let(::add)
+        }
         BrowseResult(
             title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
-            items = parseBrowseSections(sectionListRenderer?.contents.orEmpty()),
-            continuation = browseContinuationFromSections(sectionListRenderer),
+            items = sectionListRenderers.flatMap { renderer ->
+                parseBrowseSections(renderer.contents.orEmpty())
+            },
+            continuation = sectionListRenderers.firstNotNullOfOrNull(::browseContinuationFromSections),
         )
     }
 
@@ -931,7 +1002,7 @@ object YouTube {
 
             gridContinuation?.items
                 ?.mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-                ?.mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
+                ?.mapNotNull(::fromBrowseMusicTwoRowItemRenderer)
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { add(BrowseResult.Item(title = null, items = it)) }
 

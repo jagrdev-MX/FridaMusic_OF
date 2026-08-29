@@ -205,6 +205,7 @@
     <string name="add_anyway">Añadir de todos modos</string>
     <string name="duplicates_description_single">La canción ya está en tu lista</string>
     <string name="duplicates_description_multiple">%d canciones ya están en tu lista</string>
+    <string name="duplicate_song_readd_description">Esta canción ya está en «%1$s». ¿Quieres agregarla de nuevo al inicio y conservar la copia existente?</string>
 
     <!-- Sustantivos -->
     <plurals name="n_song">
@@ -1455,6 +1456,7 @@
     <string name="discord_advanced_mode">Modo avanzado</string>
     <string name="discord_advanced_mode_description">Más opciones de personalización</string>
     <string name="speed_dial">Marcado rápido</string>
+    <string name="pinned_items">Fijados</string>
     <string name="pin_to_speed_dial">Fijar a marcado rápido</string>
     <string name="unpin_from_speed_dial">Quitar de marcado rápido</string>
     <string name="pin_playlist">Fijar lista</string>

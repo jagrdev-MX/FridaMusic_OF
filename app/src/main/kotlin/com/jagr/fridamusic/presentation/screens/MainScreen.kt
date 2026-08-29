@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
@@ -181,8 +182,50 @@ fun MainScreen(
                     onNewReleasesClick = {
                         navController.navigate("new_releases")
                     },
+                    onMoodAndGenresClick = {
+                        navController.navigate("mood_and_genres")
+                    },
+                    onCollectionClick = { kind, index, title ->
+                        navController.navigate(
+                            "home_collection/${kind.name}/$index?title=${Uri.encode(title)}",
+                        )
+                    },
                     onSettingsClick = { navController.navigate("settings") },
                     reselectToken = homeReselectToken,
+                    viewModel = homeViewModel,
+                )
+            }
+            composable(
+                route = "home_collection/{kind}/{index}?title={title}",
+                arguments = listOf(
+                    navArgument("kind") { type = NavType.StringType },
+                    navArgument("index") { type = NavType.IntType },
+                    navArgument("title") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { entry ->
+                val kind = entry.arguments?.getString("kind")
+                    ?.let { runCatching { HomeCollectionKind.valueOf(it) }.getOrNull() }
+                    ?: HomeCollectionKind.QUICK_PICKS
+                HomeCollectionScreen(
+                    kind = kind,
+                    index = entry.arguments?.getInt("index") ?: 0,
+                    title = entry.arguments?.getString("title").orEmpty(),
+                    onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onLocalItemClick = { item -> navController.navigateToDetail(item) },
+                    onItemClick = { item ->
+                        navController.handleYTItemClick(
+                            item = item,
+                            playSong = playerConnection?.let { connection ->
+                                { connection.playYTItem(item) }
+                            },
+                        )
+                    },
+                    onPlayItem = playRemoteItem,
+                    onBack = { navController.popBackStack() },
                     viewModel = homeViewModel,
                 )
             }
@@ -251,6 +294,14 @@ fun MainScreen(
                         )
                     },
                     onPlayAlbum = playRemoteItem,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("mood_and_genres") {
+                MoodAndGenresScreen(
+                    onItemClick = { endpoint, title ->
+                        navController.navigateToBrowse(endpoint, title)
+                    },
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -463,7 +514,9 @@ fun MainScreen(
                     .navigationBarsPadding()
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-15).dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     ModernBottomNav(
@@ -702,8 +755,15 @@ private fun PlayerConnection.playHomeItem(item: YTItem): Boolean = when (item) {
         playQueue(YouTubeAlbumRadio(playlistId))
     } != null
 
-    is ArtistItem,
-    is PlaylistItem -> false
+    is ArtistItem -> {
+        val endpoint = item.playEndpoint ?: item.radioEndpoint ?: item.shuffleEndpoint
+        endpoint?.let { playQueue(YouTubeQueue(it)) } != null
+    }
+
+    is PlaylistItem -> {
+        val endpoint = item.playEndpoint ?: item.radioEndpoint ?: item.shuffleEndpoint
+        endpoint?.let { playQueue(YouTubeQueue(it)) } != null
+    }
 }
 
 private fun PlayerConnection.playRecognitionResult(result: RecognitionResult): Boolean {

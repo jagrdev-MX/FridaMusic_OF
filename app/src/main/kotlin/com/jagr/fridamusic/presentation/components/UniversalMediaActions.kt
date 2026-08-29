@@ -52,6 +52,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.SpeedDialItem
 import com.jagr.fridamusic.db.entities.ArtistEntity
 import com.jagr.fridamusic.playback.queues.YouTubeQueue
+import com.jagr.fridamusic.playback.queues.YouTubeAlbumRadio
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.playSong
 import com.jagr.fridamusic.presentation.playYTItem
@@ -120,13 +121,33 @@ fun UniversalYTItemActionsHost(
     }
 
     val androidContext = LocalContext.current
-    val database = LocalPlayerConnection.current?.database
+    val playerConnection = LocalPlayerConnection.current
+    val database = playerConnection?.database
     val scope = rememberCoroutineScope()
     val pinnedFlow = remember(database, selectedItem.id) {
         database?.speedDialDao?.isPinned(selectedItem.id) ?: flowOf(false)
     }
     val isPinned by pinnedFlow.collectAsState(initial = false)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val resolvedPlay = onPlay ?: when (selectedItem) {
+        is AlbumItem -> selectedItem.playlistId
+            ?.takeIf(String::isNotBlank)
+            ?.let { playlistId ->
+                playerConnection?.let { connection ->
+                    { connection.playQueue(YouTubeAlbumRadio(playlistId)) }
+                }
+            }
+        is PlaylistItem -> (selectedItem.playEndpoint
+            ?: selectedItem.radioEndpoint
+            ?: selectedItem.shuffleEndpoint)
+            ?.let { endpoint ->
+                playerConnection?.let { connection ->
+                    { connection.playQueue(YouTubeQueue(endpoint)) }
+                }
+            }
+        is ArtistItem,
+        is SongItem -> null
+    }
     val subtitle = when (selectedItem) {
         is AlbumItem -> selectedItem.artists?.joinToString(", ") { it.name }
             ?: stringResource(R.string.album_text)
@@ -185,17 +206,17 @@ fun UniversalYTItemActionsHost(
                 icon = Icons.Rounded.OpenInNew,
                 label = stringResource(R.string.open),
                 onClick = {
-                    onDismiss()
                     onOpen()
+                    onDismiss()
                 },
             )
-            onPlay?.let { play ->
+            resolvedPlay?.let { play ->
                 UniversalMediaActionRow(
                     icon = Icons.Rounded.PlayArrow,
                     label = stringResource(R.string.play),
                     onClick = {
-                        onDismiss()
                         play()
+                        onDismiss()
                     },
                 )
             }
@@ -206,11 +227,24 @@ fun UniversalYTItemActionsHost(
                         if (isPinned) R.string.unpin_from_speed_dial else R.string.pin_to_speed_dial,
                     ),
                     onClick = {
-                        scope.launch(Dispatchers.IO) {
-                            if (isPinned) {
-                                database.speedDialDao.delete(selectedItem.id)
+                        scope.launch {
+                            val updated = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                runCatching {
+                                    if (isPinned) {
+                                        database.speedDialDao.delete(selectedItem.id)
+                                    } else {
+                                        database.speedDialDao.insert(SpeedDialItem.fromYTItem(selectedItem))
+                                    }
+                                }.isSuccess
+                            }
+                            if (updated) {
+                                onDismiss()
                             } else {
-                                database.speedDialDao.insert(SpeedDialItem.fromYTItem(selectedItem))
+                                Toast.makeText(
+                                    androidContext,
+                                    R.string.recommendation_unavailable,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
                             }
                         }
                     },
@@ -483,8 +517,8 @@ fun UniversalLocalCollectionActionsHost(
                 icon = Icons.Rounded.OpenInNew,
                 label = stringResource(R.string.open),
                 onClick = {
-                    onDismiss()
                     selectedContext.onOpen()
+                    onDismiss()
                 },
             )
         }

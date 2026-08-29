@@ -39,8 +39,6 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.LibraryAdd
-import androidx.compose.material.icons.rounded.LibraryAddCheck
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
@@ -121,6 +119,9 @@ data class SongMenuActions(
     val onAddToQueue: (() -> Unit)? = null,
     val playlists: List<Playlist> = emptyList(),
     val onAddToPlaylist: ((Playlist) -> Unit)? = null,
+    val isInPlaylist: (suspend (Playlist) -> Boolean)? = null,
+    val onReaddToPlaylist: ((Playlist) -> Unit)? = null,
+    val onRemoveFromPlaylist: (() -> Unit)? = null,
     val isPinned: Boolean = false,
     val onTogglePinned: (() -> Unit)? = null,
     val onGoToAlbum: ((SongAlbumTarget) -> Unit)? = null,
@@ -217,6 +218,8 @@ fun UniversalSongActionsHost(
         )?.copy(
             mediaItem = selectedContext.mediaItem,
             remoteIds = selectedContext.remoteIds,
+            playlistId = selectedContext.playlistId,
+            playlistEntryId = selectedContext.playlistEntryId,
         ) ?: selectedContext.withLocalMetadata(localMetadata)
     }
     val isLocal = effectiveContext.source == SongActionSource.LOCAL_FILE
@@ -425,6 +428,34 @@ fun UniversalSongActionsHost(
                 }
             }
         },
+        isInPlaylist = database?.let { db ->
+            { playlist ->
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    db.checkInPlaylist(playlist.id, effectiveContext.mediaId) > 0
+                }
+            }
+        },
+        onReaddToPlaylist = database?.let { db ->
+            { playlist ->
+                db.query {
+                    insert(effectiveContext.toMediaMetadata())
+                    prependSongToPlaylist(playlist.id, effectiveContext.mediaId)
+                }
+            }
+        },
+        onRemoveFromPlaylist = effectiveContext.playlistId?.let { playlistId ->
+            database?.let { db ->
+                {
+                    db.query {
+                        removeSongFromPlaylist(
+                            playlistId = playlistId,
+                            songId = effectiveContext.mediaId,
+                            entryId = effectiveContext.playlistEntryId,
+                        )
+                    }
+                }
+            }
+        },
         isPinned = isPinned,
         onTogglePinned = if (isLocal) {
             { localSongsViewModel.togglePinnedSong(effectiveContext.mediaId) }
@@ -494,6 +525,8 @@ fun SongActionsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
     var subview by remember(context.mediaId) { mutableStateOf(SongActionsSubview.NONE) }
+    var duplicatePlaylist by remember(context.mediaId) { mutableStateOf<Playlist?>(null) }
+    val scope = rememberCoroutineScope()
     val capabilities = resolveSongActionCapabilities(
         context = context,
         availability = SongActionAvailability(
@@ -574,14 +607,14 @@ fun SongActionsSheet(
                         )
                     }
                 }
-                actions.onToggleLibrary?.let { toggle ->
-                    FilledTonalIconButton(onClick = toggle, modifier = Modifier.size(48.dp)) {
-                        val inLibrary = actions.localSong?.song?.inLibrary != null
+                actions.onAddToPlaylist?.let {
+                    FilledTonalIconButton(
+                        onClick = { subview = SongActionsSubview.PLAYLIST },
+                        modifier = Modifier.size(48.dp),
+                    ) {
                         Icon(
-                            imageVector = if (inLibrary) Icons.Rounded.LibraryAddCheck else Icons.Rounded.LibraryAdd,
-                            contentDescription = stringResource(
-                                if (inLibrary) R.string.remove_from_library_label else R.string.add_to_library_label,
-                            ),
+                            imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                            contentDescription = stringResource(R.string.add_to_playlist),
                         )
                     }
                 }
@@ -625,6 +658,11 @@ fun SongActionsSheet(
                         if (SongActionCapability.ADD_TO_PLAYLIST in capabilities) {
                             SongAction(Icons.AutoMirrored.Rounded.PlaylistAdd, stringResource(R.string.add_to_playlist)) {
                                 subview = SongActionsSubview.PLAYLIST
+                            }
+                        }
+                        actions.onRemoveFromPlaylist?.let { remove ->
+                            SongAction(Icons.Rounded.RemoveCircleOutline, stringResource(R.string.remove_from_playlist)) {
+                                performAndDismiss(remove)
                             }
                         }
                         if (SongActionCapability.PIN in capabilities) {
@@ -783,8 +821,15 @@ fun SongActionsSheet(
             playlists = actions.playlists,
             onDismiss = { subview = SongActionsSubview.NONE },
             onSelect = { playlist ->
-                actions.onAddToPlaylist?.invoke(playlist)
-                subview = SongActionsSubview.NONE
+                scope.launch {
+                    val duplicate = actions.isInPlaylist?.invoke(playlist) == true
+                    subview = SongActionsSubview.NONE
+                    if (duplicate) {
+                        duplicatePlaylist = playlist
+                    } else {
+                        actions.onAddToPlaylist?.invoke(playlist)
+                    }
+                }
             },
         )
         SongActionsSubview.EDIT_METADATA -> actions.localSong?.let { song ->
@@ -816,6 +861,36 @@ fun SongActionsSheet(
             },
         )
         SongActionsSubview.NONE -> Unit
+    }
+
+    duplicatePlaylist?.let { playlist ->
+        AlertDialog(
+            onDismissRequest = { duplicatePlaylist = null },
+            title = { Text(stringResource(R.string.duplicates)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.duplicate_song_readd_description,
+                        playlist.playlist.name,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        (actions.onReaddToPlaylist ?: actions.onAddToPlaylist)?.invoke(playlist)
+                        duplicatePlaylist = null
+                    },
+                ) {
+                    Text(stringResource(R.string.add_anyway))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { duplicatePlaylist = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 

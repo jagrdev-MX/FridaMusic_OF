@@ -6,6 +6,7 @@ import com.jagr.fridamusic.models.toMediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.playback.queues.YouTubeQueue
+import com.jagr.fridamusic.utils.isLocalMediaId
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.models.YTItem
@@ -37,6 +38,17 @@ private fun PlayerConnection.playSong(
 
 fun PlayerConnection.playYTItem(item: YTItem) {
     if (item !is SongItem) return
+
+    if (item.id.isLocalMediaId()) {
+        playQueue(
+            ListQueue(
+                title = null,
+                items = listOf(item.toMediaItem()),
+            )
+        )
+        return
+    }
+
     playQueue(
         YouTubeQueue(
             endpoint = item.endpoint ?: WatchEndpoint(videoId = item.id),

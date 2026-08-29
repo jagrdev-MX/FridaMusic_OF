@@ -25,6 +25,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +68,7 @@ import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import com.music.innertube.pages.HomePage
+import com.music.innertube.pages.MoodAndGenres
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -77,6 +79,8 @@ fun HomeScreen(
     onPlayItem: (YTItem) -> Unit = {},
     onBrowseClick: (BrowseEndpoint, String) -> Unit = { _, _ -> },
     onNewReleasesClick: () -> Unit = {},
+    onMoodAndGenresClick: () -> Unit = {},
+    onCollectionClick: (HomeCollectionKind, Int, String) -> Unit = { _, _, _ -> },
     onSettingsClick: () -> Unit = {},
     onHistoryClick: () -> Unit = {},
     reselectToken: Int = 0,
@@ -95,6 +99,8 @@ fun HomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedChip by viewModel.selectedChip.collectAsState()
+    val pinnedItems by viewModel.pinnedItems.collectAsState()
+    var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
     val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val currentIsPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
@@ -108,6 +114,7 @@ fun HomeScreen(
     val newReleaseItems = explorePage?.newReleaseAlbums.orEmpty()
     val communityPlaylistItems = communityPlaylists.orEmpty()
     val echoBrainPlaylistItems = echoBrainPlaylists.orEmpty()
+    val moodAndGenreItems = explorePage?.moodAndGenres.orEmpty()
     val quickPicksTitle = stringResource(R.string.quick_picks)
     val quickPicksSubtitle = stringResource(R.string.quick_picks_subtitle)
     val dailyDiscoverTitle = stringResource(R.string.your_daily_discover)
@@ -117,6 +124,8 @@ fun HomeScreen(
     val newReleasesTitle = stringResource(R.string.new_release_albums)
     val similarToTitle = stringResource(R.string.similar_to)
     val communityTitle = stringResource(R.string.from_the_community)
+    val pinnedTitle = stringResource(R.string.pinned_items)
+    val moodAndGenresTitle = stringResource(R.string.mood_and_genres)
     val hasGeneralContent = quickPickItems.isNotEmpty() ||
             dailyDiscoverItems.isNotEmpty() ||
             forgottenFavoriteItems.isNotEmpty() ||
@@ -125,12 +134,13 @@ fun HomeScreen(
             accountPlaylistItems.isNotEmpty() ||
             !homePage?.sections.isNullOrEmpty() ||
             newReleaseItems.isNotEmpty() ||
+            moodAndGenreItems.isNotEmpty() ||
             communityPlaylistItems.isNotEmpty() ||
             echoBrainPlaylistItems.isNotEmpty()
-    val hasVisibleContent = if (selectedChip == null) {
-        hasGeneralContent
-    } else {
-        !homePage?.sections.isNullOrEmpty()
+    val hasVisibleContent = when {
+        pinnedSelected -> pinnedItems.isNotEmpty()
+        selectedChip == null -> hasGeneralContent
+        else -> !homePage?.sections.isNullOrEmpty()
     }
 
     // Estado para controlar la visibilidad del popup de apoyo
@@ -205,40 +215,73 @@ fun HomeScreen(
             MoodChipsRow(
                 chips = homePage?.chips,
                 selectedChip = selectedChip,
-                onChipClick = { viewModel.toggleChip(it) },
+                pinnedTitle = pinnedTitle,
+                pinnedSelected = pinnedSelected,
+                onPinnedClick = {
+                    val nextSelected = !pinnedSelected
+                    pinnedSelected = nextSelected
+                    if (nextSelected && selectedChip != null) {
+                        viewModel.toggleChip(null)
+                    }
+                },
+                onChipClick = {
+                    pinnedSelected = false
+                    viewModel.toggleChip(it)
+                },
             )
         }
 
-        if (selectedChip == null) {
-            localSongSection(
-                key = "quick_picks",
-                title = quickPicksTitle,
-                subtitle = quickPicksSubtitle,
-                songs = quickPickItems,
-                isLowEnd = isLowEnd,
-                onSongClick = onSongClick,
-                currentMediaId = currentMediaMetadata?.id,
-                isPlaying = currentIsPlaying,
-                onSongMore = { menuContext = it.toSongActionContext() },
-            )
-
+        if (pinnedSelected) {
             ytSection(
-                key = "daily_discover",
-                title = dailyDiscoverTitle,
-                items = dailyDiscoverItems.map { it.recommendation },
+                key = "pinned_items",
+                title = pinnedTitle,
+                items = pinnedItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
                 isPlaying = currentIsPlaying,
+                onItemMore = { remoteMenuItem = it },
+            )
+        }
+
+        if (!pinnedSelected && selectedChip == null) {
+            localSongSection(
+                key = "quick_picks",
+                title = quickPicksTitle,
+                subtitle = quickPicksSubtitle,
+                songs = quickPickItems.take(HOME_SECTION_PREVIEW_LIMIT),
+                isLowEnd = isLowEnd,
+                onSongClick = onSongClick,
+                currentMediaId = currentMediaMetadata?.id,
+                isPlaying = currentIsPlaying,
+                onSongMore = { menuContext = it.toSongActionContext() },
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.QUICK_PICKS, 0, quickPicksTitle)
+                },
+            )
+
+            ytSection(
+                key = "daily_discover",
+                title = dailyDiscoverTitle,
+                items = dailyDiscoverItems.map { it.recommendation }.take(HOME_SECTION_PREVIEW_LIMIT),
+                isLowEnd = isLowEnd,
+                onItemClick = onItemClick,
+                onPlayItem = onPlayItem,
+                currentMediaId = currentMediaMetadata?.id,
+                currentAlbumId = currentMediaMetadata?.album?.id,
+                isPlaying = currentIsPlaying,
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.DAILY_DISCOVER, 0, dailyDiscoverTitle)
+                },
                 onItemMore = { remoteMenuItem = it },
             )
 
             localItemSection(
                 key = "keep_listening",
                 title = keepListeningTitle,
-                items = keepListeningItems,
+                items = keepListeningItems.take(HOME_SECTION_PREVIEW_LIMIT),
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
                 onItemClick = onItemClick,
@@ -248,57 +291,76 @@ fun HomeScreen(
                 isPlaying = currentIsPlaying,
                 onSongMore = { menuContext = it.toSongActionContext() },
                 onItemMore = { remoteMenuItem = it },
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.KEEP_LISTENING, 0, keepListeningTitle)
+                },
             )
 
             localSongSection(
                 key = "forgotten_favorites",
                 title = forgottenFavoritesTitle,
-                songs = forgottenFavoriteItems,
+                songs = forgottenFavoriteItems.take(HOME_SECTION_PREVIEW_LIMIT),
                 isLowEnd = isLowEnd,
                 onSongClick = onSongClick,
                 currentMediaId = currentMediaMetadata?.id,
                 isPlaying = currentIsPlaying,
                 onSongMore = { menuContext = it.toSongActionContext() },
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.FORGOTTEN_FAVORITES, 0, forgottenFavoritesTitle)
+                },
             )
 
             echoBrainPlaylistItems.forEachIndexed { index, playlist ->
                 ytSection(
                     key = "echo_brain_${index}_${playlist.playlist.id}",
                     title = playlist.playlist.title,
-                    items = playlist.songs,
+                    items = playlist.songs.take(HOME_SECTION_PREVIEW_LIMIT),
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
                     onPlayItem = onPlayItem,
                     currentMediaId = currentMediaMetadata?.id,
                     currentAlbumId = currentMediaMetadata?.album?.id,
                     isPlaying = currentIsPlaying,
+                    onSeeAll = {
+                        onCollectionClick(HomeCollectionKind.ECHO_BRAIN, index, playlist.playlist.title)
+                    },
                     onItemMore = { remoteMenuItem = it },
                 )
             }
         }
 
-        homePage?.sections.orEmpty().forEachIndexed { index, section ->
-            ytSection(
-                key = "youtube_${index}_${section.title}",
-                title = section.title,
-                subtitle = section.label,
-                thumbnail = section.thumbnail,
-                circularThumbnail = section.endpoint?.isArtistEndpoint == true,
-                items = section.items,
-                isLowEnd = isLowEnd,
-                onItemClick = onItemClick,
-                onPlayItem = onPlayItem,
-                currentMediaId = currentMediaMetadata?.id,
-                currentAlbumId = currentMediaMetadata?.album?.id,
-                isPlaying = currentIsPlaying,
-                onSeeAll = section.endpoint
-                    ?.takeIf { endpoint -> endpoint.browseId.isNotBlank() }
-                    ?.let { endpoint -> { onBrowseClick(endpoint, section.title) } },
-                onItemMore = { remoteMenuItem = it },
-            )
+        if (!pinnedSelected) {
+            homePage?.sections.orEmpty().forEachIndexed { index, section ->
+                val endpoint = section.endpoint
+                    ?.takeIf { candidate -> candidate.browseId.isNotBlank() }
+                val opensWrongMoodCollection = endpoint?.browseId == MOOD_AND_GENRES_BROWSE_ID &&
+                    section.items.any { it is PlaylistItem }
+                ytSection(
+                    key = "youtube_${index}_${section.title}",
+                    title = section.title,
+                    subtitle = section.label,
+                    thumbnail = section.thumbnail,
+                    circularThumbnail = section.endpoint?.isArtistEndpoint == true,
+                    items = section.items.take(HOME_SECTION_PREVIEW_LIMIT),
+                    isLowEnd = isLowEnd,
+                    onItemClick = onItemClick,
+                    onPlayItem = onPlayItem,
+                    currentMediaId = currentMediaMetadata?.id,
+                    currentAlbumId = currentMediaMetadata?.album?.id,
+                    isPlaying = currentIsPlaying,
+                    onSeeAll = when {
+                        opensWrongMoodCollection -> ({
+                            onCollectionClick(HomeCollectionKind.REMOTE_SECTION, index, section.title)
+                        })
+                        endpoint != null -> ({ onBrowseClick(endpoint, section.title) })
+                        else -> null
+                    },
+                    onItemMore = { remoteMenuItem = it },
+                )
+            }
         }
 
-        homePage?.continuation?.let { continuation ->
+        homePage?.continuation?.takeUnless { pinnedSelected }?.let { continuation ->
             item(key = "continuation_${selectedChip?.title.orEmpty()}_$continuation") {
                 LaunchedEffect(continuation, selectedChip) {
                     viewModel.loadMoreYouTubeItems(continuation)
@@ -307,24 +369,27 @@ fun HomeScreen(
             }
         }
 
-        if (selectedChip == null) {
+        if (!pinnedSelected && selectedChip == null) {
             ytSection(
                 key = "account_playlists",
                 title = accountPlaylistsTitle,
-                items = accountPlaylistItems,
+                items = accountPlaylistItems.take(HOME_SECTION_PREVIEW_LIMIT),
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
                 isPlaying = currentIsPlaying,
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.ACCOUNT_PLAYLISTS, 0, accountPlaylistsTitle)
+                },
                 onItemMore = { remoteMenuItem = it },
             )
 
             ytSection(
                 key = "new_releases",
                 title = newReleasesTitle,
-                items = newReleaseItems,
+                items = newReleaseItems.take(HOME_SECTION_PREVIEW_LIMIT),
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
                 onPlayItem = onPlayItem,
@@ -335,17 +400,31 @@ fun HomeScreen(
                 onItemMore = { remoteMenuItem = it },
             )
 
+            moodAndGenresSection(
+                title = moodAndGenresTitle,
+                items = moodAndGenreItems.take(MOOD_AND_GENRES_PREVIEW_LIMIT),
+                onItemClick = { item -> onBrowseClick(item.endpoint, item.title) },
+                onSeeAll = onMoodAndGenresClick,
+            )
+
             similarRecommendationItems.forEachIndexed { index, recommendation ->
                 ytSection(
                     key = "similar_${index}_${recommendation.title.id}",
                     title = "$similarToTitle ${recommendation.title.title}",
-                    items = recommendation.items,
+                    items = recommendation.items.take(HOME_SECTION_PREVIEW_LIMIT),
                     isLowEnd = isLowEnd,
                     onItemClick = onItemClick,
                     onPlayItem = onPlayItem,
                     currentMediaId = currentMediaMetadata?.id,
                     currentAlbumId = currentMediaMetadata?.album?.id,
                     isPlaying = currentIsPlaying,
+                    onSeeAll = {
+                        onCollectionClick(
+                            HomeCollectionKind.SIMILAR,
+                            index,
+                            "$similarToTitle ${recommendation.title.title}",
+                        )
+                    },
                     onItemMore = { remoteMenuItem = it },
                 )
             }
@@ -353,13 +432,18 @@ fun HomeScreen(
             ytSection(
                 key = "community",
                 title = communityTitle,
-                items = communityPlaylistItems.map { it.playlist },
+                items = communityPlaylistItems
+                    .map { it.playlist }
+                    .take(HOME_SECTION_PREVIEW_LIMIT),
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
                 isPlaying = currentIsPlaying,
+                onSeeAll = {
+                    onCollectionClick(HomeCollectionKind.COMMUNITY, 0, communityTitle)
+                },
                 onItemMore = { remoteMenuItem = it },
             )
         }
@@ -398,7 +482,7 @@ fun HomeScreen(
         item = remoteMenuItem,
         onDismiss = { remoteMenuItem = null },
         onOpen = { remoteMenuItem?.let(onItemClick) },
-        onPlay = remoteMenuItem?.let { item -> { onPlayItem(item) } },
+        onPlay = remoteMenuItem?.homePlayAction(onPlayItem),
     )
 }
 
@@ -522,6 +606,9 @@ private fun SupportProjectDialog(
 private fun MoodChipsRow(
     chips: List<HomePage.Chip>?,
     selectedChip: HomePage.Chip?,
+    pinnedTitle: String,
+    pinnedSelected: Boolean,
+    onPinnedClick: () -> Unit,
     onChipClick: (HomePage.Chip?) -> Unit,
 ) {
     val displayChips = chips?.ifEmpty { null } ?: listOf(
@@ -537,6 +624,26 @@ private fun MoodChipsRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.padding(bottom = 8.dp),
     ) {
+        item(key = "pinned_items_chip") {
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (pinnedSelected)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.clickable(onClick = onPinnedClick),
+            ) {
+                Text(
+                    text = pinnedTitle,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (pinnedSelected)
+                        MaterialTheme.colorScheme.onPrimary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         items(displayChips, key = { it.title }) { chip ->
             val isSelected = chip == selectedChip
             Surface(
@@ -563,6 +670,61 @@ private fun MoodChipsRow(
     }
 }
 
+private const val HOME_SECTION_PREVIEW_LIMIT = 10
+private const val MOOD_AND_GENRES_PREVIEW_LIMIT = 3
+private const val MOOD_AND_GENRES_BROWSE_ID = "FEmusic_moods_and_genres"
+
+private fun LazyListScope.moodAndGenresSection(
+    title: String,
+    items: List<MoodAndGenres.Item>,
+    onItemClick: (MoodAndGenres.Item) -> Unit,
+    onSeeAll: () -> Unit,
+) {
+    if (items.isEmpty()) return
+
+    item(key = "mood_and_genres_header") {
+        HomeSectionHeader(title = title, onSeeAll = onSeeAll)
+    }
+    item(key = "mood_and_genres_row") {
+        LazyRow(
+            modifier = Modifier.padding(bottom = 18.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(
+                items = items,
+                key = { item -> "mood_${item.endpoint.browseId}_${item.title}" },
+            ) { item ->
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .width(168.dp)
+                        .height(72.dp)
+                        .clickable { onItemClick(item) },
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .width(6.dp)
+                                .fillMaxHeight()
+                                .background(Color(item.stripeColor)),
+                        )
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun LazyListScope.localSongSection(
     key: String,
     title: String,
@@ -573,11 +735,12 @@ private fun LazyListScope.localSongSection(
     currentMediaId: String?,
     isPlaying: Boolean,
     onSongMore: (Song) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     if (songs.isEmpty()) return
 
     item(key = "${key}_header") {
-        HomeSectionHeader(title = title, subtitle = subtitle)
+        HomeSectionHeader(title = title, subtitle = subtitle, onSeeAll = onSeeAll)
     }
     item(key = "${key}_row") {
         LazyRow(
@@ -601,6 +764,7 @@ private fun LazyListScope.localSongSection(
                     onClick = { onSongClick(song, songs) },
                     onPlay = { onSongClick(song, songs) },
                     onMoreClick = { onSongMore(song) },
+                    isLocal = song.song.isLocal,
                 )
             }
         }
@@ -620,12 +784,13 @@ private fun LazyListScope.localItemSection(
     isPlaying: Boolean,
     onSongMore: (Song) -> Unit,
     onItemMore: (YTItem) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
     val songQueue = items.filterIsInstance<Song>()
 
     item(key = "${key}_header") {
-        HomeSectionHeader(title = title)
+        HomeSectionHeader(title = title, onSeeAll = onSeeAll)
     }
     item(key = "${key}_row") {
         LazyRow(
@@ -678,6 +843,12 @@ private fun LazyListScope.localItemSection(
                         localItem is Song -> ({ onSongMore(localItem) })
                         remoteItem != null -> ({ onItemMore(remoteItem) })
                         else -> null
+                    },
+                    isLocal = when (localItem) {
+                        is Song -> localItem.song.isLocal
+                        is LocalAlbum -> localItem.album.isLocal
+                        is LocalArtist -> localItem.artist.isLocal
+                        is LocalPlaylist -> localItem.playlist.isLocal
                     },
                 )
             }
@@ -733,8 +904,10 @@ private fun LazyListScope.ytSection(
                         is AlbumItem -> item.playlistId
                             .takeIf(String::isNotBlank)
                             ?.let { { onPlayItem(item) } }
-                        is ArtistItem,
-                        is PlaylistItem -> null
+                        is PlaylistItem -> (
+                            item.playEndpoint ?: item.radioEndpoint ?: item.shuffleEndpoint
+                            )?.let { { onPlayItem(item) } }
+                        is ArtistItem -> null
                     },
                     onMore = onItemMore,
                     thumbnailWidth = if (isLowEnd) 320 else 480,
@@ -742,6 +915,14 @@ private fun LazyListScope.ytSection(
             }
         }
     }
+}
+
+private fun YTItem.homePlayAction(onPlayItem: (YTItem) -> Unit): (() -> Unit)? = when (this) {
+    is SongItem -> ({ onPlayItem(this) })
+    is AlbumItem -> playlistId.takeIf(String::isNotBlank)?.let { { onPlayItem(this) } }
+    is PlaylistItem -> (playEndpoint ?: radioEndpoint ?: shuffleEndpoint)
+        ?.let { { onPlayItem(this) } }
+    is ArtistItem -> null
 }
 
 private fun LocalItem.toYTItemOrNull(): YTItem? = when (this) {

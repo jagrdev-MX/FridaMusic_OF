@@ -7,6 +7,7 @@ import com.music.innertube.models.Artist
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
+import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.models.YTItem
 
 @Entity(tableName = "speed_dial_item")
@@ -44,16 +45,23 @@ data class SpeedDialItem(
                 shuffleEndpoint = null,
                 radioEndpoint = null
             )
-            "PLAYLIST" -> PlaylistItem(
-                id = id,
-                title = title,
-                author = subtitle?.let { Artist(name = it, id = null) },
-                songCountText = null,
-                thumbnail = thumbnailUrl,
-                playEndpoint = null,
-                shuffleEndpoint = null,
-                radioEndpoint = null
-            )
+            "PLAYLIST" -> {
+                val playlistId = secondaryId
+                    ?: id.takeIf { it.startsWith("VL") }?.removePrefix("VL")
+                val endpoint = playlistId?.takeIf(String::isNotBlank)?.let {
+                    WatchEndpoint(playlistId = it)
+                }
+                PlaylistItem(
+                    id = id,
+                    title = title,
+                    author = subtitle?.let { Artist(name = it, id = null) },
+                    songCountText = null,
+                    thumbnail = thumbnailUrl,
+                    playEndpoint = endpoint,
+                    shuffleEndpoint = endpoint,
+                    radioEndpoint = endpoint,
+                )
+            }
             else -> throw IllegalArgumentException("Unknown type: $type")
         }
     }
@@ -86,6 +94,9 @@ data class SpeedDialItem(
                 )
                 is PlaylistItem -> SpeedDialItem(
                     id = item.id,
+                    secondaryId = (
+                        item.playEndpoint ?: item.radioEndpoint ?: item.shuffleEndpoint
+                        )?.playlistId,
                     title = item.title,
                     subtitle = item.author?.name,
                     thumbnailUrl = item.thumbnail,
