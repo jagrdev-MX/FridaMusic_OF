@@ -47,6 +47,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.playback.queues.ListQueue
+import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
@@ -185,11 +186,14 @@ fun OnlinePlaylistScreen(
     val hasContinuation = viewModel.continuation != null
     val listState = rememberLazyListState()
 
-    val shouldLoadMore by remember {
+    val shouldLoadMore by remember(hasContinuation, isLoadingMore) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val total = listState.layoutInfo.totalItemsCount
-            lastVisible >= total - 5 && !isLoadingMore && hasContinuation
+            listState.isScrollInProgress &&
+                lastVisible >= total - 5 &&
+                !isLoadingMore &&
+                hasContinuation
         }
     }
     LaunchedEffect(shouldLoadMore) {
@@ -202,8 +206,36 @@ fun OnlinePlaylistScreen(
         thumbnailUrl = playlist?.thumbnail ?: cachedPlaylist?.thumbnails?.firstOrNull(),
         description = playlist?.description,
         onBack = onBack,
-        onPlay = { songs.firstOrNull()?.let { playerConnection?.playYTItem(it) } },
-        onShuffle = { songs.shuffled().firstOrNull()?.let { playerConnection?.playYTItem(it) } },
+        onPlay = {
+            playerConnection?.let { connection ->
+                val endpoint = playlist?.playEndpoint ?: cachedPlaylist?.playlist?.playEndpoint
+                if (endpoint != null) {
+                    connection.playQueue(YouTubeQueue(endpoint))
+                } else if (songs.isNotEmpty()) {
+                    connection.playQueue(
+                        ListQueue(
+                            title = playlist?.title ?: cachedPlaylist?.playlist?.name,
+                            items = songs.map { it.toMediaItem() },
+                        )
+                    )
+                }
+            }
+        },
+        onShuffle = {
+            playerConnection?.let { connection ->
+                val endpoint = playlist?.shuffleEndpoint ?: cachedPlaylist?.playlist?.shuffleEndpoint
+                if (endpoint != null) {
+                    connection.playQueue(YouTubeQueue(endpoint))
+                } else if (songs.isNotEmpty()) {
+                    connection.playQueue(
+                        ListQueue(
+                            title = playlist?.title ?: cachedPlaylist?.playlist?.name,
+                            items = songs.shuffled().map { it.toMediaItem() },
+                        )
+                    )
+                }
+            }
+        },
         isSaved = cachedPlaylist?.playlist?.bookmarkedAt != null,
         isSaveEnabled = playlist != null || cachedPlaylist != null,
         onSaveToggle = {

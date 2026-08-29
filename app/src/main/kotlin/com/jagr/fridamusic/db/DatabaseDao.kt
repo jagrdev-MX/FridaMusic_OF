@@ -1202,7 +1202,7 @@ interface DatabaseDao {
     fun albumArtistMaps(albumId: String): List<AlbumArtistMap>
 
     @Transaction
-    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE bookmarkedAt IS NOT NULL ORDER BY rowId")
+    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE bookmarkedAt IS NOT NULL ORDER BY COALESCE(createdAt, bookmarkedAt, lastUpdateTime, rowId)")
     fun playlistsByCreateDateAsc(): Flow<List<Playlist>>
 
     @Transaction
@@ -1220,7 +1220,21 @@ interface DatabaseDao {
     fun editablePlaylistsByNameAsc(): Flow<List<Playlist>>
 
     @Transaction
-    @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE bookmarkedAt IS NOT NULL ORDER BY songCount")
+    @Query(
+        """
+        SELECT *,
+               (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount
+        FROM playlist
+        WHERE bookmarkedAt IS NOT NULL
+        ORDER BY CASE
+            WHEN browseId IS NOT NULL AND isLocal = 0 THEN MAX(
+                (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id),
+                COALESCE(remoteSongCount, 0)
+            )
+            ELSE (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id)
+        END
+        """,
+    )
     fun playlistsBySongCountAsc(): Flow<List<Playlist>>
 
     fun playlists(
@@ -1250,6 +1264,9 @@ interface DatabaseDao {
 
     @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE id = :playlistId")
     fun getPlaylistByIdBlocking(playlistId: String): Playlist?
+
+    @Query("SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = :playlistId")
+    fun playlistSongCount(playlistId: String): Int
 
     @Transaction
     @Query("SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE isEditable AND bookmarkedAt IS NOT NULL ORDER BY rowId")

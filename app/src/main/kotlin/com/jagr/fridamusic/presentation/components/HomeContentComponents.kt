@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
@@ -291,13 +292,13 @@ fun HomeMediaCard(
             when (type) {
                 HomeContentType.SONG -> {
                     if (isActive) {
-                        ActiveContentIndicator(
+                        MediaPlaybackIndicator(
                             isPlaying = isPlaying,
                             onClick = dedicatedAction,
                             modifier = Modifier.align(Alignment.Center),
                         )
                     } else if (dedicatedAction != null) {
-                        ArtworkActionButton(
+                        MediaArtworkActionButton(
                             icon = Icons.Rounded.PlayArrow,
                             contentDescription = stringResource(R.string.play),
                             onClick = dedicatedAction,
@@ -308,7 +309,7 @@ fun HomeMediaCard(
 
                 HomeContentType.ALBUM -> {
                     if (isActive) {
-                        ActiveContentIndicator(
+                        MediaPlaybackIndicator(
                             isPlaying = isPlaying,
                             onClick = dedicatedAction,
                             modifier = Modifier
@@ -316,7 +317,7 @@ fun HomeMediaCard(
                                 .padding(7.dp),
                         )
                     } else if (dedicatedAction != null) {
-                        ArtworkActionButton(
+                        MediaArtworkActionButton(
                             icon = Icons.Rounded.Album,
                             contentDescription = stringResource(R.string.play),
                             onClick = dedicatedAction,
@@ -329,7 +330,7 @@ fun HomeMediaCard(
 
                 HomeContentType.PLAYLIST -> {
                     if (isActive) {
-                        ActiveContentIndicator(
+                        MediaPlaybackIndicator(
                             isPlaying = isPlaying,
                             onClick = dedicatedAction,
                             modifier = Modifier
@@ -337,7 +338,7 @@ fun HomeMediaCard(
                                 .padding(8.dp),
                         )
                     } else {
-                        ArtworkActionButton(
+                        MediaArtworkActionButton(
                             icon = Icons.Rounded.QueueMusic,
                             contentDescription = stringResource(R.string.playlists),
                             onClick = dedicatedAction,
@@ -378,49 +379,53 @@ fun HomeMediaCard(
 }
 
 @Composable
-private fun ArtworkActionButton(
+fun MediaArtworkActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    buttonSize: Dp = 48.dp,
+    iconSize: Dp = 26.dp,
 ) {
     Surface(
         color = Color.Black.copy(alpha = 0.38f),
         contentColor = MaterialTheme.colorScheme.primary,
         shape = CircleShape,
         modifier = modifier
-            .size(48.dp)
+            .size(buttonSize)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                modifier = Modifier.size(26.dp),
+                modifier = Modifier.size(iconSize),
             )
         }
     }
 }
 
 @Composable
-private fun ActiveContentIndicator(
+fun MediaPlaybackIndicator(
     isPlaying: Boolean,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    buttonSize: Dp = 44.dp,
+    indicatorSize: Dp = 25.dp,
 ) {
     Surface(
         color = Color.Black.copy(alpha = 0.38f),
         contentColor = Color.White,
         shape = CircleShape,
         modifier = modifier
-            .size(44.dp)
+            .size(buttonSize)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Box(contentAlignment = Alignment.Center) {
             LocalPlayingBars(
                 active = isPlaying,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(25.dp),
+                modifier = Modifier.size(indicatorSize),
             )
         }
     }

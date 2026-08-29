@@ -107,13 +107,11 @@ import com.jagr.fridamusic.presentation.components.PlaylistNameDialog
 import com.jagr.fridamusic.presentation.components.LibraryViewModeToggle
 import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.playback.queues.ListQueue
-import com.jagr.fridamusic.utils.SyncErrorKind
-import com.jagr.fridamusic.utils.SyncStatus
+import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.CachePlaylistViewModel
 import com.jagr.fridamusic.viewmodels.LibraryAlbumsViewModel
 import com.jagr.fridamusic.viewmodels.LibraryArtistsViewModel
-import com.jagr.fridamusic.viewmodels.LibraryMixViewModel
 import com.jagr.fridamusic.viewmodels.LibraryPlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LibrarySongsViewModel
 import com.jagr.fridamusic.viewmodels.LocalSongsViewModel
@@ -194,11 +192,9 @@ fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
-    onLocalSearchClick: () -> Unit,
     onStatsClick: () -> Unit,
     onExternalPlaylistClick: () -> Unit,
     reselectToken: Int = 0,
-    mixViewModel: LibraryMixViewModel = hiltViewModel(),
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
     val filters = LibraryFilter.entries
@@ -219,10 +215,6 @@ fun LibraryScreen(
 
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
-    val syncState by mixViewModel.syncState.collectAsState()
-    val isRefreshing by mixViewModel.isRefreshing.collectAsState()
-    val syncError = syncState.overallStatus as? SyncStatus.Error
-    var previousSyncError by remember { mutableStateOf(syncError) }
     val snackbarHostState = remember { SnackbarHostState() }
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val playerConnection = LocalPlayerConnection.current
@@ -248,24 +240,6 @@ fun LibraryScreen(
             }
         }
     }
-    val syncErrorMessage = when (syncError?.kind) {
-        SyncErrorKind.OFFLINE -> stringResource(R.string.library_sync_offline)
-        SyncErrorKind.SESSION_EXPIRED -> stringResource(R.string.library_sync_session_expired)
-        SyncErrorKind.TEMPORARY -> stringResource(R.string.library_sync_failed)
-        null -> null
-    }
-
-    LaunchedEffect(syncError) {
-        val isNewError = syncError != null && syncError != previousSyncError
-        previousSyncError = syncError
-        if (isNewError) syncErrorMessage?.let {
-            snackbarHostState.showSnackbar(
-                message = it,
-                duration = SnackbarDuration.Short,
-            )
-        }
-    }
-
     LaunchedEffect(pagerState.currentPage) {
         val targetPage = pagerState.currentPage
         val screenWidth = configuration.screenWidthDp.dp
@@ -404,21 +378,6 @@ fun LibraryScreen(
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
-                    IconButton(
-                        enabled = !isRefreshing,
-                        onClick = mixViewModel::refresh,
-                    ) {
-                        if (isRefreshing) {
-                            FridaLoadingIndicator(
-                                indicatorSize = FridaLoadingDefaults.ActionIndicatorSize,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = stringResource(R.string.library_refresh),
-                            )
-                        }
-                    }
                     }
                 }
 
@@ -480,7 +439,6 @@ fun LibraryScreen(
                     LibraryFilter.PLAYLISTS -> PlaylistsTab(
                         onLocalItemClick = onLocalItemClick,
                         onExternalPlaylistClick = onExternalPlaylistClick,
-                        onLocalSearchClick = onLocalSearchClick,
                         selectedPlaylistIds = selectedPlaylistIds,
                         onSelectedPlaylistIdsChange = { selectedPlaylistIds = it },
                         viewModel = playlistsViewModel,
@@ -762,7 +720,7 @@ private fun LibraryMixTab(
                                 collectionMenu = LocalCollectionActionContext(
                                     id = playlist.id,
                                     title = playlist.title,
-                                    subtitle = "${playlist.songCount} canciones",
+                                    subtitle = "${playlist.effectiveSongCount} canciones",
                                     thumbnail = playlist.thumbnails.firstOrNull(),
                                     circularThumbnail = false,
                                     onOpen = { onLocalItemClick(playlist) },
@@ -959,7 +917,7 @@ private fun PlaylistCompactCard(
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onBackground)
-        Text(text = "${playlist.songCount} canciones",
+        Text(text = "${playlist.effectiveSongCount} canciones",
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
@@ -1049,7 +1007,6 @@ private fun ArtistMoreCard(onClick: () -> Unit) {
 private fun PlaylistsTab(
     onLocalItemClick: (LocalItem) -> Unit,
     onExternalPlaylistClick: () -> Unit,
-    onLocalSearchClick: () -> Unit,
     selectedPlaylistIds: Set<String>,
     onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
     reselectToken: Int,
@@ -1124,14 +1081,19 @@ private fun PlaylistsTab(
     }
 
     fun playPlaylist(playlist: Playlist) {
+        val connection = playerConnection
+        if (connection == null) {
+            showMessage(actionFailedMessage)
+            return
+        }
+        playlist.playlist.playEndpoint?.let { endpoint ->
+            activePlaylistId = playlist.id
+            connection.playQueue(YouTubeQueue(endpoint))
+            return
+        }
         viewModel.loadPlaylistSongs(playlist.id) { songs ->
             if (songs.isEmpty()) {
                 showMessage(emptyPlaylistMessage)
-                return@loadPlaylistSongs
-            }
-            val connection = playerConnection
-            if (connection == null) {
-                showMessage(actionFailedMessage)
                 return@loadPlaylistSongs
             }
             activePlaylistId = playlist.id
@@ -1220,7 +1182,7 @@ private fun PlaylistsTab(
     Box(modifier = Modifier.fillMaxSize()) {
         if (preferences.gridView) {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 156.dp),
+                columns = GridCells.Fixed(2),
                 state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -1239,7 +1201,6 @@ private fun PlaylistsTab(
                         gridView = true,
                         onSortClick = { showSortSheet = true },
                         onGridViewChanged = viewModel::setGridView,
-                        onSearchClick = onLocalSearchClick,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
@@ -1292,7 +1253,6 @@ private fun PlaylistsTab(
                         gridView = false,
                         onSortClick = { showSortSheet = true },
                         onGridViewChanged = viewModel::setGridView,
-                        onSearchClick = onLocalSearchClick,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
@@ -1403,7 +1363,7 @@ private fun PlaylistsTab(
     }
 
     menuPlaylist?.let { playlist ->
-        val hasSongs = playlist.songCount > 0
+        val hasSongs = playlist.effectiveSongCount > 0 || playlist.playlist.playEndpoint != null
         PlaylistLibraryActionsSheet(
             playlist = playlist,
             canEditMetadata = true,
@@ -1618,6 +1578,14 @@ private fun SongsTab(
     var menuSong by remember { mutableStateOf<Song?>(null) }
     val gridState = rememberLazyGridState()
 
+    fun playOrToggle(song: Song, queue: List<Song>) {
+        if (currentSong?.song?.id == song.song.id && playerConnection != null) {
+            playerConnection.togglePlayPause()
+        } else {
+            playSong(song, queue)
+        }
+    }
+
     RootReselectScrollEffect(
         reselectToken = reselectToken,
         isActive = isActive,
@@ -1725,7 +1693,7 @@ private fun SongsTab(
                         song = song,
                         isCurrent = currentSong?.song?.id == song.song.id,
                         isPlaying = isPlaying,
-                        onClick = { playSong(song, sortedSongs) },
+                        onClick = { playOrToggle(song, sortedSongs) },
                         onMoreClick = { menuSong = song },
                     )
                 } else {
@@ -1733,7 +1701,7 @@ private fun SongsTab(
                         song = song,
                         isCurrent = currentSong?.song?.id == song.song.id,
                         isPlaying = isPlaying,
-                        onClick = { playSong(song, sortedSongs) },
+                        onClick = { playOrToggle(song, sortedSongs) },
                         onMoreClick = { menuSong = song },
                     )
                 }
@@ -1938,6 +1906,14 @@ private fun LocalSongsTab(
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
+    fun playOrToggle(song: Song, queue: List<Song>) {
+        if (currentSong?.song?.id == song.song.id && playerConnection != null) {
+            playerConnection.togglePlayPause()
+        } else {
+            onSongClick(song, queue)
+        }
+    }
+
     fun restoreFromBlacklist(songId: String) {
         viewModel.setSongBlacklisted(songId, blacklisted = false)
         scope.launch {
@@ -1987,7 +1963,7 @@ private fun LocalSongsTab(
                 currentSongId = currentSong?.song?.id,
                 isPlaying = isPlaying,
                 onClose = onCloseBlacklist,
-                onSongClick = { song -> onSongClick(song, sortedBlacklistedSongs) },
+                onSongClick = { song -> playOrToggle(song, sortedBlacklistedSongs) },
                 onMoreClick = { song -> menuSong = song },
                 onRestore = { song -> restoreFromBlacklist(song.song.id) },
                 listState = blacklistListState,
@@ -2137,7 +2113,7 @@ private fun LocalSongsTab(
                         song = song,
                         isCurrent = currentSong?.song?.id == song.song.id,
                         isPlaying = isPlaying,
-                        onClick = { onSongClick(song, sortedSongs) },
+                        onClick = { playOrToggle(song, sortedSongs) },
                         onMoreClick = { menuSong = song },
                     )
                 } else {
@@ -2145,7 +2121,7 @@ private fun LocalSongsTab(
                         song = song,
                         isCurrent = currentSong?.song?.id == song.song.id,
                         isPlaying = isPlaying,
-                        onClick = { onSongClick(song, sortedSongs) },
+                        onClick = { playOrToggle(song, sortedSongs) },
                         onMoreClick = { menuSong = song },
                     )
                 }

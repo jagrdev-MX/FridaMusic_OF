@@ -32,6 +32,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,10 +132,19 @@ fun LocalSongListItem(
                 )
             }
             if (isCurrent) {
-                LocalPlayingBars(
-                    active = isPlaying,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(25.dp),
+                MediaPlaybackIndicator(
+                    isPlaying = isPlaying,
+                    onClick = onClick,
+                    buttonSize = 40.dp,
+                    indicatorSize = 23.dp,
+                )
+            } else {
+                MediaArtworkActionButton(
+                    icon = Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(R.string.play),
+                    onClick = onClick,
+                    buttonSize = 40.dp,
+                    iconSize = 23.dp,
                 )
             }
             if (trailingContent != null) {
@@ -141,11 +152,8 @@ fun LocalSongListItem(
             } else {
                 SongOptionsButton(
                     onClick = onMoreClick,
-                    iconColor = if (isCurrent) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    iconColor = Color.White,
+                    containerColor = Color.Black.copy(alpha = 0.38f),
                 )
             }
         }
@@ -190,21 +198,22 @@ fun LocalSongGridItem(
                 SongOptionsButton(
                     onClick = onMoreClick,
                     modifier = Modifier.align(Alignment.TopEnd),
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-                    iconColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = Color.Black.copy(alpha = 0.38f),
+                    iconColor = Color.White,
                 )
                 if (isCurrent) {
-                    Surface(
-                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                    ) {
-                        LocalPlayingBars(
-                            active = isPlaying,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(10.dp).size(24.dp),
-                        )
-                    }
+                    MediaPlaybackIndicator(
+                        isPlaying = isPlaying,
+                        onClick = onClick,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                } else {
+                    MediaArtworkActionButton(
+                        icon = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.play),
+                        onClick = onClick,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
                 }
             }
             Text(

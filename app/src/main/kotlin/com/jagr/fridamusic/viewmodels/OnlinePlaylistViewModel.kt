@@ -20,12 +20,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -59,7 +57,6 @@ class OnlinePlaylistViewModel @Inject constructor(
     var continuation: String? = null
         private set
 
-    private var proactiveLoadJob: Job? = null
     private val continuationMutex = Mutex()
     private val seenContinuations = mutableSetOf<String>()
     private var continuationRequestCount = 0
@@ -73,7 +70,6 @@ class OnlinePlaylistViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             continuation = null
-            proactiveLoadJob?.cancel() 
             seenContinuations.clear()
             continuationRequestCount = 0
 
@@ -96,9 +92,6 @@ class OnlinePlaylistViewModel @Inject constructor(
                         playlistPage.songs.size,
                         playlistPage.songsContinuation != null,
                     )
-                    if (continuation != null) {
-                        startProactiveBackgroundLoading()
-                    }
                 }.onFailure { throwable ->
                     _error.value = throwable.safeErrorMessage()
                     _isLoading.value = false
@@ -113,52 +106,11 @@ class OnlinePlaylistViewModel @Inject constructor(
         }
     }
 
-    private fun startProactiveBackgroundLoading() {
-        proactiveLoadJob?.cancel() 
-        proactiveLoadJob = viewModelScope.launch(Dispatchers.IO) {
-            var currentProactiveToken = continuation
-            while (currentProactiveToken != null && isActive) {
-                
-                if (_isLoadingMore.value) {
-                    
-                    
-                    break 
-                }
-
-                val continuationResult = requestContinuation(currentProactiveToken) ?: break
-                continuationResult
-                    .onSuccess { playlistContinuationPage ->
-                        val currentSongs = playlistSongs.value.toMutableList()
-                        currentSongs.addAll(playlistContinuationPage.songs)
-                        playlistSongs.value = applySongFilters(currentSongs)
-                        currentProactiveToken = playlistContinuationPage.continuation
-                        
-                        this@OnlinePlaylistViewModel.continuation = currentProactiveToken 
-                    }.onFailure { throwable ->
-                        if (playlistSongs.value.isEmpty()) {
-                            _error.value = throwable.safeErrorMessage()
-                        }
-                        Timber.w(
-                            throwable,
-                            "Playlist continuation failed: id=%s endpoint=browse status=%s stage=continuation",
-                            playlistId,
-                            throwable.safeHttpStatus(),
-                        )
-                        reportException(throwable)
-                        currentProactiveToken = null 
-                        this@OnlinePlaylistViewModel.continuation = null
-                    }
-            }
-            
-        }
-    }
-
     fun loadMoreSongs() {
         if (_isLoadingMore.value) return 
         
         val tokenForManualLoad = continuation ?: return 
 
-        proactiveLoadJob?.cancel() 
         _isLoadingMore.value = true
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -187,16 +139,11 @@ class OnlinePlaylistViewModel @Inject constructor(
                     reportException(throwable)
                 }.also {
                     _isLoadingMore.value = false
-                    
-                    if (continuation != null && isActive) {
-                        startProactiveBackgroundLoading()
-                    }
                 }
         }
     }
 
     fun retry() {
-        proactiveLoadJob?.cancel()
         fetchInitialPlaylistData() 
     }
 
@@ -231,11 +178,6 @@ class OnlinePlaylistViewModel @Inject constructor(
         val filtered = uniqueSongs.filterVideoSongs(true)
         // If filtering hides everything, keep original list to avoid false "empty playlist" UX.
         return if (filtered.isEmpty() && uniqueSongs.isNotEmpty()) uniqueSongs else filtered
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        proactiveLoadJob?.cancel()
     }
 
     private companion object {

@@ -39,4 +39,11 @@ data class Playlist(
                 listOf(playlist.thumbnailUrl)
             else songThumbnails.filterNotNull()
         }
+
+    val effectiveSongCount: Int
+        get() = if (playlist.browseId != null && !playlist.isLocal) {
+            maxOf(songCount, playlist.remoteSongCount ?: 0)
+        } else {
+            songCount
+        }
 }

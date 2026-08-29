@@ -54,7 +54,6 @@ import com.jagr.fridamusic.extensions.filterVideoSongs
 import com.jagr.fridamusic.extensions.filterYoutubeShorts
 import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.playback.DownloadUtil
-import com.jagr.fridamusic.utils.SyncStatus
 import com.jagr.fridamusic.utils.SyncUtils
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
@@ -523,11 +522,9 @@ constructor(
 
     fun loadPlaylistsSongs(playlistIds: Set<String>, onLoaded: (List<Song>) -> Unit) {
         viewModelScope.launch {
-            val orderedIds = allPlaylists.value.map { it.id }.filter { it in playlistIds }
+            val selectedPlaylists = allPlaylists.value.filter { it.id in playlistIds }
             val songs = runCatching {
-                orderedIds.flatMap { playlistId ->
-                    database.playlistSongs(playlistId).first().map { it.song }
-                }
+                selectedPlaylists.flatMap { loadPlaylistSongsForExplicitAction(it) }
             }.onFailure(::reportException).getOrDefault(emptyList())
             onLoaded(songs)
         }
@@ -544,8 +541,8 @@ constructor(
         }
         viewModelScope.launch {
             val result = runCatching {
-                val sourceIds = database.playlistSongs(source.id).first()
-                    .map { it.map.songId }
+                val sourceIds = loadPlaylistSongsForExplicitAction(source)
+                    .map { it.song.id }
                     .distinct()
                 database.withTransaction {
                     val existingIds = if (sourceIds.isEmpty()) emptySet() else {
@@ -575,7 +572,7 @@ constructor(
         viewModelScope.launch {
             val result = runCatching {
                 val sourceIds = sources.flatMap { source ->
-                    database.playlistSongs(source.id).first().map { it.map.songId }
+                    loadPlaylistSongsForExplicitAction(source).map { it.song.id }
                 }.distinct()
                 database.withTransaction {
                     val existingIds = if (sourceIds.isEmpty()) emptySet() else {
@@ -597,7 +594,7 @@ constructor(
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val songs = database.playlistSongs(playlist.id).first().map { it.song }
+                    val songs = loadPlaylistSongsForExplicitAction(playlist)
                     checkNotNull(context.contentResolver.openOutputStream(destination)).bufferedWriter().use { writer ->
                         writer.appendLine("#EXTM3U")
                         songs.forEach { song ->
@@ -628,7 +625,7 @@ constructor(
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val songs = playlists.flatMap { playlist ->
-                        database.playlistSongs(playlist.id).first().map { it.song }
+                        loadPlaylistSongsForExplicitAction(playlist)
                     }
                     writeM3u(destination, songs)
                 }
@@ -657,6 +654,15 @@ constructor(
                 )
             }
         }
+    }
+
+    private suspend fun loadPlaylistSongsForExplicitAction(playlist: Playlist): List<Song> {
+        if (playlist.playlist.isRemote) {
+            check(syncUtils.ensurePlaylistSongsLoaded(playlist.playlist)) {
+                "Could not load the complete remote playlist"
+            }
+        }
+        return database.playlistSongs(playlist.id).first().map { it.song }
     }
 
     fun sync() {
@@ -711,96 +717,6 @@ constructor(
                 val (sortType, descending) = sortDesc
                 database.artistSongs(artistId, sortType, descending).map { it.filterExplicit(hideExplicit).filterVideoSongs(hideVideoSongs) }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-}
-
-@HiltViewModel
-class LibraryMixViewModel
-@Inject
-constructor(
-    @ApplicationContext context: Context,
-    database: MusicDatabase,
-    private val syncUtils: SyncUtils,
-) : ViewModel() {
-    val syncState = syncUtils.syncState
-    val isRefreshing = syncState
-        .map { it.overallStatus is SyncStatus.Syncing }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
-    fun syncIfStale() {
-        syncUtils.tryAutoSync()
-    }
-
-    fun refresh() {
-        syncUtils.performFullSync()
-    }
-
-    val topValue =
-        context.dataStore.data
-            .map { it[TopSize] ?: "50" }
-            .distinctUntilChanged()
-    var artists =
-        database
-            .artistsBookmarked(
-                ArtistSortType.CREATE_DATE,
-                true,
-            ).stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-    var albums = context.dataStore.data
-        .map { it[HideExplicitKey] ?: false }
-        .distinctUntilChanged()
-        .flatMapLatest { hideExplicit ->
-            database.albumsLiked(AlbumSortType.CREATE_DATE, true).map { it.filterExplicitAlbums(hideExplicit) }
-        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-    var playlists = context.dataStore.data
-        .map { it[HideYoutubeShortsKey] ?: false }
-        .distinctUntilChanged()
-        .flatMapLatest { hideYoutubeShorts ->
-            database.playlists(PlaylistSortType.CREATE_DATE, true).map { it.filterYoutubeShorts(hideYoutubeShorts) }
-        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            albums.collect { albums ->
-                albums
-                    .filter {
-                        it.album.songCount == 0
-                    }.forEach { album ->
-                        YouTube
-                            .album(album.id)
-                            .onSuccess { albumPage ->
-                                database.query {
-                                    update(album.album, albumPage, album.artists)
-                                }
-                            }.onFailure {
-                                reportException(it)
-                                if (it.message?.contains("NOT_FOUND") == true) {
-                                    database.query {
-                                        delete(album.album)
-                                    }
-                                }
-                            }
-                    }
-            }
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            artists.collect { artists ->
-                artists
-                    .map { it.artist }
-                    .filter {
-                        it.thumbnailUrl == null ||
-                                Duration.between(
-                                    it.lastUpdateTime,
-                                    LocalDateTime.now(),
-                                ) > Duration.ofDays(10)
-                    }.forEach { artist ->
-                        YouTube.artist(artist.id).onSuccess { artistPage ->
-                            database.query {
-                                update(artist, artistPage)
-                            }
-                        }
-                    }
-            }
-        }
-    }
 }
 
 @HiltViewModel

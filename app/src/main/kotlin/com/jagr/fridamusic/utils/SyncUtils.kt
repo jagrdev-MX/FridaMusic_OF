@@ -444,6 +444,16 @@ class SyncUtils @Inject constructor(
     suspend fun syncArtistsSubscriptionsSuspend() = executionMutex.withLock { executeSyncArtistsSubscriptions() }
     suspend fun syncSavedPlaylistsSuspend() = executionMutex.withLock { executeSyncSavedPlaylists() }
     suspend fun syncAutoSyncPlaylistsSuspend() = executionMutex.withLock { executeSyncAutoSyncPlaylists() }
+    suspend fun ensurePlaylistSongsLoaded(playlist: PlaylistEntity): Boolean =
+        executionMutex.withLock {
+            if (!playlist.isRemote) return@withLock true
+            val expectedSongCount = playlist.remoteSongCount
+            val localSongCount = database.playlistSongCount(playlist.id)
+            if (expectedSongCount != null && localSongCount >= expectedSongCount) {
+                return@withLock true
+            }
+            executeSyncPlaylist(checkNotNull(playlist.browseId), playlist.id)
+        }
     suspend fun cleanupDuplicatePlaylistsSuspend() = executionMutex.withLock { executeCleanupDuplicatePlaylists() }
     suspend fun clearAllSyncedContentSuspend() = executionMutex.withLock { executeClearAllSyncedContent() }
 
@@ -1071,7 +1081,6 @@ class SyncUtils @Inject constructor(
                                         lastUpdateTime = LocalDateTime.now(),
                                     )
                                 )
-                                delay(DB_OPERATION_DELAY_MS)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
@@ -1082,7 +1091,7 @@ class SyncUtils @Inject constructor(
 
                     for (playlist in remotePlaylists) {
                         try {
-                            var playlistEntity = localByBrowseId[playlist.id]?.playlist
+                            val playlistEntity = localByBrowseId[playlist.id]?.playlist
 
                             if (playlistEntity == null) {
                                 val newPlaylistEntity = PlaylistEntity(
@@ -1091,9 +1100,7 @@ class SyncUtils @Inject constructor(
                                     thumbnailUrl = playlist.thumbnail,
                                     isEditable = playlist.isEditable,
                                     bookmarkedAt = LocalDateTime.now(),
-                                    remoteSongCount = playlist.songCountText?.let {
-                                        Regex("""\d+""").find(it)?.value?.toIntOrNull()
-                                    },
+                                    remoteSongCount = playlist.remoteSongCount(),
                                     playEndpointParams = playlist.playEndpoint?.params,
                                     shuffleEndpointParams = playlist.shuffleEndpoint?.params,
                                     radioEndpointParams = playlist.radioEndpoint?.params
@@ -1101,24 +1108,19 @@ class SyncUtils @Inject constructor(
                                 database.transaction {
                                     insert(newPlaylistEntity)
                                 }
-                                playlistEntity = newPlaylistEntity
                                 Timber.d("syncSavedPlaylists: Created a new playlist")
                             } else {
-                                val updatedPlaylistEntity = playlistEntity.copy(
+                                val updatedPlaylistEntity = playlistEntity.withRemoteMetadata(
+                                    playlist = playlist,
                                     bookmarkedAt = playlistEntity.bookmarkedAt ?: LocalDateTime.now(),
-                                    lastUpdateTime = LocalDateTime.now(),
                                 )
-                                database.transaction {
-                                    update(updatedPlaylistEntity, playlist)
+                                if (updatedPlaylistEntity != playlistEntity) {
+                                    database.update(
+                                        updatedPlaylistEntity.copy(lastUpdateTime = LocalDateTime.now())
+                                    )
+                                    Timber.d("syncSavedPlaylists: Updated changed playlist metadata")
                                 }
-                                playlistEntity = updatedPlaylistEntity
-                                Timber.d("syncSavedPlaylists: Updated an existing playlist")
                             }
-
-                            if (!executeSyncPlaylist(playlist.id, checkNotNull(playlistEntity).id)) {
-                                hadPlaylistErrors = true
-                            }
-                            delay(DB_OPERATION_DELAY_MS)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -1213,7 +1215,19 @@ class SyncUtils @Inject constructor(
                 .sortedBy { it.map.position }
                 .map { it.song.id }
 
+            val storedPlaylist = database.getPlaylistByIdBlocking(playlistId)?.playlist
+            val refreshedPlaylist = storedPlaylist?.withRemoteMetadata(
+                playlist = page.playlist,
+                bookmarkedAt = storedPlaylist.bookmarkedAt,
+                remoteSongCount = songs.size,
+            )
+
             if (remoteIds == localIds) {
+                if (storedPlaylist != null && refreshedPlaylist != storedPlaylist) {
+                    database.update(
+                        checkNotNull(refreshedPlaylist).copy(lastUpdateTime = LocalDateTime.now())
+                    )
+                }
                 Timber.d("syncPlaylist: Local and remote are in sync, no changes needed")
                 return@withContext true
             }
@@ -1233,6 +1247,9 @@ class SyncUtils @Inject constructor(
                         )
                     )
                 }
+                refreshedPlaylist?.let {
+                    database.update(it.copy(lastUpdateTime = LocalDateTime.now()))
+                }
             }
             Timber.d("syncPlaylist: Successfully synced playlist")
             true
@@ -1243,6 +1260,25 @@ class SyncUtils @Inject constructor(
             false
         }
     }
+
+    private fun PlaylistItem.remoteSongCount(): Int? =
+        songCountText?.filter(Char::isDigit)?.toIntOrNull()
+
+    private fun PlaylistEntity.withRemoteMetadata(
+        playlist: PlaylistItem,
+        bookmarkedAt: LocalDateTime?,
+        remoteSongCount: Int? = playlist.remoteSongCount(),
+    ) = copy(
+        name = playlist.title,
+        browseId = playlist.id,
+        thumbnailUrl = playlist.thumbnail,
+        isEditable = playlist.isEditable,
+        bookmarkedAt = bookmarkedAt,
+        remoteSongCount = remoteSongCount,
+        playEndpointParams = playlist.playEndpoint?.params,
+        shuffleEndpointParams = playlist.shuffleEndpoint?.params,
+        radioEndpointParams = playlist.radioEndpoint?.params,
+    )
 
     private suspend fun executeCleanupDuplicatePlaylists() = withContext(Dispatchers.IO) {
         try {

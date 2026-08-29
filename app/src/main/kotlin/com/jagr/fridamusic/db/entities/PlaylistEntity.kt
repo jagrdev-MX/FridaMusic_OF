@@ -7,6 +7,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.music.innertube.YouTube
+import com.music.innertube.models.WatchEndpoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,4 +61,22 @@ data class PlaylistEntity(
                 YouTube.likePlaylist(browseId, bookmarkedAt == null)
         }
     }
+
+    val isRemote: Boolean
+        get() = browseId != null && !isLocal
+
+    val playEndpoint: WatchEndpoint?
+        get() = browseId?.takeIf { !isLocal }?.let {
+            WatchEndpoint(playlistId = it, params = playEndpointParams)
+        }
+
+    val shuffleEndpoint: WatchEndpoint?
+        get() = browseId?.takeIf { !isLocal }?.let {
+            WatchEndpoint(playlistId = it, params = shuffleEndpointParams)
+        }
+
+    val radioEndpoint: WatchEndpoint?
+        get() = browseId?.takeIf { !isLocal }?.let {
+            WatchEndpoint(playlistId = it, params = radioEndpointParams)
+        }
 }

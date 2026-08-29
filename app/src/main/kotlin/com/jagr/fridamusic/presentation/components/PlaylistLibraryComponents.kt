@@ -33,11 +33,9 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material3.AlertDialog
@@ -45,7 +43,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -85,7 +82,6 @@ fun PlaylistLibraryControls(
     gridView: Boolean,
     onSortClick: () -> Unit,
     onGridViewChanged: (Boolean) -> Unit,
-    onSearchClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val locale = LocalConfiguration.current.locales[0]
@@ -131,20 +127,6 @@ fun PlaylistLibraryControls(
             gridView = gridView,
             onGridViewChanged = onGridViewChanged,
         )
-
-        if (onSearchClick != null) {
-            Surface(
-                onClick = onSearchClick,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = stringResource(R.string.search_library),
-                    modifier = Modifier.padding(14.dp).size(22.dp),
-                )
-            }
-        }
     }
 }
 
@@ -257,7 +239,7 @@ fun PlaylistLibraryListItem(
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.playlist_song_count, playlist.songCount),
+                    text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -270,29 +252,26 @@ fun PlaylistLibraryListItem(
                     modifier = Modifier.size(25.dp),
                 )
             } else if (isCurrent) {
-                Surface(
+                MediaPlaybackIndicator(
+                    isPlaying = isPlaying,
                     onClick = onPlay,
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ) {
-                    LocalPlayingBars(
-                        active = isPlaying,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(7.dp).size(24.dp),
-                    )
-                }
+                    buttonSize = 40.dp,
+                    indicatorSize = 23.dp,
+                )
             } else {
-                FilledIconButton(
+                MediaArtworkActionButton(
+                    icon = Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(R.string.play),
                     onClick = onPlay,
-                    modifier = Modifier.size(38.dp),
-                ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play))
-                }
+                    buttonSize = 40.dp,
+                    iconSize = 23.dp,
+                )
             }
-            IconButton(onClick = onMoreClick, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
-            }
+            SongOptionsButton(
+                onClick = onMoreClick,
+                iconColor = Color.White,
+                containerColor = Color.Black.copy(alpha = 0.38f),
+            )
         }
     }
 }
@@ -340,18 +319,12 @@ fun PlaylistLibraryGridItem(
                     modifier = Modifier.fillMaxSize(),
                 )
                 if (!selectionMode) {
-                    IconButton(
+                    SongOptionsButton(
                         onClick = onMoreClick,
                         modifier = Modifier.align(Alignment.TopEnd),
-                    ) {
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)) {
-                            Icon(
-                                Icons.Rounded.MoreVert,
-                                contentDescription = stringResource(R.string.more_options),
-                                modifier = Modifier.padding(7.dp).size(20.dp),
-                            )
-                        }
-                    }
+                        iconColor = Color.White,
+                        containerColor = Color.Black.copy(alpha = 0.38f),
+                    )
                 }
                 if (selectionMode) {
                     Surface(
@@ -367,25 +340,18 @@ fun PlaylistLibraryGridItem(
                         )
                     }
                 } else if (isCurrent) {
-                    Surface(
+                    MediaPlaybackIndicator(
+                        isPlaying = isPlaying,
                         onClick = onPlay,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f),
-                    ) {
-                        LocalPlayingBars(
-                            active = isPlaying,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(10.dp).size(24.dp),
-                        )
-                    }
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    )
                 } else {
-                    FilledIconButton(
+                    MediaArtworkActionButton(
+                        icon = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.play),
                         onClick = onPlay,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(42.dp),
-                    ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.play))
-                    }
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -398,7 +364,7 @@ fun PlaylistLibraryGridItem(
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = stringResource(R.string.playlist_song_count, playlist.songCount),
+                text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -591,7 +557,7 @@ fun PlaylistLibraryActionsSheet(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = stringResource(R.string.playlist_song_count, playlist.songCount),
+                        text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
