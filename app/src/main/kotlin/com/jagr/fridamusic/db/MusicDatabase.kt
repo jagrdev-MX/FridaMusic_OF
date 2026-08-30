@@ -26,6 +26,7 @@ import com.jagr.fridamusic.db.entities.BrainActivityLogEntity
 import com.jagr.fridamusic.db.entities.Event
 import com.jagr.fridamusic.db.entities.FormatEntity
 import com.jagr.fridamusic.db.entities.LyricsEntity
+import com.jagr.fridamusic.db.entities.NotificationHistoryEntity
 import com.jagr.fridamusic.db.entities.PlayCountEntity
 import com.jagr.fridamusic.db.entities.PlaylistEntity
 import com.jagr.fridamusic.db.entities.PlaylistSongMap
@@ -113,14 +114,15 @@ class MusicDatabase(
         SpeedDialItem::class,
         BrainActivityLogEntity::class,
         PlayEventEntity::class,
-        TasteProfileEntity::class
+        TasteProfileEntity::class,
+        NotificationHistoryEntity::class,
     ],
     views = [
         SortedSongArtistMap::class,
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 39,
+    version = 40,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -183,6 +185,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_36_37,
                         MIGRATION_37_38,
                         MIGRATION_38_39,
+                        MIGRATION_39_40,
                     )
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .setTransactionExecutor(java.util.concurrent.Executors.newFixedThreadPool(4))
@@ -864,5 +867,31 @@ val MIGRATION_38_39 =
             if (!columnExists) {
                 db.execSQL("ALTER TABLE format ADD COLUMN perceptualLoudnessDb REAL DEFAULT NULL")
             }
+        }
+    }
+
+val MIGRATION_39_40 =
+    object : Migration(39, 40) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `notification_history` " +
+                    "(`id` TEXT NOT NULL, `candidateId` TEXT NOT NULL, `type` TEXT NOT NULL, " +
+                    "`contentType` TEXT NOT NULL, `contentId` TEXT, `title` TEXT NOT NULL, " +
+                    "`body` TEXT NOT NULL, `artworkUrl` TEXT, `deepLink` TEXT, `source` TEXT, " +
+                    "`reason` TEXT, `deliveredAt` INTEGER NOT NULL, `readAt` INTEGER, " +
+                    "`dismissedAt` INTEGER, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_notification_history_deliveredAt` " +
+                    "ON `notification_history` (`deliveredAt`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_notification_history_type` " +
+                    "ON `notification_history` (`type`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_notification_history_readAt` " +
+                    "ON `notification_history` (`readAt`)",
+            )
         }
     }

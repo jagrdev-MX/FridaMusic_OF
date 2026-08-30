@@ -5,11 +5,14 @@ import com.jagr.fridamusic.constants.AlbumSortType
 import com.jagr.fridamusic.constants.ArtistSortType
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.recap.RecapPeriodResolver
+import com.jagr.fridamusic.recap.RecapPeriodType
 import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.Year
+import java.time.DayOfWeek
 import java.util.concurrent.TimeUnit
 
 internal class NotificationCandidateProvider(
@@ -84,6 +87,7 @@ internal class NotificationCandidateProvider(
         val playlists = database.notificationDiscoveryPlaylists(limit = QUERY_LIMIT).first()
 
         val candidates = buildList {
+            addAll(recapCandidates(now))
             releases.mapNotNullTo(this) { album ->
                 if (album.id.isBlank() || album.title.isBlank()) return@mapNotNullTo null
                 val isFromFollowedArtist = album.artists.any { artist -> artist.bookmarkedAt != null }
@@ -290,6 +294,40 @@ internal class NotificationCandidateProvider(
     private fun deepLink(host: String, id: String): String =
         "fridamusic://$host/${Uri.encode(id)}"
 
+    private suspend fun recapCandidates(now: Long): List<NotificationCandidate> {
+        val localDate = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
+        val dueTypes = buildList {
+            if (localDate.dayOfWeek == DayOfWeek.MONDAY || localDate.dayOfWeek == DayOfWeek.TUESDAY) {
+                add(RecapPeriodType.WEEK)
+            }
+            if (localDate.dayOfMonth <= 3) add(RecapPeriodType.MONTH)
+            if (localDate.monthValue == 1 && localDate.dayOfMonth <= 7) add(RecapPeriodType.YEAR)
+        }.distinct()
+
+        return dueTypes.mapNotNull { type ->
+            val range = RecapPeriodResolver.resolve(
+                type = type,
+                offset = 1,
+                now = Instant.ofEpochMilli(now),
+            )
+            val playCount = database.getPlayCountInRange(range.startMillis, range.endMillis).first()
+            if (playCount < MIN_RECAP_PLAYS) return@mapNotNull null
+            val typeValue = type.name.lowercase()
+            NotificationCandidate(
+                id = "recap:$typeValue:${range.startMillis}",
+                type = NotificationCandidateType.RECAP_AVAILABLE,
+                priority = NotificationPolicy.Priority.RECAP,
+                title = range.label,
+                contentId = "$typeValue:${range.startMillis}",
+                contentType = NotificationContentType.RECAP,
+                deepLink = "fridamusic://recap?period=$typeValue&offset=1",
+                source = "local_listening_recap",
+                reason = "Completed local listening period with enough playback history",
+                timestamp = range.endMillis,
+            )
+        }
+    }
+
     private companion object {
         const val QUERY_LIMIT = 20
         const val TYPE_LIMIT = 10
@@ -301,6 +339,7 @@ internal class NotificationCandidateProvider(
         const val DAILY_DISCOVER_ROTATION_SALT = 13
         const val ALBUM_ROTATION_SALT = 7
         const val RELEASE_CACHE_WINDOW_DAYS = 120L
+        const val MIN_RECAP_PLAYS = 5
         val FORGOTTEN_RECENT_WINDOW_MILLIS = TimeUnit.DAYS.toMillis(30)
         val FORGOTTEN_FALLBACK_WINDOW_MILLIS = TimeUnit.DAYS.toMillis(7)
         val ARTIST_FAMILIARITY_MILLIS = TimeUnit.DAYS.toMillis(180)

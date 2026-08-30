@@ -1,6 +1,7 @@
 package com.jagr.fridamusic.presentation.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,16 +40,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.R
+import kotlinx.coroutines.launch
 
 private data class Developer(
     val name: String,
@@ -126,7 +129,8 @@ private val openSourceLibraries = listOf(
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -152,18 +156,30 @@ fun AboutScreen(onBack: () -> Unit) {
             AppHeader()
 
             TabRow(
-                selectedTabIndex = selectedTab,
+                selectedTabIndex = pagerState.currentPage,
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 },
+                Tab(selected = pagerState.currentPage == 0, onClick = {
+                    scope.launch { pagerState.animateScrollToPage(0) }
+                },
                     text = { Text(stringResource(R.string.about_team)) })
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 },
+                Tab(selected = pagerState.currentPage == 1, onClick = {
+                    scope.launch { pagerState.animateScrollToPage(1) }
+                },
                     text = { Text(stringResource(R.string.about_licenses)) })
             }
 
-            when (selectedTab) {
-                0 -> TeamTab(onOpenUrl = { uriHandler.openUri(it) })
-                1 -> LicensesTab(onOpenUrl = { uriHandler.openUri(it) })
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalAlignment = Alignment.Top,
+            ) { page ->
+                when (page) {
+                    0 -> TeamTab(onOpenUrl = { uriHandler.openUri(it) })
+                    1 -> LicensesTab(onOpenUrl = { uriHandler.openUri(it) })
+                }
             }
         }
     }
@@ -180,12 +196,15 @@ private fun AppHeader() {
             modifier = Modifier
                 .size(72.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFF8B5CF6)))
-                ),
+                .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
-            Text("F", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Image(
+                painter = painterResource(R.drawable.frida_music_logo_monochrome),
+                contentDescription = null,
+                modifier = Modifier.size(52.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimaryContainer),
+            )
         }
         Text(
             text = "FridaMusic",

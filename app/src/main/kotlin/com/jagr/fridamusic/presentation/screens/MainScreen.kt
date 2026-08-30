@@ -133,6 +133,9 @@ fun MainScreen(
             currentRoute != "login" &&
             currentRoute != "spotify_import" &&
             currentRoute != "stats" &&
+            currentRoute != "history" &&
+            currentRoute != "notifications" &&
+            currentRoute != RECAP_ROUTE &&
             currentRoute != "about" &&
             currentRoute != "music_recognition"
 
@@ -191,6 +194,9 @@ fun MainScreen(
                         )
                     },
                     onSettingsClick = { navController.navigate("settings") },
+                    onHistoryClick = { navController.navigate("history") },
+                    onRecapClick = { navController.navigate("recap") },
+                    onNotificationsClick = { navController.navigate("notifications") },
                     reselectToken = homeReselectToken,
                     viewModel = homeViewModel,
                 )
@@ -347,6 +353,73 @@ fun MainScreen(
                     onNavigateToSpotifyImport = { navController.navigate("spotify_import") },
                     onNavigateToStats = { navController.navigate("stats") },
                     onNavigateToAbout = { navController.navigate("about") },
+                )
+            }
+            composable(
+                route = "history",
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = RecommendationNotificationManager.HISTORY_DEEP_LINK_PATTERN },
+                ),
+            ) {
+                HistoryScreen(
+                    onBack = { navController.popBackStack() },
+                    onLocalSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
+                    onRemoteSongClick = { song -> playerConnection?.playYTItem(song) },
+                )
+            }
+            composable(
+                route = RECAP_ROUTE,
+                arguments = listOf(
+                    navArgument("period") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("offset") {
+                        type = NavType.IntType
+                        defaultValue = 0
+                    },
+                ),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = RecommendationNotificationManager.RECAP_DEEP_LINK_PATTERN },
+                ),
+            ) { entry ->
+                RecapScreen(
+                    onBack = { navController.popBackStack() },
+                    initialPeriod = entry.arguments?.getString("period"),
+                    initialOffset = entry.arguments?.getInt("offset"),
+                    onSongClick = { song ->
+                        playerConnection?.playQueue(
+                            YouTubeQueue(
+                                endpoint = WatchEndpoint(videoId = song.id),
+                                preloadItem = MediaMetadata(
+                                    id = song.id,
+                                    title = song.title,
+                                    artists = listOfNotNull(
+                                        song.artistName?.let { name ->
+                                            MediaMetadata.Artist(id = null, name = name)
+                                        },
+                                    ),
+                                    duration = -1,
+                                    thumbnailUrl = song.thumbnailUrl,
+                                    musicVideoType = if (song.isVideo) "MUSIC_VIDEO_TYPE_OMV" else null,
+                                ),
+                            ),
+                        )
+                    },
+                )
+            }
+            composable(
+                route = "notifications",
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = RecommendationNotificationManager.NOTIFICATIONS_DEEP_LINK_PATTERN },
+                ),
+            ) {
+                NotificationHistoryScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDeepLink = { uri ->
+                        navController.navigateFromNotificationCenter(uri)
+                    },
                 )
             }
             composable("spotify_import") {
@@ -638,6 +711,29 @@ private fun NavHostController.hasRootOnBackStack(root: RootDestination): Boolean
     runCatching { getBackStackEntry(root.route) }.isSuccess
 
 private const val SEARCH_RESULT_ROUTE = "search_result/{query}"
+private const val RECAP_ROUTE = "recap?period={period}&offset={offset}"
+
+private fun NavHostController.navigateFromNotificationCenter(uri: Uri) {
+    val contentId = uri.pathSegments.firstOrNull()?.takeIf(String::isNotBlank)
+    val route = when (uri.host) {
+        "home" -> "home"
+        "history" -> "history"
+        "notifications" -> return
+        "album" -> contentId?.let { "album/${Uri.encode(it)}" }
+        "artist" -> contentId?.let { "artist/${Uri.encode(it)}" }
+        "playlist" -> contentId?.let { "playlist/${Uri.encode(it)}" }
+        "local-playlist" -> contentId?.let { "local_playlist/${Uri.encode(it)}" }
+        "recap" -> {
+            val period = uri.getQueryParameter("period")?.takeIf(String::isNotBlank)
+            val offset = uri.getQueryParameter("offset")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+            if (period == null) "recap" else "recap?period=${Uri.encode(period)}&offset=$offset"
+        }
+        else -> null
+    } ?: return
+
+    navigate(route) { launchSingleTop = true }
+}
+
 private fun NavHostController.navigateToSearchResult(query: String) {
     val normalizedQuery = query.trim()
     if (normalizedQuery.isEmpty()) return

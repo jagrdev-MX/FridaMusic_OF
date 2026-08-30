@@ -60,6 +60,7 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
+import com.jagr.fridamusic.viewmodels.NotificationHistoryViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.Artist as YTArtist
 import com.music.innertube.models.ArtistItem
@@ -83,8 +84,11 @@ fun HomeScreen(
     onCollectionClick: (HomeCollectionKind, Int, String) -> Unit = { _, _, _ -> },
     onSettingsClick: () -> Unit = {},
     onHistoryClick: () -> Unit = {},
+    onRecapClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
     reselectToken: Int = 0,
     viewModel: HomeViewModel = hiltViewModel(),
+    notificationHistoryViewModel: NotificationHistoryViewModel = hiltViewModel(),
 ) {
     val quickPicks by viewModel.quickPicks.collectAsState()
     val dailyDiscover by viewModel.dailyDiscover.collectAsState()
@@ -100,6 +104,7 @@ fun HomeScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val selectedChip by viewModel.selectedChip.collectAsState()
     val pinnedItems by viewModel.pinnedItems.collectAsState()
+    val unreadNotificationCount by notificationHistoryViewModel.unreadCount.collectAsState()
     var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
     val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
@@ -206,6 +211,9 @@ fun HomeScreen(
         item(key = "header") {
             HomeHeader(
                 onHistoryClick = onHistoryClick,
+                onRecapClick = onRecapClick,
+                onNotificationsClick = onNotificationsClick,
+                unreadNotificationCount = unreadNotificationCount,
                 onSettingsClick = onSettingsClick,
                 onSupportClick = { showSupportDialog = true } // Abrimos el diálogo
             )
@@ -495,6 +503,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 @Composable
 private fun HomeHeader(
     onHistoryClick: () -> Unit,
+    onRecapClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    unreadNotificationCount: Int,
     onSettingsClick: () -> Unit,
     onSupportClick: () -> Unit,
 ) {
@@ -516,13 +527,18 @@ private fun HomeHeader(
             // Nuevo ícono agregado al principio para mayor visibilidad
             HeaderIconButton(
                 icon = Icons.Rounded.VolunteerActivism,
-                description = "Apoyar proyecto",
+                description = stringResource(R.string.support_project),
                 onClick = onSupportClick,
                 tint = MaterialTheme.colorScheme.primary // Le damos un toque de color para que resalte sutilmente
             )
             HeaderIconButton(Icons.Rounded.History, stringResource(R.string.history), onHistoryClick)
-            HeaderIconButton(Icons.Rounded.CalendarMonth, stringResource(R.string.calendar), {})
-            HeaderIconButton(Icons.Rounded.NotificationsNone, stringResource(R.string.notifications), {})
+            HeaderIconButton(Icons.Rounded.CalendarMonth, stringResource(R.string.fridamusic_recap), onRecapClick)
+            HeaderIconButton(
+                Icons.Rounded.NotificationsNone,
+                stringResource(R.string.notifications),
+                onNotificationsClick,
+                badgeCount = unreadNotificationCount,
+            )
             HeaderIconButton(Icons.Rounded.Settings, stringResource(R.string.settings), onSettingsClick)
         }
     }
@@ -533,22 +549,31 @@ private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    badgeCount: Int = 0,
 ) {
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+    BadgedBox(
+        badge = {
+            if (badgeCount > 0) {
+                Badge { Text(if (badgeCount > 99) "99+" else badgeCount.toString()) }
+            }
+        },
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = description,
-            tint = tint,
-            modifier = Modifier.size(18.dp),
-        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 

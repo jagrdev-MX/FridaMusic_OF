@@ -177,6 +177,7 @@ val LastAppOpenAtKey = longPreferencesKey("lastAppOpenAt")
 val RecentNotificationContentHistoryKey = stringPreferencesKey("recentNotificationContentHistory")
 val RecentNotificationTemplateIdsKey = stringPreferencesKey("recentNotificationTemplateIds")
 val NotificationCategoryLastSentKey = stringPreferencesKey("notificationCategoryLastSent")
+val NotificationSlotLastDeliveredKey = stringPreferencesKey("notificationSlotLastDelivered")
 val InternalNotificationTestCursorKey = stringPreferencesKey("internalNotificationTestCursor")
 val InternalNotificationTestContentHistoryKey = stringPreferencesKey("internalNotificationTestContentHistory")
 

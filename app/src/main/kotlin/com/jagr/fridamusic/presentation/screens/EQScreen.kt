@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -195,11 +197,15 @@ private fun EQMasterToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(start = 16.dp, end = 24.dp, top = 16.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Column {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+        ) {
             Text(
                 text = stringResource(R.string.equalizer),
                 style = MaterialTheme.typography.titleMedium,
@@ -225,6 +231,7 @@ private fun EQBandGraph(
     onBandGainChange: (Int, Double) -> Unit,
     onPreampChange: (Double) -> Unit,
 ) {
+    val bandScrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -241,6 +248,8 @@ private fun EQBandGraph(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(bandScrollState)
+                .padding(horizontal = 8.dp)
                 .height(220.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -10,6 +10,7 @@ internal enum class NotificationCandidateType {
     ARTIST,
     PLAYLIST,
     RETENTION,
+    RECAP_AVAILABLE,
 }
 
 internal enum class NotificationContentType {
@@ -18,6 +19,7 @@ internal enum class NotificationContentType {
     ALBUM,
     PLAYLIST,
     HOME,
+    RECAP,
 }
 
 internal data class NotificationCandidate(

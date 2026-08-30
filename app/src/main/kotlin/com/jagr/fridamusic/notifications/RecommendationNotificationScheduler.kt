@@ -3,9 +3,7 @@ package com.jagr.fridamusic.notifications
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.jagr.fridamusic.BuildConfig
@@ -33,33 +31,42 @@ class RecommendationNotificationScheduler(
     }
 
     private fun schedule() {
+        workManager.cancelUniqueWork(LEGACY_WORK_NAME)
+        NotificationSlot.entries.forEach(::scheduleNext)
+    }
+
+    internal fun scheduleNext(
+        slot: NotificationSlot,
+        now: ZonedDateTime = ZonedDateTime.now(),
+    ) {
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
             .build()
-        val request = PeriodicWorkRequestBuilder<RecommendationNotificationWorker>(
-            REPEAT_INTERVAL_HOURS,
-            TimeUnit.HOURS,
-        )
+        val request = OneTimeWorkRequestBuilder<RecommendationNotificationWorker>()
             .setConstraints(constraints)
-            .setInitialDelay(initialDelayMillis(), TimeUnit.MILLISECONDS)
+            .setInitialDelay(initialDelayMillis(slot, now), TimeUnit.MILLISECONDS)
+            .setInputData(
+                workDataOf(RecommendationNotificationWorker.SLOT_INPUT_KEY to slot.name),
+            )
             .addTag(WORK_TAG)
             .build()
 
-        workManager.enqueueUniquePeriodicWork(
-            WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+        workManager.enqueueUniqueWork(
+            slot.workName(),
+            ExistingWorkPolicy.REPLACE,
             request,
         )
     }
 
-    private fun initialDelayMillis(now: ZonedDateTime = ZonedDateTime.now()): Long {
-        var nextEvaluation = now.toLocalDate().atTime(DEFAULT_EVALUATION_HOUR, 0).atZone(now.zone)
+    private fun initialDelayMillis(slot: NotificationSlot, now: ZonedDateTime): Long {
+        var nextEvaluation = now.toLocalDate().atTime(slot.startHour, 0).atZone(now.zone)
         if (!nextEvaluation.isAfter(now)) nextEvaluation = nextEvaluation.plusDays(1)
         return Duration.between(now, nextEvaluation).toMillis()
     }
 
     private fun cancel() {
-        workManager.cancelUniqueWork(WORK_NAME)
+        workManager.cancelUniqueWork(LEGACY_WORK_NAME)
+        NotificationSlot.entries.forEach { slot -> workManager.cancelUniqueWork(slot.workName()) }
     }
 
     internal fun enqueueInternalTestNotification(type: NotificationCandidateType): Boolean {
@@ -88,11 +95,15 @@ class RecommendationNotificationScheduler(
             BuildConfig.FLAVOR_variant == "gms"
 
     companion object {
-        const val WORK_NAME = "music_recommendation_notifications"
+        private const val LEGACY_WORK_NAME = "music_recommendation_notifications"
         const val WORK_TAG = "music_recommendation"
-        const val REPEAT_INTERVAL_HOURS = 24L
-        const val DEFAULT_EVALUATION_HOUR = 10
         private const val INTERNAL_TEST_WORK_NAME = "music_recommendation_notification_internal_test"
         private const val INTERNAL_TEST_WORK_TAG = "music_recommendation_internal_test"
     }
+}
+
+private fun NotificationSlot.workName(): String = when (this) {
+    NotificationSlot.MORNING -> "frida_notification_morning"
+    NotificationSlot.AFTERNOON -> "frida_notification_afternoon"
+    NotificationSlot.EVENING -> "frida_notification_evening"
 }

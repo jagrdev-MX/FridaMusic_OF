@@ -32,9 +32,8 @@ internal object NotificationMessageGenerator {
         }.toMutableList()
 
         if (
-            candidate.type == NotificationCandidateType.RECOMMENDED_SONG ||
-            candidate.type == NotificationCandidateType.DAILY_DISCOVER ||
-            candidate.type == NotificationCandidateType.KEEP_LISTENING
+            candidate.type != NotificationCandidateType.NEW_RELEASE &&
+            candidate.type != NotificationCandidateType.RECAP_AVAILABLE
         ) {
             val timeIndex = timeOfDayIndex(now)
             templates += MessageTemplate(
@@ -76,6 +75,8 @@ internal object NotificationMessageGenerator {
             R.array.notification_playlist_titles to R.array.notification_playlist_bodies
         NotificationCandidateType.RETENTION ->
             R.array.notification_retention_titles to R.array.notification_retention_bodies
+        NotificationCandidateType.RECAP_AVAILABLE ->
+            R.array.notification_recap_titles to R.array.notification_recap_bodies
     }
 
     private fun String.format(contentTitle: String, artist: String): String =

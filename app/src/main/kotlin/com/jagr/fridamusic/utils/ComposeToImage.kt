@@ -39,6 +39,119 @@ import kotlin.math.roundToInt
 
 object ComposeToImage {
 
+    data class RecapImageData(
+        val periodLabel: String,
+        val listeningTime: String,
+        val totalPlays: String,
+        val topSong: String?,
+        val topArtist: String?,
+        val topAlbum: String?,
+        val personality: String?,
+        val artworkUrl: String?,
+    )
+
+    suspend fun createRecapImage(
+        context: Context,
+        data: RecapImageData,
+    ): Bitmap = withContext(Dispatchers.Default) {
+        val width = 1080
+        val height = 1920
+        val bitmap = createBitmap(width, height)
+        val canvas = Canvas(bitmap)
+        val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f,
+                0f,
+                width.toFloat(),
+                height.toFloat(),
+                intArrayOf(0xFF111827.toInt(), 0xFF4C1D95.toInt(), 0xFFBE185D.toInt()),
+                null,
+                Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), background)
+
+        data.artworkUrl?.let { url ->
+            runCatching {
+                val request = ImageRequest.Builder(context)
+                    .data(url)
+                    .size(760, 760)
+                    .allowHardware(false)
+                    .build()
+                ImageLoader(context).execute(request).image?.toBitmap()
+            }.getOrNull()?.let { cover ->
+                val target = RectF(200f, 280f, 880f, 960f)
+                val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = 235 }
+                val coverPath = Path().apply {
+                    addRoundRect(target, 64f, 64f, Path.Direction.CW)
+                }
+                canvas.save()
+                canvas.clipPath(coverPath)
+                canvas.drawBitmap(cover, null, target, coverPaint)
+                canvas.restore()
+            }
+        }
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            textSize = 58f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            letterSpacing = 0.08f
+        }
+        val headlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            textSize = 112f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xCCFFFFFF.toInt()
+            textSize = 36f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFFFFFFF.toInt()
+            textSize = 44f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val separatorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x33FFFFFF
+            strokeWidth = 2f
+        }
+
+        canvas.drawText("FRIDAMUSIC RECAP", 72f, 120f, titlePaint)
+        canvas.drawText(data.periodLabel, 72f, 205f, labelPaint)
+        canvas.drawText(data.listeningTime, 72f, 1110f, headlinePaint)
+        canvas.drawText(data.totalPlays, 76f, 1180f, labelPaint)
+
+        var y = 1270f
+        listOfNotNull(
+            data.topSong?.let { context.getString(R.string.recap_top_song) to it },
+            data.topArtist?.let { context.getString(R.string.recap_top_artist) to it },
+            data.topAlbum?.let { context.getString(R.string.recap_top_album) to it },
+            data.personality?.let { context.getString(R.string.recap_personality) to it },
+        ).forEach { (label, value) ->
+            canvas.drawText(label, 76f, y, labelPaint)
+            val availableWidth = 928f
+            val clipped = if (valuePaint.measureText(value) <= availableWidth) {
+                value
+            } else {
+                val ellipsis = "…"
+                val characterCount = valuePaint.breakText(
+                    value,
+                    true,
+                    availableWidth - valuePaint.measureText(ellipsis),
+                    null,
+                )
+                value.take(characterCount).trimEnd() + ellipsis
+            }
+            canvas.drawText(clipped, 76f, y + 70f, valuePaint)
+            canvas.drawLine(76f, y + 105f, 1004f, y + 105f, separatorPaint)
+            y += 135f
+        }
+        canvas.drawText("FridaMusic · Frida Labs", 72f, 1870f, labelPaint)
+        bitmap
+    }
+
     suspend fun createLyricsImage(
         context: Context,
         coverArtUrl: String?,
@@ -576,9 +689,24 @@ object ComposeToImage {
             }
             FileProvider.getUriForFile(
                 context,
-                "${context.packageName}.FileProvider",
+                "${context.packageName}.fileprovider",
                 imageFile
             )
         }
+    }
+
+    fun saveBitmapToCache(context: Context, bitmap: Bitmap, fileName: String): Uri {
+        val cachePath = File(context.cacheDir, "images/recap")
+        cachePath.mkdirs()
+        val safeName = fileName.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val imageFile = File(cachePath, "$safeName.png")
+        FileOutputStream(imageFile).use { outputStream ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+        }
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            imageFile,
+        )
     }
 }

@@ -436,13 +436,13 @@
     <string name="standard_lyrics_blur">Standard lyrics blur</string>
     <string name="listen_together_smart_resync">Smart Network Resync</string>
     <string name="listen_together_smart_resync_desc">Automatically catch up with the host after a connection drop</string>
-    <string name="spotify_import_title">Import From Spotify</string>
-    <string name="spotify_import_desc">Connect Spotify, choose playlists, and mirror them into local Echo Music playlists.</string>
-    <string name="spotify_connect">Connect Spotify</string>
-    <string name="spotify_refresh">Refresh Spotify library</string>
-    <string name="spotify_select_sources">Select Spotify playlists</string>
+    <string name="spotify_import_title">Import from Verdefy</string>
+    <string name="spotify_import_desc">Connect Verdefy, choose playlists, and mirror them into local FridaMusic playlists.</string>
+    <string name="spotify_connect">Connect Verdefy</string>
+    <string name="spotify_refresh">Refresh Verdefy library</string>
+    <string name="spotify_select_sources">Select Verdefy playlists</string>
     <string name="spotify_import_by_link">Import playlist by link</string>
-    <string name="spotify_import_by_link_desc">Paste a Spotify playlist link to import it — even playlists you don\'t own</string>
+    <string name="spotify_import_by_link_desc">Paste a Verdefy playlist link to import it — even playlists you don\'t own</string>
     <string name="spotify_import_by_link_hint">https://open.spotify.com/playlist/…</string>
     <string name="spotify_add">Add</string>
     <string name="spotify_invalid_playlist_link">That doesn\'t look like a Spotify playlist link. Use a link like https://open.spotify.com/playlist/…</string>
@@ -450,22 +450,23 @@
     <string name="spotify_selected_count">%1$d selected</string>
     <string name="spotify_available_count">%1$d sources available</string>
     <string name="spotify_connected_as">Connected as %1$s</string>
-    <string name="spotify_not_connected">Spotify is not connected</string>
-    <string name="spotify_liked_songs">Spotify Liked Songs</string>
-    <string name="spotify_liked_songs_desc">Saved tracks from your Spotify library</string>
+    <string name="spotify_not_connected">Verdefy is not connected</string>
+    <string name="spotify_liked_songs">Verdefy Liked Songs</string>
+    <string name="spotify_liked_songs_desc">Saved tracks from your Verdefy library</string>
     <string name="spotify_track_count">%1$d tracks</string>
-    <string name="spotify_login_title">Spotify login</string>
-    <string name="spotify_loading_library">Loading Spotify library</string>
-    <string name="spotify_no_sources">No Spotify playlists found</string>
-    <string name="spotify_import_in_progress">Importing Spotify playlists</string>
+    <string name="spotify_login_title">Verdefy login</string>
+    <string name="spotify_loading_library">Loading Verdefy library</string>
+    <string name="spotify_no_sources">No Verdefy playlists found</string>
+    <string name="spotify_import_in_progress">Importing Verdefy playlists</string>
     <string name="spotify_import_progress_step">%1$s • %2$d/%3$d sources • %4$d/%5$d tracks</string>
-    <string name="spotify_import_complete">Spotify import complete</string>
+    <string name="spotify_import_complete">Verdefy import complete</string>
     <string name="spotify_import_summary">%1$d sources • %2$d imported • %3$d failed</string>
     <string name="spotify_source_summary">%1$s: %2$d/%3$d imported</string>
     <string name="spotify_select_all">Select all</string>
     <string name="spotify_clear_selection">Clear</string>
-    <string name="spotify_account">Spotify account</string>
-    <string name="spotify_waiting_for_login">Waiting for Spotify login</string>
+    <string name="spotify_account">Verdefy account</string>
+    <string name="spotify_waiting_for_login">Waiting for Verdefy login</string>
+    <string name="spotify_cookie_instructions">Open Verdefy in your browser → F12 → Application → Cookies → copy the sp_dc value</string>
     <string name="service_uptime">Service Uptime</string>
     <string name="service_uptime_desc">Check the status of music providers</string>
     <string name="music_providers">Music Providers</string>
@@ -521,13 +522,13 @@
     <string name="acerca_album">About album</string>
     <string name="back">Back</string>
     <string name="google_account">Google Account</string>
-    <string name="sync_ytm">Sync library with YouTube Music</string>
-    <string name="import_yt_info">Import your likes, albums, and playlists from YouTube Music</string>
-    <string name="iniciar_sesion">Sign in to access your personal YouTube Music library, including likes, saved albums, and playlists.</string>
+    <string name="sync_ytm">Sync library with FridaMusic</string>
+    <string name="import_yt_info">Import your likes, albums, and playlists from YMusic</string>
+    <string name="iniciar_sesion">Sign in to access your personal YMusic library, including likes, saved albums, and playlists.</string>
     <string name="sync_action">What would you like to do with the synced music from your library?</string>
     <string name="logout_clear_data">Log out and clear data</string>
     <string name="logout_keep_data">Log out and keep data</string>
-    <string name="group_yt_music">YouTube Music</string>
+    <string name="group_yt_music">FridaMusic</string>
     <string name="group_general">General</string>
     <string name="group_audio">Audio</string>
     <string name="audio_normalization_desc">Equalize volume between songs</string>
@@ -541,7 +542,7 @@
     <string name="group_lastfm">Last.fm</string>
     <string name="group_listenbrainz">ListenBrainz</string>
     <string name="group_discord">Discord</string>
-    <string name="group_echobrain">EchoBrain AI</string>
+    <string name="group_echobrain">Frida Labs AI</string>
     <string name="group_history">History</string>
     <string name="group_screen">Screen</string>
     <string name="group_proxy">Proxy</string>
@@ -595,7 +596,7 @@
     <string name="lyrics_providers_label">Providers</string>
     <string name="hide_explicit_desc">Filter songs marked as explicit</string>
     <string name="hide_video_songs_desc">Filter songs coming from YouTube videos</string>
-    <string name="hide_youtube_shorts_desc">Do not include Shorts in results</string>
+    <string name="hide_youtube_shorts_desc">Do not include short videos in results</string>
     <string name="enable_sponsorblock">Enable SponsorBlock</string>
     <string name="enable_sponsorblock_desc">Automatically skip sponsor segments</string>
     <string name="download_on_like_desc">Automatically download song when added to favorites</string>
@@ -612,7 +613,7 @@
     <string name="listenbrainz_desc">Send scrobbles to ListenBrainz</string>
     <string name="get_token_at">Get your token at listenbrainz.org/profile</string>
     <string name="discord_rpc_desc">Show current song on your Discord status</string>
-    <string name="enable_echobrain">Enable EchoBrain</string>
+    <string name="enable_echobrain">Enable Frida Labs AI</string>
     <string name="enable_echobrain_desc">Activate the AI assistant for recommendations and analysis</string>
     <string name="pause_listen_history_desc">Do not save songs in history</string>
     <string name="pause_search_history_desc">Do not save performed searches</string>
@@ -710,7 +711,7 @@
     <string name="tab_explore">Explore</string>
     <string name="tab_Suggestions">Suggestions</string>
     <string name="tab_album">Album</string>
-    <string name="local_history">Local</string>
+    <string name="local_history">FridaMusic Local</string>
     <string name="remote_history">Remote</string>
     <string name="charts">Charts</string>
     <string name="back_button_desc">Back</string>
@@ -1031,7 +1032,7 @@
     <string name="scrobble_delay_percent">Scrobble delay percent</string>
     <string name="scrobble_delay_minutes">Scrobble delay minutes</string>
     <string name="hide_video_songs">Hide video songs</string>
-    <string name="hide_youtube_shorts">Hide YouTube Shorts</string>
+    <string name="hide_youtube_shorts">Hide short videos</string>
     <string name="details_desc">View the song\'s information</string>
     <string name="edit_desc">Change the title or artist</string>
     <string name="start_radio_desc">Create a station based on this item</string>
@@ -1633,7 +1634,7 @@
     <string name="playback_desc_short">Audio behavior, quality and queue</string>
     <string name="appearance_desc_short">Themes, colors and language</string>
     <string name="lyrics_desc_short">Lyrics providers, preloading and karaoke</string>
-    <string name="services_desc_short">Last.fm, ListenBrainz, Discord and EchoBrain</string>
+    <string name="services_desc_short">Last.fm, ListenBrainz, Discord and Frida Labs AI</string>
     <string name="privacy_desc_short">Listening history, search and screenshots</string>
     <string name="network_desc_short">Proxy and connection settings</string>
     <string name="podcasts">Podcasts</string>
@@ -1643,7 +1644,7 @@
     <string name="calendar">Calendar</string>
     <string name="notifications">Notifications</string>
     <string name="music_recommendation_notifications">Music recommendations</string>
-    <string name="music_recommendation_notifications_desc">Up to one useful daily suggestion from music Frida already knows.</string>
+    <string name="music_recommendation_notifications_desc">Up to three useful daily opportunities, scheduled for morning, afternoon and evening.</string>
     <string name="new_release_notifications">New releases</string>
     <string name="new_release_notifications_desc">Notify when a reliable new release is already present in local data.</string>
     <string name="frida_reminder_notifications">Reminders from Frida</string>
@@ -1663,6 +1664,7 @@
         <item>Artist</item>
         <item>Playlist</item>
         <item>Retention</item>
+        <item>Recap available</item>
     </string-array>
     <string name="recommendation_channel_name">Music recommendations</string>
     <string name="recommendation_channel_desc">Contextual suggestions based on music already known by FridaMusic.</string>
@@ -1913,4 +1915,50 @@
     <string name="albums_and_singles">Albums &amp; singles</string>
     <string name="collection_empty">There is no content to show yet.</string>
     <string name="collection_load_error">This collection could not be loaded.</string>
+    <string name="support_project">Support the project</string>
+    <string name="youtube_music_history">Sincronizado FridaMusic</string>
+    <string name="history_empty">No listening history yet</string>
+    <string name="fridamusic_recap">FridaMusic Recap</string>
+    <string name="recap_week">Week</string>
+    <string name="recap_month">Month</string>
+    <string name="recap_year">Year</string>
+    <string name="previous_period">Previous period</string>
+    <string name="next_period">Next period</string>
+    <string name="recap_no_data">There is no listening data for this period yet.</string>
+    <string name="recap_intro_week">Your week with FridaMusic</string>
+    <string name="recap_intro_month">Your month with FridaMusic</string>
+    <string name="recap_intro_year">Your year with FridaMusic</string>
+    <string name="recap_time_title">Listening time</string>
+    <string name="recap_minutes_listened">minutes listened</string>
+    <string name="recap_activity">Your activity</string>
+    <string name="recap_total_plays">Total plays</string>
+    <string name="recap_top_songs">Your Top 5 songs</string>
+    <string name="recap_top_song">Top song</string>
+    <string name="recap_top_artist">Top artist</string>
+    <string name="recap_top_album">Top album</string>
+    <string name="recap_top_artists">Your Top 5 artists</string>
+    <string name="recap_top_albums">Your Top 5 albums</string>
+    <string name="recap_artist_spotlight_subtitle">The artist that led this period</string>
+    <string name="recap_personality">Your listening style</string>
+    <string name="recap_summary">Your period, in one view</string>
+    <string name="share_recap">Share recap</string>
+    <string name="recap_share_failed">The recap image could not be shared.</string>
+    <string name="recap_total_plays_count">%1$d reproducciones</string>
+    <string name="mark_all_read">Mark all read</string>
+    <string name="notifications_empty">You do not have notifications yet</string>
+    <string name="notifications_disabled">Notifications are disabled</string>
+    <string name="notifications_disabled_desc">Enable notifications in Android settings to receive FridaMusic suggestions and recaps.</string>
+    <string name="open_notification_settings">Open notification settings</string>
+    <string name="recap_channel_name">FridaMusic recaps</string>
+    <string name="recap_channel_desc">Weekly, monthly and yearly listening summaries when enough local history exists.</string>
+    <string-array name="notification_recap_titles">
+        <item>Your FridaMusic recap is ready</item>
+        <item>A new chapter of your listening history</item>
+        <item>Your music, summarized by FridaMusic</item>
+    </string-array>
+    <string-array name="notification_recap_bodies">
+        <item>Your recap for %1$s is ready to explore.</item>
+        <item>See the songs and artists that shaped %1$s.</item>
+        <item>Open your local listening summary for %1$s.</item>
+    </string-array>
 </resources>

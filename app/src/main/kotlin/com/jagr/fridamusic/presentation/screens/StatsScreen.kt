@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -131,7 +133,22 @@ fun StatsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
+                .padding(padding)
+                .pointerInput(contentTab) {
+                    var horizontalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { horizontalDrag = 0f },
+                        onHorizontalDrag = { _, dragAmount -> horizontalDrag += dragAmount },
+                        onDragEnd = {
+                            val threshold = 72.dp.toPx()
+                            contentTab = when {
+                                horizontalDrag <= -threshold -> (contentTab + 1).coerceAtMost(2)
+                                horizontalDrag >= threshold -> (contentTab - 1).coerceAtLeast(0)
+                                else -> contentTab
+                            }
+                        },
+                    )
+                },
             contentPadding = PaddingValues(bottom = 120.dp),
         ) {
             item {

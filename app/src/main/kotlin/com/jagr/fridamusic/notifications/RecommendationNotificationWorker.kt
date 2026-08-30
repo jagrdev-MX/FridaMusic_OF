@@ -13,14 +13,18 @@ import coil3.toBitmap
 import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.constants.InternalNotificationTestContentHistoryKey
 import com.jagr.fridamusic.constants.InternalNotificationTestCursorKey
+import com.jagr.fridamusic.constants.MusicRecommendationNotificationsKey
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.NotificationHistoryEntity
 import com.jagr.fridamusic.utils.dataStore
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 @EntryPoint
@@ -35,15 +39,21 @@ class RecommendationNotificationWorker(
 ) : CoroutineWorker(appContext, workerParameters) {
 
     override suspend fun doWork(): Result {
+        val isForcedInternalTest = inputData.getBoolean(FORCE_TEST_INPUT_KEY, false) &&
+            BuildConfig.DEBUG &&
+            BuildConfig.FLAVOR_abi == "universal" &&
+            BuildConfig.FLAVOR_variant == "gms"
+        val scheduledSlot = NotificationSlot.fromInput(inputData.getString(SLOT_INPUT_KEY))
         return try {
             val now = System.currentTimeMillis()
             val preferences = applicationContext.dataStore.data.first()
-            val isForcedInternalTest = inputData.getBoolean(FORCE_TEST_INPUT_KEY, false) &&
-                BuildConfig.DEBUG &&
-                BuildConfig.FLAVOR_abi == "universal" &&
-                BuildConfig.FLAVOR_variant == "gms"
+            val deliverySlot = scheduledSlot ?: NotificationSlot.forTime(now) ?: NotificationSlot.MORNING
             if (!isForcedInternalTest) {
-                NotificationPolicy.preflightSkipReason(preferences, now)?.let { reason ->
+                if (scheduledSlot == null) {
+                    Timber.tag(TAG).d("Skipped: missing_slot")
+                    return Result.success()
+                }
+                NotificationPolicy.preflightSkipReason(preferences, now, deliverySlot)?.let { reason ->
                     Timber.tag(TAG).d("Skipped: %s", reason)
                     return Result.success()
                 }
@@ -89,6 +99,7 @@ class RecommendationNotificationWorker(
                     candidates = candidates,
                     preferences = preferences,
                     now = now,
+                    slot = deliverySlot,
                 )
             }
             val candidate = selection.candidate
@@ -123,6 +134,24 @@ class RecommendationNotificationWorker(
                 return Result.success()
             }
 
+            database.insertNotificationHistory(
+                NotificationHistoryEntity(
+                    id = "${candidate.id}:$now",
+                    candidateId = candidate.id,
+                    type = candidate.type.name,
+                    contentType = candidate.contentType.name,
+                    contentId = candidate.contentId,
+                    title = message.title,
+                    body = message.body,
+                    artworkUrl = candidate.artworkUrl,
+                    deepLink = candidate.deepLink,
+                    source = candidate.source,
+                    reason = candidate.reason,
+                    deliveredAt = now,
+                ),
+            )
+            database.trimNotificationHistory(MAX_HISTORY_ENTRIES)
+
             if (isForcedInternalTest) {
                 applicationContext.dataStore.edit { settings ->
                     settings[InternalNotificationTestCursorKey] = advanceInternalTestCursor(
@@ -142,6 +171,7 @@ class RecommendationNotificationWorker(
                         candidate = candidate,
                         templateId = message.templateId,
                         now = now,
+                        slot = deliverySlot,
                     )
                 }
             }
@@ -152,6 +182,15 @@ class RecommendationNotificationWorker(
         } catch (error: Exception) {
             Timber.tag(TAG).w(error, "Recommendation notification work skipped after failure")
             Result.success()
+        } finally {
+            if (!isForcedInternalTest && scheduledSlot != null) {
+                withContext(NonCancellable) {
+                    val stillEnabled = applicationContext.dataStore.data.first()[MusicRecommendationNotificationsKey] == true
+                    if (stillEnabled) {
+                        RecommendationNotificationScheduler(applicationContext).scheduleNext(scheduledSlot)
+                    }
+                }
+            }
         }
     }
 
@@ -248,7 +287,9 @@ class RecommendationNotificationWorker(
     companion object {
         internal const val FORCE_TEST_INPUT_KEY = "force_internal_notification_test"
         internal const val FORCE_TEST_TYPE_INPUT_KEY = "force_internal_notification_test_type"
+        internal const val SLOT_INPUT_KEY = "notification_slot"
         private const val INTERNAL_TEST_HISTORY_PER_TYPE = 16
+        private const val MAX_HISTORY_ENTRIES = 200
         const val TAG = "RecommendationWorker"
     }
 }

@@ -804,8 +804,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
 private fun InternalNotificationTestAction() {
     val context = LocalContext.current
     val types = remember { NotificationCandidateType.entries.toList() }
-    val labels = context.resources.getStringArray(R.array.internal_notification_test_type_labels)
-    val options = types.mapIndexed { index, type -> type.name to labels[index] }
+    val labels = remember(context) {
+        context.resources.getStringArray(R.array.internal_notification_test_type_labels)
+    }
+    val options = remember(types, labels) {
+        types.mapIndexed { index, type ->
+            type.name to (labels.getOrNull(index) ?: type.name.replace('_', ' '))
+        }
+    }
     var selectedType by remember { mutableStateOf(NotificationCandidateType.RECOMMENDED_SONG) }
     val selectedLabel = options.first { it.first == selectedType.name }.second
     val queuedMessage = stringResource(R.string.internal_notification_test_queued, selectedLabel)

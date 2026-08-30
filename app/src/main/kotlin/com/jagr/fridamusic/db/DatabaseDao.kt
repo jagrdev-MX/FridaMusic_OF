@@ -36,6 +36,7 @@ import com.jagr.fridamusic.db.entities.Event
 import com.jagr.fridamusic.db.entities.EventWithSong
 import com.jagr.fridamusic.db.entities.FormatEntity
 import com.jagr.fridamusic.db.entities.LyricsEntity
+import com.jagr.fridamusic.db.entities.NotificationHistoryEntity
 import com.jagr.fridamusic.db.entities.PlayCountEntity
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.PlaylistEntity
@@ -679,6 +680,9 @@ interface DatabaseDao {
     """
     )
     fun getUniqueAlbumCountInRange(fromTimeStamp: Long, toTimeStamp: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM event WHERE timestamp >= :fromTimeStamp AND timestamp <= :toTimeStamp")
+    fun getPlayCountInRange(fromTimeStamp: Long, toTimeStamp: Long): Flow<Int>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
@@ -1508,19 +1512,46 @@ interface DatabaseDao {
     ): Flow<List<Playlist>>
 
     @Transaction
-    @Query("SELECT * FROM event ORDER BY rowId DESC")
+    @Query("SELECT * FROM event ORDER BY timestamp DESC, id DESC")
     fun events(): Flow<List<EventWithSong>>
 
     @Transaction
-    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT :limit")
+    @Query("SELECT * FROM event ORDER BY timestamp DESC, id DESC LIMIT :limit")
     fun recentEvents(limit: Int = 20): Flow<List<EventWithSong>>
 
     @Transaction
-    @Query("SELECT * FROM event ORDER BY rowId ASC LIMIT 1")
+    @Query("SELECT * FROM event ORDER BY timestamp ASC, id ASC LIMIT 1")
     fun firstEvent(): Flow<EventWithSong?>
 
     @Query("SELECT COUNT(*) FROM event")
     fun eventCount(): Flow<Int>
+
+    @Query("SELECT * FROM notification_history WHERE dismissedAt IS NULL ORDER BY deliveredAt DESC")
+    fun observeNotificationHistory(): Flow<List<NotificationHistoryEntity>>
+
+    @Query("SELECT COUNT(*) FROM notification_history WHERE readAt IS NULL AND dismissedAt IS NULL")
+    fun getUnreadNotificationCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertNotificationHistory(notification: NotificationHistoryEntity)
+
+    @Query("UPDATE notification_history SET readAt = :readAt WHERE id = :id AND readAt IS NULL")
+    fun markNotificationAsRead(id: String, readAt: Long)
+
+    @Query("UPDATE notification_history SET readAt = :readAt WHERE readAt IS NULL AND dismissedAt IS NULL")
+    fun markAllNotificationsAsRead(readAt: Long)
+
+    @Query("DELETE FROM notification_history WHERE id = :id")
+    fun deleteNotification(id: String)
+
+    @Query("DELETE FROM notification_history")
+    fun clearNotificationHistory()
+
+    @Query(
+        "DELETE FROM notification_history WHERE id NOT IN " +
+            "(SELECT id FROM notification_history ORDER BY deliveredAt DESC LIMIT :maxEntries)",
+    )
+    fun trimNotificationHistory(maxEntries: Int)
 
     @Transaction
     @Query("DELETE FROM event")

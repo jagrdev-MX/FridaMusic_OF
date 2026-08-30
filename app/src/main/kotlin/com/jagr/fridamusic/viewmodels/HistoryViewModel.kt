@@ -10,6 +10,7 @@ import com.music.innertube.pages.HistoryPage
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.HistorySource
 import com.jagr.fridamusic.db.MusicDatabase
+import com.jagr.fridamusic.db.entities.EventWithSong
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -75,7 +76,12 @@ constructor(
                                     }
                                 },
                             ).mapValues { entry ->
-                                entry.value.distinctBy { it.song.id }
+                                entry.value
+                                    .sortedWith(
+                                        compareByDescending<EventWithSong> { it.event.timestamp }
+                                            .thenByDescending { it.event.id },
+                                    )
+                                    .distinctBy { it.song.id }
                             }
                     }
             }.stateIn(viewModelScope, SharingStarted.Lazily, emptyMap())

@@ -68,6 +68,7 @@ object AppModule {
             com.jagr.fridamusic.db.MIGRATION_36_37,
             com.jagr.fridamusic.db.MIGRATION_37_38,
             com.jagr.fridamusic.db.MIGRATION_38_39,
+            com.jagr.fridamusic.db.MIGRATION_39_40,
         )
 
         .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)

@@ -263,7 +263,7 @@ private fun LoginView(
                     )
 
                     Text(
-                        text = "Open Spotify in your browser → F12 → Application → Cookies → copy the sp_dc value",
+                        text = stringResource(R.string.spotify_cookie_instructions),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

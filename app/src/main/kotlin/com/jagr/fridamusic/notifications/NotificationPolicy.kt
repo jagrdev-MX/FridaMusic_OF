@@ -9,6 +9,7 @@ import com.jagr.fridamusic.constants.LastRecommendationNotificationAtKey
 import com.jagr.fridamusic.constants.MusicRecommendationNotificationsKey
 import com.jagr.fridamusic.constants.NewReleaseNotificationsKey
 import com.jagr.fridamusic.constants.NotificationCategoryLastSentKey
+import com.jagr.fridamusic.constants.NotificationSlotLastDeliveredKey
 import com.jagr.fridamusic.constants.RecentNotificationContentHistoryKey
 import com.jagr.fridamusic.constants.RecentNotificationTemplateIdsKey
 import java.time.Instant
@@ -21,7 +22,7 @@ internal data class NotificationSelection(
 )
 
 internal object NotificationPolicy {
-    const val MAX_NOTIFICATIONS_PER_DAY = 1
+    const val MAX_NOTIFICATIONS_PER_DAY = 3
     const val QUIET_HOUR_START = 2
     const val QUIET_HOUR_END = 7
     const val RECENT_TEMPLATE_HISTORY_SIZE = 8
@@ -31,6 +32,7 @@ internal object NotificationPolicy {
     val RETENTION_MIN_INACTIVITY_MILLIS: Long = TimeUnit.DAYS.toMillis(3)
 
     object Priority {
+        const val RECAP = 110
         const val NEW_RELEASE = 100
         const val ARTIST = 90
         const val RECOMMENDATION = 85
@@ -52,6 +54,7 @@ internal object NotificationPolicy {
         NotificationCandidateType.ARTIST to TimeUnit.DAYS.toMillis(3),
         NotificationCandidateType.PLAYLIST to TimeUnit.DAYS.toMillis(3),
         NotificationCandidateType.RETENTION to TimeUnit.DAYS.toMillis(3),
+        NotificationCandidateType.RECAP_AVAILABLE to TimeUnit.DAYS.toMillis(3),
     )
 
     private val contentCooldowns = mapOf(
@@ -60,16 +63,28 @@ internal object NotificationPolicy {
         NotificationContentType.ARTIST to TimeUnit.DAYS.toMillis(4),
         NotificationContentType.PLAYLIST to TimeUnit.DAYS.toMillis(5),
         NotificationContentType.HOME to TimeUnit.DAYS.toMillis(3),
+        NotificationContentType.RECAP to TimeUnit.DAYS.toMillis(14),
     )
 
-    fun preflightSkipReason(preferences: Preferences, now: Long): String? {
+    fun preflightSkipReason(
+        preferences: Preferences,
+        now: Long,
+        slot: NotificationSlot,
+    ): String? {
         if (preferences[MusicRecommendationNotificationsKey] != true) return "setting_disabled"
 
         val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
         if (hour in QUIET_HOUR_START until QUIET_HOUR_END) return "quiet_hours"
 
-        val lastNotificationAt = preferences[LastRecommendationNotificationAtKey] ?: 0L
-        if (lastNotificationAt > 0L && isSameLocalDay(lastNotificationAt, now)) return "daily_limit"
+        if (!slot.contains(now)) return "outside_slot:${slot.name}"
+
+        val slotHistory = parseSlotHistory(preferences[NotificationSlotLastDeliveredKey])
+        val slotLastDelivered = slotHistory[slot] ?: 0L
+        if (slotLastDelivered > 0L && isSameLocalDay(slotLastDelivered, now)) {
+            return "slot_limit:${slot.name}"
+        }
+        val deliveriesToday = slotHistory.values.count { deliveredAt -> isSameLocalDay(deliveredAt, now) }
+        if (deliveriesToday >= MAX_NOTIFICATIONS_PER_DAY) return "daily_limit"
 
         return null
     }
@@ -78,6 +93,7 @@ internal object NotificationPolicy {
         candidates: List<NotificationCandidate>,
         preferences: Preferences,
         now: Long,
+        slot: NotificationSlot,
         bypassTimingRules: Boolean = false,
     ): NotificationSelection {
         if (candidates.isEmpty()) return NotificationSelection(skipReason = "no_local_candidates")
@@ -87,7 +103,8 @@ internal object NotificationPolicy {
         val lastOpenAt = preferences[LastAppOpenAtKey] ?: 0L
         var lastSkipReason = "all_candidates_filtered"
 
-        candidates.sortedByDescending(NotificationCandidate::priority).forEach { candidate ->
+        val eligible = mutableListOf<NotificationCandidate>()
+        candidates.forEach { candidate ->
             val skipReason = candidateSkipReason(
                 candidate = candidate,
                 preferences = preferences,
@@ -97,9 +114,12 @@ internal object NotificationPolicy {
                 now = now,
                 bypassTimingRules = bypassTimingRules,
             )
-            if (skipReason == null) return NotificationSelection(candidate = candidate)
-            lastSkipReason = skipReason
+            if (skipReason == null) eligible += candidate else lastSkipReason = skipReason
         }
+
+        eligible.maxByOrNull { candidate ->
+            NotificationScoreEngine.score(candidate, slot, preferences, now)
+        }?.let { candidate -> return NotificationSelection(candidate = candidate) }
 
         return NotificationSelection(skipReason = lastSkipReason)
     }
@@ -117,8 +137,14 @@ internal object NotificationPolicy {
         candidate: NotificationCandidate,
         templateId: String,
         now: Long,
+        slot: NotificationSlot,
     ) {
         settings[LastRecommendationNotificationAtKey] = now
+        val slotHistory = parseSlotHistory(settings[NotificationSlotLastDeliveredKey]).toMutableMap()
+        slotHistory[slot] = now
+        settings[NotificationSlotLastDeliveredKey] = slotHistory.entries.joinToString("\n") { (key, time) ->
+            "${key.name}|$time"
+        }
         if (candidate.contentType == NotificationContentType.ALBUM) {
             settings[LastRecommendationNotificationAlbumIdKey] = candidate.contentId
         }
@@ -131,14 +157,21 @@ internal object NotificationPolicy {
 
         val contentKey = candidate.contentHistoryKey()
         val updatedContentHistory = buildList {
-            add(ContentHistoryEntry(candidate.contentType, sanitize(candidate.contentId), now))
+            add(
+                ContentHistoryEntry(
+                    candidate.contentType,
+                    sanitize(candidate.contentId),
+                    now,
+                    sanitize(candidate.artistName),
+                ),
+            )
             addAll(
                 parseContentHistory(settings[RecentNotificationContentHistoryKey])
                     .filterNot { it.key == contentKey },
             )
         }.take(RECENT_CONTENT_HISTORY_SIZE)
         settings[RecentNotificationContentHistoryKey] = updatedContentHistory.joinToString("\n") { entry ->
-            "${entry.contentType.name}|${entry.contentId}|${entry.timestamp}"
+            "${entry.contentType.name}|${entry.contentId}|${entry.timestamp}|${entry.artistKey}"
         }
 
         val updatedTemplates = buildList {
@@ -216,7 +249,7 @@ internal object NotificationPolicy {
 
     private fun parseContentHistory(value: String?): List<ContentHistoryEntry> =
         value.orEmpty().lineSequence().mapNotNull { line ->
-            val parts = line.split('|', limit = 3)
+            val parts = line.split('|', limit = 4)
             val type = parts.getOrNull(0)?.let { name ->
                 runCatching { NotificationContentType.valueOf(name) }.getOrNull()
             }
@@ -225,7 +258,7 @@ internal object NotificationPolicy {
             if (type == null || contentId.isNullOrBlank() || timestamp == null) {
                 null
             } else {
-                ContentHistoryEntry(type, contentId, timestamp)
+                ContentHistoryEntry(type, contentId, timestamp, parts.getOrNull(3).orEmpty())
             }
         }.toList()
 
@@ -240,10 +273,19 @@ internal object NotificationPolicy {
 
     private fun sanitize(value: String): String = value.replace('|', '_').replace('\n', '_')
 
+    private fun parseSlotHistory(value: String?): Map<NotificationSlot, Long> =
+        value.orEmpty().lineSequence().mapNotNull { line ->
+            val parts = line.split('|', limit = 2)
+            val slot = parts.getOrNull(0)?.let(NotificationSlot::fromInput)
+            val timestamp = parts.getOrNull(1)?.toLongOrNull()
+            if (slot == null || timestamp == null) null else slot to timestamp
+        }.toMap()
+
     private data class ContentHistoryEntry(
         val contentType: NotificationContentType,
         val contentId: String,
         val timestamp: Long,
+        val artistKey: String = "",
     ) {
         val key: String
             get() = "${contentType.name}|$contentId"
