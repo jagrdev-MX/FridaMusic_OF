@@ -6,7 +6,11 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.widget.Toast
 import androidx.datastore.preferences.core.edit
 import coil3.ImageLoader
@@ -29,6 +33,7 @@ import com.jagr.fridamusic.extensions.toInetSocketAddress
 import com.jagr.fridamusic.notifications.RecommendationNotificationManager
 import com.jagr.fridamusic.notifications.RecommendationNotificationScheduler
 import com.jagr.fridamusic.utils.CrashHandler
+import com.jagr.fridamusic.utils.PendingCrashStore
 import com.jagr.fridamusic.utils.cipher.CipherDeobfuscator
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.reportException
@@ -64,6 +69,7 @@ class App : Application(), SingletonImageLoader.Factory {
         timber.log.Timber.d("Device ID: ${com.music.jiosaavn.DeviceRouter.getDeviceId()} | Assigned JioSaavn Server: ${com.music.jiosaavn.DeviceRouter.getCurrentServer()}")
         
         CrashHandler.install(this)
+        showPendingCrashIfPresent()
 
         RecommendationNotificationManager.createChannel(this)
         applicationScope.launch(Dispatchers.IO) {
@@ -90,6 +96,33 @@ class App : Application(), SingletonImageLoader.Factory {
             }
             
             observeSettingsChanges()
+        }
+    }
+
+    private fun showPendingCrashIfPresent() {
+        val pendingCrash = try {
+            PendingCrashStore.consume(this)
+        } catch (_: Exception) {
+            Log.e(CRASH_HANDLER_TAG, "Failed to consume pending crash")
+            null
+        } ?: return
+
+        if (BuildConfig.DEBUG) {
+            Log.d(CRASH_HANDLER_TAG, "Pending crash consumed")
+        }
+
+        Handler(Looper.getMainLooper()).post {
+            val intent = Intent(this, CrashActivity::class.java).apply {
+                putExtra(CrashHandler.EXTRA_CRASH_LOG, pendingCrash.crashLog)
+                putExtra(CrashHandler.EXTRA_EXCEPTION_TYPE, pendingCrash.exceptionType)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            try {
+                startActivity(intent)
+            } catch (_: Exception) {
+                Log.e(CRASH_HANDLER_TAG, "Failed to open CrashActivity")
+            }
         }
     }
 
@@ -266,6 +299,8 @@ class App : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
+        private const val CRASH_HANDLER_TAG = "CrashHandler"
+
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")
 

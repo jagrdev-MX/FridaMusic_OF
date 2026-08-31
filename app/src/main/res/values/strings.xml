@@ -1654,6 +1654,13 @@
     <string name="internal_notification_test_desc">Each press advances to another valid local candidate of that type. Nothing is fabricated when no candidate qualifies.</string>
     <string name="internal_notification_test_queued">%1$s notification test queued</string>
     <string name="internal_notification_test_unavailable">Only available in universalGmsDebug</string>
+    <string name="internal_crashlytics_test_title">Firebase / Crashlytics</string>
+    <string name="internal_crashlytics_nonfatal">Send test non-fatal</string>
+    <string name="internal_crashlytics_fatal">Trigger test fatal crash</string>
+    <string name="internal_crashlytics_nonfatal_sent">Non-fatal sent to Crashlytics</string>
+    <string name="internal_crashlytics_fatal_confirm_title">Test crash</string>
+    <string name="internal_crashlytics_fatal_confirm_message">This action will intentionally close FridaMusic to verify Firebase Crashlytics.</string>
+    <string name="internal_crashlytics_fatal_confirm">Trigger crash</string>
     <string-array name="internal_notification_test_type_labels">
         <item>New release</item>
         <item>Recommended song</item>

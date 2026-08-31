@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -88,6 +89,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.*
 import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.notifications.NotificationCandidateType
+import com.jagr.fridamusic.utils.CrashReporter
 import com.jagr.fridamusic.notifications.RecommendationNotificationScheduler
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
@@ -752,6 +754,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
                 booleanResource(R.bool.internal_notification_test_enabled)
             ) {
                 InternalNotificationTestAction()
+                InternalCrashlyticsTestAction()
             }
         }
     }
@@ -850,6 +853,77 @@ private fun InternalNotificationTestAction() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun InternalCrashlyticsTestAction() {
+    val context = LocalContext.current
+    val nonFatalSentMessage = stringResource(R.string.internal_crashlytics_nonfatal_sent)
+    var showFatalConfirmation by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.internal_crashlytics_test_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Button(
+            onClick = {
+                CrashReporter.recordNonFatal(
+                    RuntimeException("FridaMusic Crashlytics non-fatal test"),
+                )
+                Toast.makeText(context, nonFatalSentMessage, Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Rounded.BugReport, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.internal_crashlytics_nonfatal))
+        }
+        OutlinedButton(
+            onClick = { showFatalConfirmation = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Rounded.BugReport, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.internal_crashlytics_fatal))
+        }
+        Text(
+            text = stringResource(R.string.internal_notification_test_unavailable),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (showFatalConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showFatalConfirmation = false },
+            title = { Text(stringResource(R.string.internal_crashlytics_fatal_confirm_title)) },
+            text = { Text(stringResource(R.string.internal_crashlytics_fatal_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        throw RuntimeException("FridaMusic Crashlytics fatal test")
+                    },
+                ) {
+                    Text(
+                        text = stringResource(R.string.internal_crashlytics_fatal_confirm),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFatalConfirmation = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }
