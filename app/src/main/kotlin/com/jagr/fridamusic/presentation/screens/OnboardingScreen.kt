@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,18 +35,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -68,14 +75,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.AudioNormalizationKey
 import com.jagr.fridamusic.constants.AudioOffload
@@ -91,7 +100,6 @@ import com.jagr.fridamusic.constants.PauseSearchHistoryKey
 import com.jagr.fridamusic.constants.SkipSilenceKey
 import com.jagr.fridamusic.constants.SponsorBlockEnabledKey
 import com.jagr.fridamusic.presentation.theme.EchoLavender
-import com.jagr.fridamusic.presentation.theme.FridaPink
 import com.jagr.fridamusic.presentation.theme.FridaPurple
 import com.jagr.fridamusic.utils.rememberEnumPreference
 import com.jagr.fridamusic.utils.rememberPreference
@@ -187,6 +195,7 @@ fun OnboardingScreen(
                     SetupStep.PRIVACY -> PrivacyStep()
                     SetupStep.SERVICES -> ServicesStep()
                     SetupStep.LIBRARY -> LibraryStep()
+                    SetupStep.FEATURES -> FeaturesStep()
                     SetupStep.DONE -> DoneStep()
                 }
             }
@@ -240,17 +249,13 @@ private fun WelcomeStep() {
         Box(
             modifier = Modifier
                 .size(120.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(listOf(FridaPink, FridaPurple, EchoLavender))
-                ),
-            contentAlignment = Alignment.Center,
+                .clip(CircleShape),
         ) {
-            Icon(
-                imageVector = Icons.Rounded.MusicNote,
+            Image(
+                painter = painterResource(R.drawable.fridamusic_onboarding_logo),
                 contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(60.dp),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
         }
         Spacer(modifier = Modifier.height(36.dp))
@@ -312,6 +317,14 @@ private fun WelcomeStep() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             },
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = stringResource(R.string.onboarding_branding),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -563,6 +576,215 @@ private fun LibraryStep() {
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun FeaturesStep() {
+    val context = LocalContext.current
+    var hasMicrophone by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val microphoneLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasMicrophone = granted
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        StepTitle(
+            icon = Icons.Rounded.Home,
+            title = stringResource(R.string.onboarding_features_title),
+            subtitle = stringResource(R.string.onboarding_features_subtitle),
+        )
+
+        SetupSectionLabel(stringResource(R.string.onboarding_features_home_section))
+        FeatureGuideRow(
+            icon = Icons.Rounded.VolunteerActivism,
+            title = stringResource(R.string.onboarding_features_support_title),
+            description = stringResource(R.string.onboarding_features_support_desc),
+            emphasized = true,
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.History,
+            title = stringResource(R.string.history),
+            description = stringResource(R.string.onboarding_features_history_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.CalendarMonth,
+            title = stringResource(R.string.fridamusic_recap),
+            description = stringResource(R.string.onboarding_features_recap_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.NotificationsNone,
+            title = stringResource(R.string.notifications),
+            description = stringResource(R.string.onboarding_features_notifications_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.Settings,
+            title = stringResource(R.string.settings),
+            description = stringResource(R.string.onboarding_features_settings_desc),
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SetupSectionLabel(stringResource(R.string.onboarding_features_navigation_section))
+        FeatureGuideRow(
+            icon = Icons.Rounded.Home,
+            title = stringResource(R.string.home),
+            description = stringResource(R.string.onboarding_features_home_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.Search,
+            title = stringResource(R.string.search),
+            description = stringResource(R.string.onboarding_features_search_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.LibraryMusic,
+            title = stringResource(R.string.onboarding_features_library_title),
+            description = stringResource(R.string.onboarding_features_library_desc),
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+        SetupSectionLabel(stringResource(R.string.onboarding_features_fab_section))
+        Text(
+            text = stringResource(R.string.onboarding_features_fab_intro),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.Shuffle,
+            title = stringResource(R.string.shuffle),
+            description = stringResource(R.string.onboarding_features_shuffle_desc),
+        )
+        FeatureGuideRow(
+            icon = Icons.Rounded.Mic,
+            title = stringResource(R.string.onboarding_features_recognition_title),
+            description = stringResource(R.string.onboarding_features_recognition_desc),
+            badge = stringResource(R.string.onboarding_features_recognition_powered_by),
+            footer = {
+                if (hasMicrophone) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = EchoLavender,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.granted),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = EchoLavender,
+                        )
+                    }
+                } else {
+                    FilledTonalButton(
+                        onClick = {
+                            microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        },
+                    ) {
+                        Text(stringResource(R.string.onboarding_features_allow_microphone))
+                    }
+                }
+            },
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun FeatureGuideRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    emphasized: Boolean = false,
+    badge: String? = null,
+    footer: (@Composable () -> Unit)? = null,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (emphasized) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            Color.Transparent
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(
+                        if (emphasized) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (emphasized) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (emphasized) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (emphasized) {
+                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    lineHeight = 18.sp,
+                )
+                badge?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 5.dp),
+                    )
+                }
+                footer?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    it()
+                }
+            }
+        }
     }
 }
 

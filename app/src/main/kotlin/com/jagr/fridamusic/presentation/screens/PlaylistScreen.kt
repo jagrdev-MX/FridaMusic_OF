@@ -474,14 +474,14 @@ private fun PlaylistScaffold(
                                 Icon(
                                     Icons.Rounded.Link,
                                     contentDescription = stringResource(R.string.copy_link),
-                                    tint = MaterialTheme.colorScheme.onBackground,
+                                    tint = Color.White,
                                 )
                             }
                             IconButton(onClick = ::sharePlaylist) {
                                 Icon(
                                     Icons.Rounded.Share,
                                     contentDescription = stringResource(R.string.share),
-                                    tint = MaterialTheme.colorScheme.onBackground,
+                                    tint = Color.White,
                                 )
                             }
                         }
