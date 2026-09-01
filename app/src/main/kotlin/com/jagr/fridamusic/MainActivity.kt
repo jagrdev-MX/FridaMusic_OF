@@ -21,26 +21,32 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
 import com.jagr.fridamusic.constants.DisableScreenshotKey
-import com.jagr.fridamusic.constants.DarkModeKey
 import com.jagr.fridamusic.constants.DynamicThemeKey
 import com.jagr.fridamusic.constants.KeepScreenOn
 import com.jagr.fridamusic.constants.LastAppOpenAtKey
-import com.jagr.fridamusic.constants.PureBlackKey
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.jagr.fridamusic.discord.DiscordAuthCoordinator
+import com.jagr.fridamusic.discord.DiscordAuthorizationOutcome
+import com.jagr.fridamusic.discord.DiscordOAuthRepository
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.localmedia.SupportedLocalAudio
@@ -53,7 +59,11 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.screens.MainScreen
 import com.jagr.fridamusic.presentation.screens.OnboardingScreen
 import com.jagr.fridamusic.presentation.theme.FridaMusicTheme
+import com.jagr.fridamusic.updates.AppUpdateController
+import com.jagr.fridamusic.updates.AppUpdateState
+import com.jagr.fridamusic.updates.createAppUpdateController
 import com.jagr.fridamusic.utils.dataStore
+import com.jagr.fridamusic.utils.get
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,7 +97,9 @@ class MainActivity : ComponentActivity() {
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var pendingExternalAudio: ExternalAudioRequest? = null
     private var externalAudioJob: Job? = null
+    private var discordCallbackJob: Job? = null
     private var pendingDeepLink by mutableStateOf<Uri?>(null)
+    private lateinit var appUpdateController: AppUpdateController
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -120,32 +132,49 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appUpdateController = createAppUpdateController(this)
         enableEdgeToEdge()
         observeWindowPreferences()
         enqueueExternalAudio(intent)
+        handleDiscordRedirect(intent)
 
         setContent {
-            val systemDark = isSystemInDarkTheme()
-            val themePrefs by remember {
+            val dynamicTheme by remember {
                 dataStore.data.map { prefs ->
-                    Triple(
-                        prefs[DarkModeKey] ?: "SYSTEM_DEFAULT",
-                        prefs[PureBlackKey] ?: false,
-                        prefs[DynamicThemeKey] ?: true,
-                    )
+                    prefs[DynamicThemeKey] ?: true
                 }
-            }.collectAsState(initial = Triple("SYSTEM_DEFAULT", false, true))
-
-            val (darkModePref, pureBlack, dynamicTheme) = themePrefs
-            val isDark = when (darkModePref) {
-                "ON"  -> true
-                "OFF" -> false
-                else  -> systemDark
-            }
+            }.collectAsState(initial = true)
             val artworkUrlFlow = remember(playerConnection) {
                 playerConnection?.mediaMetadata?.map { it?.thumbnailUrl } ?: flowOf(null)
             }
             val artworkUrl by artworkUrlFlow.collectAsState(initial = null)
+            val appUpdateState by appUpdateController.state.collectAsState()
+            val updateSnackbarHostState = remember { SnackbarHostState() }
+
+            LaunchedEffect(appUpdateState) {
+                when (appUpdateState) {
+                    AppUpdateState.Available -> {
+                        val result = updateSnackbarHostState.showSnackbar(
+                            message = getString(R.string.play_update_available),
+                            actionLabel = getString(R.string.play_update_action),
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            appUpdateController.startFlexibleUpdate()
+                        }
+                    }
+                    AppUpdateState.ReadyToInstall -> {
+                        val result = updateSnackbarHostState.showSnackbar(
+                            message = getString(R.string.play_update_ready),
+                            actionLabel = getString(R.string.play_update_restart),
+                            withDismissAction = true,
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            appUpdateController.completeUpdate()
+                        }
+                    }
+                    AppUpdateState.Idle -> Unit
+                }
+            }
 
             val isFirstRunFlow = remember {
                 dataStore.data.map { preferences ->
@@ -155,30 +184,36 @@ class MainActivity : ComponentActivity() {
             val isFirstRun by isFirstRunFlow.collectAsState(initial = null)
 
             FridaMusicTheme(
-                darkTheme = isDark,
-                pureBlack = pureBlack,
+                darkTheme = false,
+                pureBlack = false,
                 dynamicTheme = dynamicTheme,
                 artworkUrl = artworkUrl,
             ) {
-                CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
-                    when (isFirstRun) {
-                        null -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.background)
-                            )
-                        }
-                        true -> {
-                            OnboardingScreen(onFinish = {})
-                        }
-                        false -> {
-                            MainScreen(
-                                pendingDeepLink = pendingDeepLink,
-                                onDeepLinkConsumed = { pendingDeepLink = null },
-                            )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalPlayerConnection provides playerConnection) {
+                        when (isFirstRun) {
+                            null -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.background)
+                                )
+                            }
+                            true -> {
+                                OnboardingScreen(onFinish = {})
+                            }
+                            false -> {
+                                MainScreen(
+                                    pendingDeepLink = pendingDeepLink,
+                                    onDeepLinkConsumed = { pendingDeepLink = null },
+                                )
+                            }
                         }
                     }
+                    SnackbarHost(
+                        hostState = updateSnackbarHostState,
+                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                    )
                 }
             }
         }
@@ -187,10 +222,140 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleDiscordRedirect(intent)
         enqueueExternalAudio(intent)
         pendingDeepLink = intent.data
             ?.takeIf { uri -> uri.scheme.equals("fridamusic", ignoreCase = true) }
     }
+
+    private fun handleDiscordRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (!uri.scheme.equals(BuildConfig.DISCORD_REDIRECT_SCHEME, ignoreCase = true)) return
+
+        if (BuildConfig.DEBUG) {
+            Timber.tag("DiscordOAuth").d("OAuth callback received")
+            Timber.tag("DiscordOAuth").d(
+                "OAuth callback target scheme=%s path=%s",
+                uri.scheme,
+                uri.path,
+            )
+        }
+
+        if (!uri.host.isNullOrBlank() || uri.path != "/authorize/callback") {
+            if (BuildConfig.DEBUG) Timber.tag("DiscordOAuth").w("OAuth callback target is invalid")
+            lifecycleScope.launch {
+                DiscordAuthCoordinator.finish(this@MainActivity)
+                DiscordAuthCoordinator.publish(
+                    DiscordAuthorizationOutcome(
+                        successful = false,
+                        errorMessage = getString(R.string.discord_oauth_callback_invalid),
+                    ),
+                )
+            }
+            return
+        }
+
+        if (discordCallbackJob?.isActive == true) {
+            if (BuildConfig.DEBUG) Timber.tag("DiscordOAuth").d("Duplicate OAuth callback ignored")
+            return
+        }
+
+        discordCallbackJob = lifecycleScope.launch { completeDiscordAuthorization(uri) }
+    }
+
+    private suspend fun completeDiscordAuthorization(uri: Uri) {
+        val discordError = uri.getQueryParameter("error")
+        if (discordError != null) {
+            val description = uri.getQueryParameter("error_description")?.takeIf { it.isNotBlank() }
+            if (BuildConfig.DEBUG) {
+                Timber.tag("DiscordOAuth").d(
+                    "Discord OAuth error=%s description=%s",
+                    discordError.toSafeOAuthLogValue(),
+                    description?.toSafeOAuthLogValue().orEmpty(),
+                )
+            }
+            DiscordAuthCoordinator.finish(this)
+            DiscordAuthCoordinator.publish(
+                DiscordAuthorizationOutcome(
+                    successful = false,
+                    errorMessage = getString(R.string.discord_oauth_rejected, description ?: discordError),
+                ),
+            )
+            return
+        }
+
+        val session = DiscordAuthCoordinator.currentSession(this)
+        if (session == null) {
+            if (BuildConfig.DEBUG) {
+                Timber.tag("DiscordOAuth").w("OAuth callback has no pending PKCE session")
+            }
+            DiscordAuthCoordinator.finish(this)
+            DiscordAuthCoordinator.publish(
+                DiscordAuthorizationOutcome(
+                    successful = false,
+                    errorMessage = getString(R.string.discord_oauth_session_missing),
+                ),
+            )
+            return
+        }
+
+        val stateIsValid = uri.getQueryParameter("state") == session.state
+        val hasCode = !uri.getQueryParameter("code").isNullOrBlank()
+        if (BuildConfig.DEBUG) {
+            Timber.tag("DiscordOAuth").d("OAuth state valid=%s", stateIsValid)
+            Timber.tag("DiscordOAuth").d("OAuth authorization code received=%s", hasCode)
+        }
+
+        if (!stateIsValid) {
+            DiscordAuthCoordinator.finish(this)
+            DiscordAuthCoordinator.publish(
+                DiscordAuthorizationOutcome(
+                    successful = false,
+                    errorMessage = getString(R.string.discord_oauth_state_invalid),
+                ),
+            )
+            return
+        }
+
+        if (!hasCode) {
+            DiscordAuthCoordinator.finish(this)
+            DiscordAuthCoordinator.publish(
+                DiscordAuthorizationOutcome(
+                    successful = false,
+                    errorMessage = getString(R.string.discord_oauth_code_missing),
+                ),
+            )
+            return
+        }
+
+        val result =
+            try {
+                DiscordOAuthRepository.completeAuthorization(this, session, uri)
+            } finally {
+                DiscordAuthCoordinator.finish(this)
+            }
+
+        result.onSuccess {
+            if (BuildConfig.DEBUG) Timber.tag("DiscordOAuth").d("OAuth authorization completed")
+            DiscordAuthCoordinator.publish(DiscordAuthorizationOutcome(successful = true))
+        }.onFailure { error ->
+            if (BuildConfig.DEBUG) {
+                Timber.tag("DiscordOAuth").w(
+                    "OAuth authorization failed after callback (%s)",
+                    error::class.java.simpleName,
+                )
+            }
+            DiscordAuthCoordinator.publish(
+                DiscordAuthorizationOutcome(
+                    successful = false,
+                    errorMessage = getString(R.string.discord_connection_failed),
+                ),
+            )
+        }
+    }
+
+    private fun String.toSafeOAuthLogValue(): String =
+        replace('\n', ' ').replace('\r', ' ').take(160)
 
     private fun enqueueExternalAudio(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
@@ -334,8 +499,18 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    override fun onResume() {
+        super.onResume()
+        appUpdateController.onResume()
+    }
+
     override fun onStop() {
         unbindService(serviceConnection)
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        appUpdateController.close()
+        super.onDestroy()
     }
 }

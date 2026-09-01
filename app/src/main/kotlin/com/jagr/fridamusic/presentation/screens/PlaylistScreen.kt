@@ -1,5 +1,10 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -20,7 +25,9 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.HeartBroken
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -71,6 +78,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 
 @Composable
@@ -97,6 +107,21 @@ fun LocalPlaylistScreen(
 
     val thumbnailUrl = playlist?.thumbnails?.firstOrNull()
     val title = playlist?.playlist?.name ?: ""
+    val localDurations = songs.mapNotNull { it.song.duration.takeIf { duration -> duration > 0 } }
+    val localDurationSummary = localDurations
+        .takeIf { it.size == songs.size && it.isNotEmpty() }
+        ?.sum()
+        ?.let { formatPlaylistDuration(it) }
+    val localMetadata = listOfNotNull(
+        songs.takeIf { it.isNotEmpty() }?.let {
+            pluralStringResource(R.plurals.n_song, it.size, it.size)
+        },
+        localDurationSummary,
+        playlist?.playlist?.createdAt?.let {
+            stringResource(R.string.playlist_added_date, formatPlaylistDate(it))
+        },
+    ).joinToString(" • ")
+    val localShareLink = playlist?.playlist?.takeIf { it.isRemote }?.shareLink
 
     fun playFromPlaylist(song: Song, queue: List<Song>) {
         val connection = playerConnection
@@ -117,6 +142,8 @@ fun LocalPlaylistScreen(
         title = title,
         artistLine = pluralStringResource(R.plurals.n_song, songs.size, songs.size),
         thumbnailUrl = thumbnailUrl,
+        metadataLine = localMetadata,
+        shareLink = localShareLink,
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playFromPlaylist(it, songs) } },
         onShuffle = { songs.shuffled().firstOrNull()?.let { playFromPlaylist(it, songs) } },
@@ -201,12 +228,36 @@ fun OnlinePlaylistScreen(
     LaunchedEffect(shouldLoadMore) {
         if (shouldLoadMore) viewModel.loadMoreSongs()
     }
+    val remoteComplete = !isLoading && !isLoadingMore && !hasContinuation
+    val remoteDurations = songs.mapNotNull { it.duration?.takeIf { duration -> duration > 0 } }
+    val remoteDurationSummary = remoteDurations
+        .takeIf { remoteComplete && it.size == songs.size && it.isNotEmpty() }
+        ?.sum()
+        ?.let { formatPlaylistDuration(it) }
+    val reliableRemoteCount = when {
+        remoteComplete -> songs.size
+        cachedPlaylist?.playlist?.remoteSongCount != null -> cachedPlaylist?.playlist?.remoteSongCount
+        else -> null
+    }
+    val remoteMetadata = listOfNotNull(
+        reliableRemoteCount?.takeIf { it > 0 }?.let {
+            pluralStringResource(R.plurals.n_song, it, it)
+        },
+        remoteDurationSummary,
+        cachedPlaylist?.playlist?.createdAt?.let {
+            stringResource(R.string.playlist_saved_date, formatPlaylistDate(it))
+        },
+    ).joinToString(" • ")
+    val remoteShareLink = playlist?.shareLink?.takeIf(String::isNotBlank)
+        ?: cachedPlaylist?.playlist?.shareLink
 
     PlaylistScaffold(
         title = playlist?.title ?: cachedPlaylist?.playlist?.name.orEmpty(),
         artistLine = playlist?.author?.name ?: "",
         thumbnailUrl = playlist?.thumbnail ?: cachedPlaylist?.thumbnails?.firstOrNull(),
         description = playlist?.description,
+        metadataLine = remoteMetadata,
+        shareLink = remoteShareLink,
         onBack = onBack,
         onPlay = {
             playerConnection?.let { connection ->
@@ -340,6 +391,8 @@ private fun PlaylistScaffold(
     artistLine: String,
     thumbnailUrl: String?,
     description: String? = null,
+    metadataLine: String = "",
+    shareLink: String? = null,
     onBack: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
@@ -352,6 +405,24 @@ private fun PlaylistScaffold(
     listState: LazyListState = rememberLazyListState(),
     content: LazyListScope.() -> Unit,
 ) {
+    val context = LocalContext.current
+
+    fun copyShareLink() {
+        val link = shareLink ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(title, link))
+        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    fun sharePlaylist() {
+        val link = shareLink ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, link)
+        }
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (thumbnailUrl != null) {
             AsyncImage(
@@ -397,11 +468,29 @@ private fun PlaylistScaffold(
                             tint = MaterialTheme.colorScheme.onBackground,
                         )
                     }
-                    AnimatedPlaylistSaveButton(
-                        isSaved = isSaved,
-                        enabled = isSaveEnabled,
-                        onClick = onSaveToggle,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (!shareLink.isNullOrBlank()) {
+                            IconButton(onClick = ::copyShareLink) {
+                                Icon(
+                                    Icons.Rounded.Link,
+                                    contentDescription = stringResource(R.string.copy_link),
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                )
+                            }
+                            IconButton(onClick = ::sharePlaylist) {
+                                Icon(
+                                    Icons.Rounded.Share,
+                                    contentDescription = stringResource(R.string.share),
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                )
+                            }
+                        }
+                        AnimatedPlaylistSaveButton(
+                            isSaved = isSaved,
+                            enabled = isSaveEnabled,
+                            onClick = onSaveToggle,
+                        )
+                    }
                 }
             }
 
@@ -472,6 +561,15 @@ private fun PlaylistScaffold(
                             Text(stringResource(R.string.shuffle))
                         }
                     }
+                    if (metadataLine.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = metadataLine,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
 
@@ -514,6 +612,23 @@ private fun PlaylistScaffold(
         }
     }
 }
+
+@Composable
+private fun formatPlaylistDuration(seconds: Int): String {
+    val totalMinutes = seconds / 60
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) {
+        stringResource(R.string.duration_hours_minutes, hours, minutes)
+    } else {
+        stringResource(R.string.duration_minutes, totalMinutes)
+    }
+}
+
+private fun formatPlaylistDate(date: java.time.LocalDateTime): String =
+    date.format(
+        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault()),
+    )
 
 @Composable
 private fun PlaylistSongRow(

@@ -7,6 +7,7 @@ import com.jagr.fridamusic.constants.EnableSimpMusicKey
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
 import com.music.simpmusic.SimpMusicLyrics
+import kotlin.math.abs
 
 object SimpMusicLyricsProvider : LyricsProvider {
     override val name = "SimpMusic"
@@ -31,4 +32,36 @@ object SimpMusicLyricsProvider : LyricsProvider {
     ) {
         SimpMusicLyrics.getAllLyrics(id, duration, callback)
     }
+
+    override suspend fun getLyricsCandidates(
+        id: String,
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String?,
+        callback: (LyricsCandidatePayload) -> Unit,
+    ) {
+        SimpMusicLyrics.getLyricsByVideoId(id)
+            .sortedBy { candidate ->
+                if (duration > 0) abs((candidate.duration ?: duration) - duration) else 0
+            }
+            .take(MAX_CANDIDATES)
+            .forEach { candidate ->
+                val lyrics = candidate.richSyncLyrics?.takeIf(String::isNotBlank)
+                    ?: candidate.syncedLyrics?.takeIf(String::isNotBlank)
+                    ?: candidate.plainLyrics?.takeIf(String::isNotBlank)
+                    ?: return@forEach
+                callback(
+                    LyricsCandidatePayload(
+                        lyrics = lyrics,
+                        title = candidate.title,
+                        artist = candidate.artist,
+                        album = candidate.album,
+                        durationSeconds = candidate.duration,
+                    ),
+                )
+            }
+    }
+
+    private const val MAX_CANDIDATES = 5
 }

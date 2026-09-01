@@ -47,6 +47,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -57,6 +59,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.updates.AppRelease
+import com.jagr.fridamusic.updates.ReleaseRepository
+import androidx.annotation.DrawableRes
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 
 private data class Developer(
@@ -66,6 +76,7 @@ private data class Developer(
     val githubHandle: String,
     val initials: String,
     val gradientColors: List<Color>,
+    @DrawableRes val avatarRes: Int? = null,
 )
 
 private data class OpenSourceLib(
@@ -82,6 +93,7 @@ private val developers = listOf(
         githubHandle = "@jagrdev-MX",
         initials = "JG",
         gradientColors = listOf(Color(0xFF0EA5E9), Color(0xFF06B6D4)),
+        avatarRes = R.drawable.developer_jagr,
     ),
     Developer(
         name = "Julio César",
@@ -90,7 +102,85 @@ private val developers = listOf(
         githubHandle = "@juliocps25",
         initials = "JC",
         gradientColors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6)),
+        avatarRes = R.drawable.developer_julio_cesar,
     ),
+)
+
+private val betaTesters = listOf(
+    "Irma",
+    "Katia Arriaga",
+    "Kael",
+    "Angel Rosales",
+    "Jefferson",
+    "Gerson",
+    "Josue Ramiro",
+    "FABIAN",
+    "ISELA",
+    "JORGE",
+    "GABY",
+    "MONY",
+    "VICENTE",
+    "chopo",
+    "Samer",
+    "Elian José López carlys",
+    "Miguel Romero",
+    "Miguel A Morales",
+    "Yolizador",
+    "Manuel vzkz",
+    "Docmen680",
+    "IvAn",
+    "Juan Gonzalez",
+    "Iván",
+    "Geekaa Cv",
+    "ElTioYang",
+    "Brain",
+    "Salvador Martinez",
+    "Alibel",
+    "Mauricio Almaraz",
+    "Juan Diego Castro",
+    "Bartez RP",
+    "Krizthian Arreola",
+    "Peter petrelli",
+    "Miguel Filio",
+    "Joaquin Martinez",
+    "Kamus",
+    "LEGOCITO",
+    "Brayan",
+    "Irvin",
+    "Jorge",
+    "LordByrum",
+    "Luis Balladares",
+    "Dano",
+    "Stuart30",
+    "uomo_perfetto",
+    "Joseph",
+    "Deniel Lugo",
+    "Oscar Hernandez",
+    "David",
+    "Ivan",
+    "Esteban Quiros",
+    "Steven Bpm",
+    "vcalderon",
+    "utokki",
+    "JHON Bustamante",
+    "Spay",
+    "Xfreyx2",
+    "Aner",
+    "Average Rumia",
+    "Alejandro",
+    "Miguelao",
+    "Mariano Martinez",
+    "Andgohrman",
+    "Zesury",
+    "TorresJ",
+    "Marcos quintana",
+    "Edwin",
+    "JuanMtv",
+    "Gilberto Juan Rueda",
+    "Moz",
+    "Emanuel C.",
+    "DA",
+    "Antonio",
 )
 
 private val openSourceLibraries = listOf(
@@ -129,8 +219,14 @@ private val openSourceLibraries = listOf(
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val pagerState = rememberPagerState(pageCount = { 4 })
     val scope = rememberCoroutineScope()
+    val tabTitles = listOf(
+        stringResource(R.string.about_team),
+        stringResource(R.string.about_acknowledgements),
+        stringResource(R.string.about_changelog),
+        stringResource(R.string.about_licenses),
+    )
 
     Scaffold(
         topBar = {
@@ -159,14 +255,13 @@ fun AboutScreen(onBack: () -> Unit) {
                 selectedTabIndex = pagerState.currentPage,
                 containerColor = MaterialTheme.colorScheme.background,
             ) {
-                Tab(selected = pagerState.currentPage == 0, onClick = {
-                    scope.launch { pagerState.animateScrollToPage(0) }
-                },
-                    text = { Text(stringResource(R.string.about_team)) })
-                Tab(selected = pagerState.currentPage == 1, onClick = {
-                    scope.launch { pagerState.animateScrollToPage(1) }
-                },
-                    text = { Text(stringResource(R.string.about_licenses)) })
+                tabTitles.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                        text = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
             }
 
             HorizontalPager(
@@ -178,7 +273,9 @@ fun AboutScreen(onBack: () -> Unit) {
             ) { page ->
                 when (page) {
                     0 -> TeamTab(onOpenUrl = { uriHandler.openUri(it) })
-                    1 -> LicensesTab(onOpenUrl = { uriHandler.openUri(it) })
+                    1 -> AcknowledgementsTab()
+                    2 -> ChangelogTab(onOpenUrl = { uriHandler.openUri(it) })
+                    3 -> LicensesTab(onOpenUrl = { uriHandler.openUri(it) })
                 }
             }
         }
@@ -288,12 +385,21 @@ private fun DeveloperCard(dev: Developer, onOpenGithub: () -> Unit) {
                     .background(Brush.linearGradient(dev.gradientColors)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = dev.initials,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
+                if (dev.avatarRes != null) {
+                    Image(
+                        painter = painterResource(dev.avatarRes),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Text(
+                        text = dev.initials,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = dev.name, style = MaterialTheme.typography.bodyLarge,
@@ -374,4 +480,146 @@ private fun licenseColor(license: String): Color = when {
     license.startsWith("LGPL") -> Color(0xFFF59E0B)
     license.startsWith("BSD") -> Color(0xFF8B5CF6)
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun AcknowledgementsTab() {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.FavoriteBorder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        text = stringResource(R.string.about_beta_testers_intro),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        items(betaTesters) { tester ->
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = tester.initials(),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(tester, style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.about_beta_tester_role),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun String.initials(): String =
+    trim()
+        .split(Regex("\\s+"))
+        .filter(String::isNotBlank)
+        .take(2)
+        .mapNotNull { it.firstOrNull()?.uppercaseChar() }
+        .joinToString("")
+        .ifBlank { "•" }
+
+@Composable
+private fun ChangelogTab(onOpenUrl: (String) -> Unit) {
+    val context = LocalContext.current
+    var releases by remember {
+        mutableStateOf(
+            listOf(
+                AppRelease(
+                    tag = BuildConfig.VERSION_NAME,
+                    title = context.getString(R.string.about_current_version, BuildConfig.VERSION_NAME),
+                    notes = context.getString(R.string.about_changelog_offline),
+                    publishedDate = null,
+                    url = "",
+                ),
+            ),
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        ReleaseRepository.releases(context).onSuccess { remoteReleases ->
+            releases = remoteReleases
+        }
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(releases, key = { it.tag }) { release ->
+            Card(
+                modifier = Modifier.fillMaxWidth().then(
+                    if (release.url.isNotBlank()) Modifier.clickable { onOpenUrl(release.url) }
+                    else Modifier,
+                ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(release.title, style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold)
+                            Text(
+                                listOfNotNull(release.tag, release.publishedDate).joinToString(" · "),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        if (release.url.isNotBlank()) {
+                            Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (release.notes.isNotBlank()) {
+                        Text(release.notes, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
 }

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
@@ -94,7 +95,9 @@ import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
+import com.jagr.fridamusic.presentation.SongActionsNavigation
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
+import com.jagr.fridamusic.presentation.components.AudioOutputSheet
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
@@ -149,6 +152,19 @@ fun NowPlayingScreen(
 
     val song = mediaMetadata ?: run { onBack(); return }
     val navigation = LocalSongActionsNavigation.current
+    val playerMenuNavigation = remember(navigation, onNavigateFromPlayer) {
+        SongActionsNavigation(
+            openAlbum = { albumId ->
+                onNavigateFromPlayer { navigation.openAlbum(albumId) }
+            },
+            openArtist = { artistId ->
+                onNavigateFromPlayer { navigation.openArtist(artistId) }
+            },
+            openSearchResult = { query ->
+                onNavigateFromPlayer { navigation.openSearchResult(query) }
+            },
+        )
+    }
     val navigableAlbumId = remember(song.album?.id) {
         song.album?.id?.trim()?.takeIf(::isNavigableAlbumId)
     }
@@ -200,6 +216,7 @@ fun NowPlayingScreen(
     }
 
     var showSleepTimerDialog by remember { mutableStateOf(false) }
+    var showAudioOutputSheet by remember { mutableStateOf(false) }
     var queueMenuSelection by remember { mutableStateOf<QueueMenuSelection?>(null) }
 
     val hasLyrics = currentLyrics != null
@@ -221,6 +238,11 @@ fun NowPlayingScreen(
             state = panelMotion.draggableState,
             flingBehavior = panelFlingBehavior,
         )
+    }
+    BackHandler(enabled = panelMotion.activePanel != null) {
+        coroutineScope.launch {
+            panelMotion.close(panelMotionSpec)
+        }
     }
     val queueInteractionSource = remember { MutableInteractionSource() }
     val lyricsInteractionSource = remember { MutableInteractionSource() }
@@ -641,28 +663,7 @@ fun NowPlayingScreen(
                                     .height(48.dp)
                                     .clip(RoundedCornerShape(50))
                                     .background(Color.White.copy(alpha = 0.12f))
-                                    .clickable {
-                                        try {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                                val intent = Intent("com.android.settings.panel.action.MEDIA_OUTPUT").apply {
-                                                    putExtra("com.android.settings.panel.extra.PACKAGE_NAME", context.packageName)
-                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(intent)
-                                            } else {
-                                                throw Exception("API antigua")
-                                            }
-                                        } catch (e: Exception) {
-                                            try {
-                                                val fallbackIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
-                                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                }
-                                                context.startActivity(fallbackIntent)
-                                            } catch (fallbackError: Exception) {
-                                                fallbackError.printStackTrace()
-                                            }
-                                        }
-                                    }
+                                    .clickable { showAudioOutputSheet = true }
                                     .padding(horizontal = 16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -678,7 +679,7 @@ fun NowPlayingScreen(
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = "Speaker",
+                                        text = stringResource(R.string.speaker),
                                         color = Color.White,
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Bold,
@@ -817,27 +818,29 @@ fun NowPlayingScreen(
         }
         val firstUpcomingWindow = upcomingWindows.firstOrNull()
         val lastUpcomingWindow = upcomingWindows.lastOrNull()
-        UniversalSongActionsHost(
-            context = selection.mediaItem.toSongActionContext(),
-            onDismiss = { queueMenuSelection = null },
-            onMoveToQueueStart = selectedWindow?.takeIf { window ->
-                !selection.isCurrent && firstUpcomingWindow?.uid != window.uid
-            }?.let { window ->
-                { firstUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
-            },
-            onMoveToQueueEnd = selectedWindow?.takeIf { window ->
-                !selection.isCurrent && lastUpcomingWindow?.uid != window.uid
-            }?.let { window ->
-                { lastUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
-            },
-            onRemoveFromQueue = if (!selection.isCurrent) {
-                {
-                    if (selection.index in 0 until playerConnection.player.mediaItemCount) {
-                        playerConnection.player.removeMediaItem(selection.index)
+        CompositionLocalProvider(LocalSongActionsNavigation provides playerMenuNavigation) {
+            UniversalSongActionsHost(
+                context = selection.mediaItem.toSongActionContext(),
+                onDismiss = { queueMenuSelection = null },
+                onMoveToQueueStart = selectedWindow?.takeIf { window ->
+                    !selection.isCurrent && firstUpcomingWindow?.uid != window.uid
+                }?.let { window ->
+                    { firstUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
+                },
+                onMoveToQueueEnd = selectedWindow?.takeIf { window ->
+                    !selection.isCurrent && lastUpcomingWindow?.uid != window.uid
+                }?.let { window ->
+                    { lastUpcomingWindow?.let { playerConnection.moveQueueItem(window, it) } }
+                },
+                onRemoveFromQueue = if (!selection.isCurrent) {
+                    {
+                        if (selection.index in 0 until playerConnection.player.mediaItemCount) {
+                            playerConnection.player.removeMediaItem(selection.index)
+                        }
                     }
-                }
-            } else null,
-        )
+                } else null,
+            )
+        }
     }
 
     if (showArtistPicker) {
@@ -850,6 +853,13 @@ fun NowPlayingScreen(
                     navigation.openArtist(artistId)
                 }
             },
+        )
+    }
+
+    if (showAudioOutputSheet) {
+        AudioOutputSheet(
+            playerConnection = playerConnection,
+            onDismiss = { showAudioOutputSheet = false },
         )
     }
 
@@ -1209,6 +1219,7 @@ private fun NowPlayingModeButton(
                 },
         )
     }
+
 }
 
 @Composable

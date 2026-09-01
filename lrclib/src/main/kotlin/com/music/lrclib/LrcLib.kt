@@ -135,6 +135,12 @@ object LrcLib {
         return results
     }
 
+    suspend fun searchTracks(
+        title: String,
+        artist: String,
+        album: String? = null,
+    ): List<Track> = queryLyrics(artist, title, album)
+
     suspend fun getLyrics(
         title: String,
         artist: String,

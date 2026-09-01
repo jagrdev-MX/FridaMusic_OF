@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
@@ -102,6 +103,26 @@ fun ArtistScreen(
     val remoteAlbums = remoteSections
         .flatMap { it.items }
         .filterIsInstance<AlbumItem>()
+    val effectiveSongCount = remember(librarySongs, remoteSongs) {
+        (librarySongs.map { it.song.id } + remoteSongs.map { it.id })
+            .filter(String::isNotBlank)
+            .toSet()
+            .size
+    }
+    val effectiveAlbumCount = remember(libraryAlbums, remoteAlbums) {
+        (libraryAlbums.map { it.album.id } + remoteAlbums.map { it.browseId })
+            .filter(String::isNotBlank)
+            .toSet()
+            .size
+    }
+    val countSummary = listOfNotNull(
+        effectiveSongCount.takeIf { it > 0 }?.let {
+            pluralStringResource(R.plurals.n_song, it, it)
+        },
+        effectiveAlbumCount.takeIf { it > 0 }?.let {
+            pluralStringResource(R.plurals.n_album, it, it)
+        },
+    ).joinToString(" • ")
 
     val isLoadingRemote = viewModel.isLoadingRemote
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
@@ -245,6 +266,14 @@ fun ArtistScreen(
                     if (subscriberCount != null) {
                         Text(
                             text = subscriberCount,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (countSummary.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = countSummary,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

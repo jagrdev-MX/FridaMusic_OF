@@ -1,7 +1,6 @@
 package com.jagr.fridamusic.presentation.theme
 
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -83,7 +82,7 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun FridaMusicTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     pureBlack: Boolean = false,
     dynamicTheme: Boolean = false,
     artworkUrl: String? = null,

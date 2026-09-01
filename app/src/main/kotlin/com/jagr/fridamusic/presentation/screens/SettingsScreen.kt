@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -133,6 +134,7 @@ fun SettingsScreen(
     onNavigateToAbout: () -> Unit = {},
 ) {
     var currentPage: SettingsPage by remember { mutableStateOf(SettingsPage.None) }
+    val rootListState = rememberLazyListState()
 
     BackHandler(enabled = currentPage != SettingsPage.None) {
         currentPage = SettingsPage.None
@@ -259,6 +261,7 @@ fun SettingsScreen(
         },
     ) { innerPadding ->
         LazyColumn(
+            state = rootListState,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 160.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -586,21 +589,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
 private fun androidx.compose.foundation.lazy.LazyListScope.appearanceItems() {
     item {
         SettingGroup(stringResource(R.string.group_theme)) {
-            PrefDropdownString(
-                icon = Icons.Rounded.DarkMode,
-                title = stringResource(R.string.color_mode),
-                options = listOf(
-                    SYSTEM_DEFAULT to stringResource(R.string.system_default),
-                    "ON" to stringResource(R.string.dark),
-                    "OFF" to stringResource(R.string.light),
-                ),
-                prefKey = DarkModeKey,
-                default = SYSTEM_DEFAULT,
-            )
             PrefSwitch(Icons.Rounded.AutoAwesome, stringResource(R.string.dynamic_colors),
                 stringResource(R.string.dynamic_colors_desc), DynamicThemeKey, true)
-            PrefSwitch(Icons.Rounded.Contrast, stringResource(R.string.pure_black),
-                stringResource(R.string.pure_black_desc), PureBlackKey, false)
         }
     }
     item {
@@ -763,12 +753,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
     }
     item {
         SettingGroup(stringResource(R.string.group_listenbrainz)) { ListenBrainzSection() }
-    }
-    item {
-        SettingGroup(stringResource(R.string.group_discord)) {
-            PrefSwitch(Icons.AutoMirrored.Rounded.Chat, stringResource(R.string.discord_integration),
-                stringResource(R.string.discord_rpc_desc), EnableDiscordRPCKey, true)
-        }
     }
     item {
         SettingGroup(stringResource(R.string.spotify_import_title)) {

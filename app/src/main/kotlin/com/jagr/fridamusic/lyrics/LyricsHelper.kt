@@ -53,8 +53,9 @@ constructor(
         mediaMetadata: MediaMetadata,
         forceRefresh: Boolean = false,
     ): LyricsWithProvider {
-        if (forceRefresh) selectedCache.remove(mediaMetadata.id)
-        selectedCache.get(mediaMetadata.id)?.let { return it }
+        val selectedCacheKey = selectedCacheKey(mediaMetadata)
+        if (forceRefresh) selectedCache.remove(selectedCacheKey)
+        selectedCache.get(selectedCacheKey)?.let { return it }
         if (!isNetworkAvailable()) return notFound()
 
         val providers = resolveLyricsProviders().filter(::isProviderEnabled)
@@ -88,7 +89,7 @@ constructor(
             score = best.score.total,
             autoOffsetMs = autoOffsetMs,
         )
-        selectedCache.put(mediaMetadata.id, result)
+        selectedCache.put(selectedCacheKey, result)
         return result
     }
 
@@ -101,7 +102,7 @@ constructor(
         callback: (LyricsResult) -> Unit,
     ) {
         currentLyricsJob?.cancel()
-        val cacheKey = searchCacheKey(mediaId, songTitle, songArtists)
+        val cacheKey = searchCacheKey(mediaId, songTitle, songArtists, duration, album)
         searchCache.get(cacheKey)?.let { results ->
             results.forEach(callback)
             return
@@ -119,19 +120,26 @@ constructor(
                     launch(Dispatchers.IO) {
                         withTimeoutOrNull(PROVIDER_SEARCH_TIMEOUT_MS) {
                             try {
-                                provider.getAllLyrics(mediaId, songTitle, songArtists, duration, album) { lyrics ->
-                                    val document = LyricsEngine.normalize(lyrics, duration)
+                                provider.getLyricsCandidates(mediaId, songTitle, songArtists, duration, album) { candidate ->
+                                    val document = LyricsEngine.normalize(candidate.lyrics, duration)
                                     val score = LyricsEngine.score(
                                         document = document,
                                         providerName = provider.name,
                                         songDurationSeconds = duration,
                                         preferredProvider = provider == providers.firstOrNull(),
+                                        metadataMatch = LyricsEngine.matchMetadata(
+                                            requestedTitle = songTitle,
+                                            requestedArtist = songArtists,
+                                            requestedAlbum = album,
+                                            requestedDurationSeconds = duration,
+                                            candidate = candidate,
+                                        ),
                                     )
-                                    val fingerprint = lyricsFingerprint(lyrics)
+                                    val fingerprint = lyricsFingerprint(candidate.lyrics)
                                     if (score.total >= MIN_VALID_SCORE) {
                                         val result = LyricsResult(
                                             providerName = provider.name,
-                                            lyrics = lyrics,
+                                            lyrics = candidate.lyrics,
                                             syncType = document.syncType,
                                             score = score.total,
                                         )
@@ -159,7 +167,9 @@ constructor(
     }
 
     fun invalidate(mediaId: String) {
-        selectedCache.remove(mediaId)
+        selectedCache.snapshot().keys
+            .filter { it.startsWith("$mediaId|") }
+            .forEach(selectedCache::remove)
         searchCache.evictAll()
     }
 
@@ -177,34 +187,47 @@ constructor(
             async(Dispatchers.IO) {
                 withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                     try {
-                        val raw = provider.getLyrics(
+                        val providerCandidates = mutableListOf<ScoredLyricsCandidate>()
+                        provider.getLyricsCandidates(
                             mediaMetadata.id,
                             mediaMetadata.title,
                             mediaMetadata.artists.joinToString { it.name },
                             mediaMetadata.duration,
                             mediaMetadata.album?.title,
-                        ).getOrElse { error ->
-                            reportException(error)
-                            return@withTimeoutOrNull null
+                        ) { candidate ->
+                            val document = LyricsEngine.normalize(candidate.lyrics, mediaMetadata.duration)
+                            val score = LyricsEngine.score(
+                                document = document,
+                                providerName = provider.name,
+                                songDurationSeconds = mediaMetadata.duration,
+                                preferredProvider = provider.name == preferredProviderName,
+                                metadataMatch = LyricsEngine.matchMetadata(
+                                    requestedTitle = mediaMetadata.title,
+                                    requestedArtist = mediaMetadata.artists.joinToString { it.name },
+                                    requestedAlbum = mediaMetadata.album?.title,
+                                    requestedDurationSeconds = mediaMetadata.duration,
+                                    candidate = candidate,
+                                ),
+                            )
+                            if (score.total >= MIN_VALID_SCORE) {
+                                providerCandidates += ScoredLyricsCandidate(
+                                    provider.name,
+                                    candidate.lyrics,
+                                    document,
+                                    score,
+                                )
+                            }
                         }
-                        val document = LyricsEngine.normalize(raw, mediaMetadata.duration)
-                        val score = LyricsEngine.score(
-                            document = document,
-                            providerName = provider.name,
-                            songDurationSeconds = mediaMetadata.duration,
-                            preferredProvider = provider.name == preferredProviderName,
-                        )
-                        ScoredLyricsCandidate(provider.name, raw, document, score)
-                            .takeIf { score.total >= MIN_VALID_SCORE }
+                        providerCandidates.distinctBy { lyricsFingerprint(it.lyrics) }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         reportException(e)
-                        null
+                        emptyList()
                     }
-                }
+                }.orEmpty()
             }
-        }.awaitAll().filterNotNull()
+        }.awaitAll().flatten()
     }
 
     private fun isProviderEnabled(provider: LyricsProvider): Boolean = try {
@@ -227,8 +250,27 @@ constructor(
         score = Int.MIN_VALUE,
     )
 
-    private fun searchCacheKey(mediaId: String, title: String, artists: String): String =
-        "$mediaId|$artists|$title".lowercase(Locale.ROOT).replace(" ", "")
+    private fun selectedCacheKey(metadata: MediaMetadata): String =
+        searchCacheKey(
+            metadata.id,
+            metadata.title,
+            metadata.artists.joinToString { it.name },
+            metadata.duration,
+            metadata.album?.title,
+        )
+
+    private fun searchCacheKey(
+        mediaId: String,
+        title: String,
+        artists: String,
+        duration: Int,
+        album: String?,
+    ): String {
+        val metadataSignature = "$artists|$title|${album.orEmpty()}|$duration"
+            .lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), "")
+        return "$mediaId|$metadataSignature"
+    }
 
     private fun lyricsFingerprint(lyrics: String): String = lyrics
         .lowercase(Locale.ROOT)

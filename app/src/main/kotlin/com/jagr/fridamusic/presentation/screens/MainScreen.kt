@@ -526,6 +526,7 @@ fun MainScreen(
                 AlbumScreen(
                     onSongClick = { song, queue -> playerConnection?.playSong(song, queue) },
                     onAlbumClick = { album -> navController.navigate("album/${album.browseId}") },
+                    onArtistClick = { artistId -> navController.navigate("artist/$artistId") },
                     onBack = { navController.popBackStack() },
                 )
             }

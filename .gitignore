@@ -249,4 +249,11 @@ node_modules/
 # Graphify
 graphify-out/
 graph.html
-!app/libs/discord_partner_sdk.aar
+
+# Local vendor SDKs and native binaries
+app/libs/discord_partner_sdk.aar
+app/libs/**/*.so
+app/libs/**/*.zip
+
+# Native build directories created outside Gradle build/
+cmake-build-*/

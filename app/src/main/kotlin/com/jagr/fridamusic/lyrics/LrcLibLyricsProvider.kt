@@ -7,6 +7,7 @@ import com.music.lrclib.LrcLib
 import com.jagr.fridamusic.constants.EnableLrcLibKey
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
+import kotlin.math.abs
 
 object LrcLibLyricsProvider : LyricsProvider {
     override val name = "LrcLib"
@@ -31,4 +32,32 @@ object LrcLibLyricsProvider : LyricsProvider {
     ) {
         LrcLib.getAllLyrics(title, artist, duration, album, callback)
     }
+
+    override suspend fun getLyricsCandidates(
+        id: String,
+        title: String,
+        artist: String,
+        duration: Int,
+        album: String?,
+        callback: (LyricsCandidatePayload) -> Unit,
+    ) {
+        LrcLib.searchTracks(title, artist, album)
+            .sortedBy { track ->
+                if (duration > 0) abs(track.duration.toInt() - duration) else 0
+            }
+            .take(MAX_CANDIDATES)
+            .forEach { track ->
+                val lyrics = track.syncedLyrics ?: track.plainLyrics ?: return@forEach
+                callback(
+                    LyricsCandidatePayload(
+                        lyrics = lyrics,
+                        title = track.trackName,
+                        artist = track.artistName,
+                        durationSeconds = track.duration.toInt(),
+                    ),
+                )
+            }
+    }
+
+    private const val MAX_CANDIDATES = 5
 }

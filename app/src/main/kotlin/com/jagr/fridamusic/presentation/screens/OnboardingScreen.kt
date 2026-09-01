@@ -84,7 +84,6 @@ import com.jagr.fridamusic.constants.AudioQualityKey
 import com.jagr.fridamusic.constants.DownloadQuality
 import com.jagr.fridamusic.constants.DownloadQualityKey
 import com.jagr.fridamusic.constants.EchoBrainEnabledKey
-import com.jagr.fridamusic.constants.EnableDiscordRPCKey
 import com.jagr.fridamusic.constants.EnableLastFMScrobblingKey
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.PauseListenHistoryKey
@@ -455,7 +454,6 @@ private fun PrivacyStep() {
 @Composable
 private fun ServicesStep() {
     var lastFm by rememberPreference(EnableLastFMScrobblingKey, false)
-    var discord by rememberPreference(EnableDiscordRPCKey, false)
     var sponsorBlock by rememberPreference(SponsorBlockEnabledKey, false)
     var echoBrain by rememberPreference(EchoBrainEnabledKey, false)
 
@@ -471,13 +469,6 @@ private fun ServicesStep() {
             subtitle = stringResource(R.string.lastfm_scrobbling_desc),
             checked = lastFm,
             onCheckedChange = { lastFm = it },
-        )
-        SetupToggle(
-            icon = Icons.Rounded.MusicNote,
-            title = stringResource(R.string.discord_integration),
-            subtitle = stringResource(R.string.discord_rpc_desc),
-            checked = discord,
-            onCheckedChange = { discord = it },
         )
         SetupToggle(
             icon = Icons.Rounded.Block,

@@ -3,6 +3,7 @@ package com.jagr.fridamusic.lyrics
 import com.jagr.fridamusic.betterlyrics.TTMLParser
 import com.jagr.fridamusic.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import java.util.Locale
+import java.text.Normalizer
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -249,6 +250,53 @@ object LyricsEngine {
         return LyricsScore(total, reasons)
     }
 
+    fun matchMetadata(
+        requestedTitle: String,
+        requestedArtist: String,
+        requestedAlbum: String?,
+        requestedDurationSeconds: Int,
+        candidate: LyricsCandidatePayload,
+    ): LyricsMetadataMatch {
+        val embedded = extractEmbeddedMetadata(candidate.lyrics)
+        val candidateTitle = candidate.title ?: embedded["ti"]
+        val candidateArtist = candidate.artist ?: embedded["ar"]
+        val candidateAlbum = candidate.album ?: embedded["al"]
+        val candidateDuration = candidate.durationSeconds
+            ?: embedded["length"]?.let(::parseDurationSeconds)
+
+        val requestedTitleIdentity = titleIdentity(requestedTitle)
+        val candidateTitleIdentity = candidateTitle?.let(::titleIdentity)
+        val titleSimilarity = candidateTitleIdentity?.let {
+            stringSimilarity(requestedTitleIdentity.base, it.base)
+        }
+        val qualifierConflict = candidateTitleIdentity?.let {
+            requestedTitleIdentity.qualifiers != it.qualifiers &&
+                (requestedTitleIdentity.qualifiers.isNotEmpty() || it.qualifiers.isNotEmpty())
+        } ?: false
+        val artistSimilarity = candidateArtist?.let {
+            stringSimilarity(primaryArtist(requestedArtist), primaryArtist(it))
+        }
+        val albumSimilarity = candidateAlbum
+            ?.takeIf { !requestedAlbum.isNullOrBlank() }
+            ?.let { stringSimilarity(normalizeIdentity(requestedAlbum.orEmpty()), normalizeIdentity(it)) }
+        val durationDeviation = candidateDuration
+            ?.takeIf { it > 0 && requestedDurationSeconds > 0 }
+            ?.let { abs(it - requestedDurationSeconds) }
+        val identityRejected = qualifierConflict ||
+            (titleSimilarity != null && titleSimilarity < MIN_TITLE_IDENTITY) ||
+            (artistSimilarity != null && artistSimilarity < MIN_ARTIST_IDENTITY) ||
+            (durationDeviation != null && durationDeviation > MAX_DURATION_DEVIATION_SECONDS)
+
+        return LyricsMetadataMatch(
+            titleSimilarity = titleSimilarity,
+            artistSimilarity = artistSimilarity,
+            albumSimilarity = albumSimilarity,
+            durationDeviationSeconds = durationDeviation,
+            qualifierConflict = qualifierConflict,
+            identityRejected = identityRejected,
+        )
+    }
+
     fun estimateAutoSyncOffsetMs(
         selected: LyricsDocument,
         exactPlaybackReference: LyricsDocument,
@@ -299,18 +347,26 @@ object LyricsEngine {
     }
 
     private fun LyricsMetadataMatch.score(reasons: MutableList<String>): Int {
+        if (identityRejected) {
+            reasons += "identity_rejected"
+            return IDENTITY_REJECTION_SCORE
+        }
         var score = 0
         titleSimilarity?.let {
-            if (it < 0.55) {
-                score -= 50
+            if (it < 0.72) {
+                score -= 70
                 reasons += "title_mismatch"
             } else if (it >= 0.9) score += 12
         }
         artistSimilarity?.let {
-            if (it < 0.45) {
-                score -= 40
+            if (it < 0.60) {
+                score -= 65
                 reasons += "artist_mismatch"
             } else if (it >= 0.85) score += 10
+        }
+        if (qualifierConflict) {
+            score -= 140
+            reasons += "version_mismatch"
         }
         albumSimilarity?.let { if (it >= 0.85) score += 4 }
         durationDeviationSeconds?.let {
@@ -318,13 +374,88 @@ object LyricsEngine {
                 it <= 2 -> score += 10
                 it <= 6 -> score += 4
                 it > 15 -> {
-                    score -= 35
+                    score -= 55
                     reasons += "duration_mismatch"
                 }
             }
         }
         return score
     }
+
+    private fun titleIdentity(title: String): TitleIdentity {
+        val normalized = normalizeIdentity(title)
+        val qualifiers = versionQualifiers.mapNotNullTo(linkedSetOf()) { (qualifier, patterns) ->
+            qualifier.takeIf { patterns.any { pattern -> containsPhrase(normalized, pattern) } }
+        }
+        val qualifierPatterns = versionQualifiers.values.flatten()
+            .sortedByDescending(String::length)
+            .joinToString("|") { Regex.escape(it) }
+        val base = normalized
+            .replace(Regex("\\b(?:$qualifierPatterns)\\b"), " ")
+            .replace(Regex("\\b(?:official|audio|video|lyrics?|visualizer|hd|hq|4k)\\b"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        return TitleIdentity(base = base.ifBlank { normalized }, qualifiers = qualifiers)
+    }
+
+    private fun primaryArtist(artist: String): String = normalizeIdentity(artist)
+        .split(Regex("\\s+(?:feat(?:uring)?|ft|with|x|and|y)\\s+|\\s*[,&;/]\\s*"), limit = 2)
+        .firstOrNull()
+        .orEmpty()
+        .trim()
+
+    private fun normalizeIdentity(value: String): String = Normalizer
+        .normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    private fun stringSimilarity(first: String, second: String): Double {
+        if (first == second) return 1.0
+        if (first.isBlank() || second.isBlank()) return 0.0
+        val maxLength = maxOf(first.length, second.length)
+        var previous = IntArray(second.length + 1) { it }
+        first.forEachIndexed { firstIndex, firstChar ->
+            val current = IntArray(second.length + 1)
+            current[0] = firstIndex + 1
+            second.forEachIndexed { secondIndex, secondChar ->
+                current[secondIndex + 1] = minOf(
+                    current[secondIndex] + 1,
+                    previous[secondIndex + 1] + 1,
+                    previous[secondIndex] + if (firstChar == secondChar) 0 else 1,
+                )
+            }
+            previous = current
+        }
+        val editSimilarity = 1.0 - previous.last().toDouble() / maxLength
+        val firstTokens = first.split(' ').filter(String::isNotBlank).toSet()
+        val secondTokens = second.split(' ').filter(String::isNotBlank).toSet()
+        val tokenSimilarity = if (firstTokens.isEmpty() || secondTokens.isEmpty()) {
+            0.0
+        } else {
+            firstTokens.intersect(secondTokens).size.toDouble() / firstTokens.union(secondTokens).size
+        }
+        return maxOf(editSimilarity, tokenSimilarity)
+    }
+
+    private fun extractEmbeddedMetadata(lyrics: String): Map<String, String> =
+        Regex("^\\[(ti|ar|al|length):([^]]+)]$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+            .findAll(lyrics)
+            .associate { it.groupValues[1].lowercase(Locale.ROOT) to it.groupValues[2].trim() }
+
+    private fun parseDurationSeconds(value: String): Int? {
+        value.trim().toIntOrNull()?.let { return it }
+        val parts = value.trim().split(':').mapNotNull(String::toIntOrNull)
+        return when (parts.size) {
+            2 -> parts[0] * 60 + parts[1]
+            3 -> parts[0] * 3_600 + parts[1] * 60 + parts[2]
+            else -> null
+        }
+    }
+
+    private fun containsPhrase(value: String, phrase: String): Boolean =
+        Regex("(?:^| )${Regex.escape(phrase)}(?: |$)").containsMatchIn(value)
 
     private fun cleanRawLyrics(rawLyrics: String): String = rawLyrics
         .trim()
@@ -361,6 +492,33 @@ object LyricsEngine {
         .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
         .trim()
         .replace(Regex("\\s+"), " ")
+
+    private data class TitleIdentity(
+        val base: String,
+        val qualifiers: Set<String>,
+    )
+
+    private const val MIN_TITLE_IDENTITY = 0.72
+    private const val MIN_ARTIST_IDENTITY = 0.60
+    private const val MAX_DURATION_DEVIATION_SECONDS = 20
+    private const val IDENTITY_REJECTION_SCORE = -200
+
+    private val versionQualifiers = linkedMapOf(
+        "live" to listOf("live", "en vivo", "directo", "concert", "sesion", "session"),
+        "remix" to listOf("remix", "remezcla", "mix"),
+        "remastered" to listOf("remastered", "remaster", "remasterizado", "remasterizada"),
+        "acoustic" to listOf("acoustic", "acustico", "acustica", "unplugged"),
+        "instrumental" to listOf("instrumental"),
+        "karaoke" to listOf("karaoke"),
+        "sped_up" to listOf("sped up", "speed up", "acelerado", "acelerada"),
+        "slowed" to listOf("slowed", "slowed down", "ralentizado", "ralentizada"),
+        "nightcore" to listOf("nightcore"),
+        "radio_edit" to listOf("radio edit", "radio version", "edicion de radio"),
+        "extended" to listOf("extended", "extended mix", "version extendida"),
+        "demo" to listOf("demo"),
+        "cover" to listOf("cover"),
+        "version" to listOf("version"),
+    )
 }
 
 data class LyricsScore(
@@ -373,4 +531,6 @@ data class LyricsMetadataMatch(
     val artistSimilarity: Double? = null,
     val albumSimilarity: Double? = null,
     val durationDeviationSeconds: Int? = null,
+    val qualifierConflict: Boolean = false,
+    val identityRejected: Boolean = false,
 )

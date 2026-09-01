@@ -6,7 +6,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -15,6 +16,8 @@ import kotlinx.serialization.json.Json
 import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.constants.DiscordAvatarUrlKey
 import com.jagr.fridamusic.constants.DiscordNameKey
+import com.jagr.fridamusic.constants.DiscordOAuthCodeVerifierKey
+import com.jagr.fridamusic.constants.DiscordOAuthPendingStateKey
 import com.jagr.fridamusic.constants.DiscordRefreshTokenKey
 import com.jagr.fridamusic.constants.DiscordTokenExpiresAtKey
 import com.jagr.fridamusic.constants.DiscordTokenKey
@@ -27,6 +30,7 @@ import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
+import timber.log.Timber
 
 data class DiscordAuthorizationSession(
     val state: String,
@@ -48,19 +52,62 @@ data class DiscordAuthSession(
     val account: DiscordAccount?,
 )
 
-object DiscordAuthCoordinator {
-    val redirects =
-        MutableSharedFlow<Uri>(
-            replay = 1,
-            extraBufferCapacity = 1,
-        )
+data class DiscordAuthorizationOutcome(
+    val successful: Boolean,
+    val errorMessage: String? = null,
+)
 
-    fun emit(uri: Uri) {
-        redirects.tryEmit(uri)
+object DiscordAuthCoordinator {
+    private val outcomeState = MutableStateFlow<DiscordAuthorizationOutcome?>(null)
+    val outcomes = outcomeState.asStateFlow()
+
+    @Volatile
+    private var pendingSession: DiscordAuthorizationSession? = null
+
+    suspend fun begin(
+        context: Context,
+        session: DiscordAuthorizationSession,
+    ) {
+        pendingSession = session
+        outcomeState.value = null
+        context.dataStore.edit { prefs ->
+            prefs[DiscordOAuthPendingStateKey] = session.state
+            prefs[DiscordOAuthCodeVerifierKey] = session.codeVerifier
+        }
+    }
+
+    suspend fun currentSession(context: Context): DiscordAuthorizationSession? {
+        pendingSession?.let { return it }
+
+        val prefs = context.dataStore.data.first()
+        val state = prefs[DiscordOAuthPendingStateKey]?.takeIf { it.isNotBlank() } ?: return null
+        val verifier = prefs[DiscordOAuthCodeVerifierKey]?.takeIf { it.isNotBlank() } ?: return null
+        return DiscordAuthorizationSession(
+            state = state,
+            codeVerifier = verifier,
+            authorizationUri = Uri.EMPTY,
+        ).also { pendingSession = it }
+    }
+
+    suspend fun finish(context: Context) {
+        pendingSession = null
+        context.dataStore.edit { prefs ->
+            prefs.remove(DiscordOAuthPendingStateKey)
+            prefs.remove(DiscordOAuthCodeVerifierKey)
+        }
+    }
+
+    fun publish(outcome: DiscordAuthorizationOutcome) {
+        outcomeState.value = outcome
+    }
+
+    fun consume(outcome: DiscordAuthorizationOutcome) {
+        if (outcomeState.value == outcome) outcomeState.value = null
     }
 }
 
 object DiscordOAuthRepository {
+    private const val LOG_TAG = "DiscordOAuth"
     private const val AUTHORIZATION_ENDPOINT = "https://discord.com/oauth2/authorize"
     private const val TOKEN_ENDPOINT = "https://discord.com/api/oauth2/token"
     private const val CURRENT_USER_ENDPOINT = "https://discord.com/api/v10/users/@me"
@@ -74,7 +121,7 @@ object DiscordOAuthRepository {
         get() = BuildConfig.DISCORD_APPLICATION_ID_LONG
 
     val redirectUri: String
-        get() = "${BuildConfig.DISCORD_REDIRECT_SCHEME}://authorize/callback"
+        get() = "${BuildConfig.DISCORD_REDIRECT_SCHEME}:/authorize/callback"
 
     fun createAuthorizationSession(): DiscordAuthorizationSession {
         val state = randomUrlSafeString(byteCount = 32)
@@ -99,6 +146,10 @@ object DiscordOAuthRepository {
                 .appendQueryParameter("code_challenge_method", "S256")
                 .build()
 
+        if (BuildConfig.DEBUG) {
+            Timber.tag(LOG_TAG).d("OAuth initiated; redirect=%s; scopes=openid identify", redirectUri)
+        }
+
         return DiscordAuthorizationSession(
             state = state,
             codeVerifier = verifier,
@@ -116,7 +167,7 @@ object DiscordOAuthRepository {
                 require(redirect.scheme == BuildConfig.DISCORD_REDIRECT_SCHEME) {
                     "Unexpected Discord redirect scheme"
                 }
-                require(redirect.path == "/authorize/callback" || (redirect.host == "authorize" && redirect.path == "/callback")) {
+                require(redirect.host.isNullOrBlank() && redirect.path == "/authorize/callback") {
                     "Unexpected Discord redirect target"
                 }
                 require(redirect.getQueryParameter("state") == session.state) {
@@ -211,6 +262,7 @@ object DiscordOAuthRepository {
                 prefs.remove(DiscordNameKey)
                 prefs.remove(DiscordAvatarUrlKey)
             }
+            DiscordAuthCoordinator.finish(context)
         }
     }
 
@@ -223,6 +275,7 @@ object DiscordOAuthRepository {
                 val token =
                     postForm(
                         url = TOKEN_ENDPOINT,
+                        debugOperation = "refresh token exchange",
                         params =
                             mapOf(
                                 "client_id" to BuildConfig.DISCORD_APPLICATION_ID,
@@ -244,6 +297,7 @@ object DiscordOAuthRepository {
     ): TokenResponse =
         postForm(
             url = TOKEN_ENDPOINT,
+            debugOperation = "authorization code exchange",
             params =
                 mapOf(
                     "client_id" to BuildConfig.DISCORD_APPLICATION_ID,
@@ -319,6 +373,7 @@ object DiscordOAuthRepository {
 
     private fun postForm(
         url: String,
+        debugOperation: String,
         params: Map<String, String>,
     ): String {
         val body =
@@ -339,7 +394,7 @@ object DiscordOAuthRepository {
             output.write(body.toByteArray(Charsets.UTF_8))
         }
 
-        return connection.readResponse()
+        return connection.readResponse(debugOperation)
     }
 
     private fun getJson(
@@ -359,14 +414,17 @@ object DiscordOAuthRepository {
         return connection.readResponse()
     }
 
-    private fun HttpURLConnection.readResponse(): String {
+    private fun HttpURLConnection.readResponse(debugOperation: String? = null): String {
         val status = responseCode
+        if (BuildConfig.DEBUG && debugOperation != null) {
+            Timber.tag(LOG_TAG).d("OAuth %s HTTP %d", debugOperation, status)
+        }
         val stream = if (status in 200..299) inputStream else errorStream
         val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
         disconnect()
 
         if (status !in 200..299) {
-            throw IOException("Discord OAuth request failed with HTTP $status: $body")
+            throw IOException("Discord OAuth request failed with HTTP $status")
         }
 
         return body

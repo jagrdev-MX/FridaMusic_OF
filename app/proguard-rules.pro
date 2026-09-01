@@ -148,6 +148,12 @@
     native <methods>;
 }
 
+# Discord Social SDK JNI bridge
+-keep class com.jagr.fridamusic.discord.DiscordSocialSdkBridge { *; }
+-keepclassmembers class com.jagr.fridamusic.discord.DiscordSocialSdkBridge {
+    native <methods>;
+}
+
 ## Kotlin Reflection Fix
 -keep class kotlin.Metadata { *; }
 -keep class kotlin.reflect.** { *; }

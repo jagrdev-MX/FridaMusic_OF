@@ -2,17 +2,16 @@
 
 package com.jagr.fridamusic.playback
 
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.database.SQLException
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -30,7 +29,6 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_POSITION_DISCONTINUITY
 import androidx.media3.common.Player.EVENT_TIMELINE_CHANGED
@@ -90,10 +88,6 @@ import com.jagr.fridamusic.constants.DisableLoadMoreWhenRepeatAllKey
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
-import com.jagr.fridamusic.constants.DiscordActivityNameKey
-import com.jagr.fridamusic.constants.DiscordActivityTypeKey
-import com.jagr.fridamusic.constants.DiscordTokenKey
-import com.jagr.fridamusic.constants.EnableDiscordRPCKey
 import com.jagr.fridamusic.constants.EnableLastFMScrobblingKey
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
@@ -136,7 +130,6 @@ import com.jagr.fridamusic.db.entities.Event
 import com.jagr.fridamusic.db.entities.FormatEntity
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.db.entities.RelatedSongMap
-import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.di.DownloadCache
 import com.jagr.fridamusic.di.PlayerCache
 import com.jagr.fridamusic.eq.EqualizerService
@@ -165,7 +158,6 @@ import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.playback.queues.filterExplicit
 import com.jagr.fridamusic.playback.queues.filterVideoSongs
 import com.jagr.fridamusic.utils.CoilBitmapLoader
-import com.jagr.fridamusic.discord.DiscordPresenceManager
 import com.jagr.fridamusic.utils.NetworkConnectivityObserver
 import com.jagr.fridamusic.utils.ScrobbleManager
 import com.jagr.fridamusic.utils.SyncUtils
@@ -250,10 +242,13 @@ class MusicService :
     private var wasPlayingBeforeAudioFocusLoss = false
     private var hasAudioFocus = false
     private var reentrantFocusGain = false
+    private var audioFocusPausePending = false
     private var wasPlayingBeforeVolumeMute = false
     private var isPausedByVolumeMute = false
     var preferredDeviceId: Int? = null
         private set
+    val audioOutputDevices = MutableStateFlow<List<AudioDeviceInfo>>(emptyList())
+    val selectedAudioOutputDeviceId = MutableStateFlow<Int?>(null)
 
     private var crossfadeEnabled = false
     private var crossfadeDuration = 5000f
@@ -322,7 +317,21 @@ class MusicService :
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             val deviceInfo = devices.find { it.id == deviceId }
             player.setPreferredAudioDevice(deviceInfo)
-            preferredDeviceId = deviceId
+            preferredDeviceId = deviceInfo?.id
+            selectedAudioOutputDeviceId.value = deviceInfo?.id
+        }
+    }
+
+    private fun refreshAudioOutputDevices() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
+            audioOutputDevices.value = devices
+            val selectedId = selectedAudioOutputDeviceId.value
+            if (selectedId != null && devices.none { it.id == selectedId }) {
+                player.setPreferredAudioDevice(null)
+                preferredDeviceId = null
+                selectedAudioOutputDeviceId.value = null
+            }
         }
     }
 
@@ -361,11 +370,6 @@ class MusicService :
 
     private var isAudioEffectSessionOpened = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
-    private var lastPresenceToken: String? = null
-
-
-    private var lastPlaybackSpeed = 1.0f
-    private var discordUpdateJob: kotlinx.coroutines.Job? = null
 
     private var scrobbleManager: ScrobbleManager? = null
 
@@ -411,32 +415,10 @@ class MusicService :
     var castConnectionHandler: CastConnectionHandler? = null
         private set
 
-    private val screenStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> {
-                    if (!player.isPlaying) {
-                        scope.launch(Dispatchers.IO) {
-                            DiscordPresenceManager.stop()
-                        }
-                    }
-                }
-                Intent.ACTION_SCREEN_ON -> {
-                    if (player.isPlaying) {
-                        scope.launch {
-                            currentSong.value?.let { song ->
-                                ensurePresenceManager()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
+            refreshAudioOutputDevices()
             val hasBluetooth = addedDevices?.any {
                 it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                         it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
@@ -449,6 +431,11 @@ class MusicService :
                     }
                 }
             }
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            super.onAudioDevicesRemoved(removedDevices)
+            refreshAudioOutputDevices()
         }
     }
 
@@ -573,13 +560,8 @@ class MusicService :
         connectivityManager = getSystemService()!!
         connectivityObserver = NetworkConnectivityObserver(this)
 
-        val screenStateFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_SCREEN_OFF)
-        }
-        registerReceiver(screenStateReceiver, screenStateFilter)
-
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+        refreshAudioOutputDevices()
 
         audioQuality = dataStore.get(AudioQualityKey).toEnum(com.jagr.fridamusic.constants.AudioQuality.OPUS)
         ipVersion = dataStore.get(IpVersionKey).toEnum(IpVersion.AUTO)
@@ -617,14 +599,6 @@ class MusicService :
                     triggerRetry()
                 }
 
-                if (isConnected && player.isPlaying) {
-                    val mediaId = player.currentMetadata?.id
-                    if (mediaId != null) {
-                        database.song(mediaId).first()?.let { song ->
-                            ensurePresenceManager()
-                        }
-                    }
-                }
             }
         }
 
@@ -981,6 +955,7 @@ class MusicService :
                 handleAudioFocusChange(focusChange)
             }
             .setAcceptsDelayedFocusGain(true)
+            .setWillPauseWhenDucked(true)
             .build()
     }
 
@@ -988,19 +963,20 @@ class MusicService :
         when (focusChange) {
 
             AudioManager.AUDIOFOCUS_GAIN,
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT -> {
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE,
+            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK -> {
                 hasAudioFocus = true
 
-                if (wasPlayingBeforeAudioFocusLoss && !player.isPlaying && !reentrantFocusGain) {
+                if (wasPlayingBeforeAudioFocusLoss && !player.playWhenReady && !reentrantFocusGain) {
                     reentrantFocusGain = true
                     scope.launch {
-                        delay(300)
-                        if (hasAudioFocus && wasPlayingBeforeAudioFocusLoss && !player.isPlaying) {
-
+                        delay(150)
+                        if (hasAudioFocus && wasPlayingBeforeAudioFocusLoss && !player.playWhenReady) {
+                            wasPlayingBeforeAudioFocusLoss = false
                             if (castConnectionHandler?.isCasting?.value != true) {
                                 player.play()
                             }
-                            wasPlayingBeforeAudioFocusLoss = false
                         }
                         reentrantFocusGain = false
                     }
@@ -1012,37 +988,35 @@ class MusicService :
 
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
-                if (player.isPlaying) {
-                    player.pause()
-                }
+                pauseForAudioFocusLoss(resumeOnGain = false)
                 abandonAudioFocus()
                 lastAudioFocusState = focusChange
             }
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
-                if (player.isPlaying) {
-                    player.pause()
-                }
+                pauseForAudioFocusLoss(resumeOnGain = true)
                 lastAudioFocusState = focusChange
             }
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
-                if (player.isPlaying) {
-                    player.volume = if (isMuted.value) 0f else (playerVolume.value * 0.2f)
-                }
+                pauseForAudioFocusLoss(resumeOnGain = true)
                 lastAudioFocusState = focusChange
             }
+        }
+    }
 
-            AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK -> {
-                hasAudioFocus = true
-                player.volume = if (isMuted.value) 0f else playerVolume.value
-                lastAudioFocusState = focusChange
-            }
+    private fun pauseForAudioFocusLoss(resumeOnGain: Boolean) {
+        if (resumeOnGain && player.playWhenReady) {
+            wasPlayingBeforeAudioFocusLoss = true
+        } else if (!resumeOnGain) {
+            wasPlayingBeforeAudioFocusLoss = false
+        }
+
+        if (player.playWhenReady) {
+            audioFocusPausePending = true
+            player.pause()
         }
     }
 
@@ -1051,19 +1025,31 @@ class MusicService :
 
         audioFocusRequest?.let { request ->
             val result = audioManager.requestAudioFocus(request)
-            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-            return hasAudioFocus
+            return when (result) {
+                AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> {
+                    hasAudioFocus = true
+                    true
+                }
+                AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
+                    hasAudioFocus = false
+                    pauseForAudioFocusLoss(resumeOnGain = true)
+                    false
+                }
+                else -> {
+                    hasAudioFocus = false
+                    pauseForAudioFocusLoss(resumeOnGain = false)
+                    false
+                }
+            }
         }
         return false
     }
 
     private fun abandonAudioFocus() {
-        if (hasAudioFocus) {
-            audioFocusRequest?.let { request ->
-                audioManager.abandonAudioFocusRequest(request)
-                hasAudioFocus = false
-            }
+        audioFocusRequest?.let { request ->
+            audioManager.abandonAudioFocusRequest(request)
         }
+        hasAudioFocus = false
     }
 
     private fun clearPersistedQueueFiles() {
@@ -1857,12 +1843,8 @@ class MusicService :
         }
         previousMediaItemIndex = player.currentMediaItemIndex
 
-        lastPlaybackSpeed = -1.0f
-
         preloadUpcomingItems()
         setupLoudnessEnhancer()
-
-        discordUpdateJob?.cancel()
 
         scrobbleManager?.onSongStop()
         checkAndSubmitListenBrainzFinished()
@@ -1968,6 +1950,11 @@ class MusicService :
 
     override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
 
+        val pausedForAudioFocus = !playWhenReady && audioFocusPausePending
+        if (pausedForAudioFocus) {
+            audioFocusPausePending = false
+        }
+
         if (playWhenReady && castConnectionHandler?.isCasting?.value == true) {
             player.pause()
             return
@@ -1976,10 +1963,16 @@ class MusicService :
         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
             if (playWhenReady) {
                 isPausedByVolumeMute = false
+                wasPlayingBeforeAudioFocusLoss = false
             }
 
             if (!playWhenReady && !isPausedByVolumeMute) {
                 wasPlayingBeforeVolumeMute = false
+            }
+
+            if (!playWhenReady && !pausedForAudioFocus) {
+                wasPlayingBeforeAudioFocusLoss = false
+                abandonAudioFocus()
             }
         }
 
@@ -2021,26 +2014,7 @@ class MusicService :
             } else {
                 stopWidgetUpdates()
             }
-            if (!player.isPlaying && !events.containsAny(Player.EVENT_POSITION_DISCONTINUITY, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-                scope.launch {
-                    DiscordPresenceManager.stop()
-                }
-            }
         }
-
-
-        if (events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_IS_PLAYING_CHANGED) && player.isPlaying) {
-            val mediaId = player.currentMetadata?.id
-            if (mediaId != null) {
-                scope.launch {
-
-                    database.song(mediaId).first()?.let { song ->
-                        ensurePresenceManager()
-                    }
-                }
-            }
-        }
-
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
             scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
@@ -2143,25 +2117,6 @@ class MusicService :
             player.setShuffleOrder(DefaultShuffleOrder(shuffledIndices, System.currentTimeMillis()))
         }
     }
-
-    override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
-        super.onPlaybackParametersChanged(playbackParameters)
-        if (playbackParameters.speed != lastPlaybackSpeed) {
-            lastPlaybackSpeed = playbackParameters.speed
-            discordUpdateJob?.cancel()
-
-
-            discordUpdateJob = scope.launch {
-                delay(1000)
-                if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
-                    currentSong.value?.let { song ->
-                        ensurePresenceManager()
-                    }
-                }
-            }
-        }
-    }
-
 
     private fun getHttpResponseCode(error: PlaybackException): Int? {
         var cause: Throwable? = error.cause
@@ -2719,57 +2674,6 @@ class MusicService :
         }
     }
 
-    private fun currentPresenceSong(): Song? {
-        val mediaId = player.currentMediaItem?.mediaId ?: return null
-        return runBlocking(Dispatchers.IO) { database.song(mediaId).firstOrNull() }
-    }
-
-    private fun ensurePresenceManager() {
-        if (DiscordPresenceManager.lastRpcStartTime != null && lastPresenceToken != null) {
-            if (dataStore.get(EnableDiscordRPCKey, true) && dataStore.get(DiscordTokenKey, "").isNotBlank()) {
-                DiscordPresenceManager.restart()
-            }
-            return
-        }
-
-        scope.launch {
-            if (!dataStore.get(EnableDiscordRPCKey, true)) {
-                if (DiscordPresenceManager.lastRpcStartTime != null) {
-                    try { DiscordPresenceManager.stop() } catch (_: Exception) {}
-                    lastPresenceToken = null
-                }
-                return@launch
-            }
-
-            val key = dataStore.get(DiscordTokenKey, "")
-            if (key.isBlank()) {
-                if (DiscordPresenceManager.lastRpcStartTime != null) {
-                    try { DiscordPresenceManager.stop() } catch (_: Exception) {}
-                    lastPresenceToken = null
-                }
-                return@launch
-            }
-
-            if (DiscordPresenceManager.lastRpcStartTime != null && lastPresenceToken == key) {
-                return@launch
-            }
-
-            try {
-                DiscordPresenceManager.stop()
-                DiscordPresenceManager.start(
-                    context = this@MusicService,
-                    token = key,
-                    songProvider = { currentPresenceSong() },
-                    positionProvider = { player.currentPosition },
-                    isPausedProvider = { !player.isPlaying }
-                )
-                lastPresenceToken = key
-            } catch (ex: Exception) {
-                Timber.tag(TAG).e(ex, "Failed to start presence manager")
-            }
-        }
-    }
-
     private data class SharedPlaybackResolution(
         val playbackData: YTPlayerUtils.PlaybackData?,
         val streamUrl: String,
@@ -3206,17 +3110,11 @@ class MusicService :
     override fun onDestroy() {
         isRunning = false
 
-        try {
-            unregisterReceiver(screenStateReceiver)
-        } catch (e: Exception) {
-
-        }
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         castConnectionHandler?.release()
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
-        DiscordPresenceManager.stop()
         connectivityObserver.unregister()
         abandonAudioFocus()
         releaseLoudnessEnhancer()
@@ -3228,7 +3126,6 @@ class MusicService :
 
 
         player.release()
-        discordUpdateJob?.cancel()
         super.onDestroy()
     }
 

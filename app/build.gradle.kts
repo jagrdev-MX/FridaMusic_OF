@@ -24,6 +24,9 @@ plugins {
 }
 
 val hasGoogleServicesConfig = file("google-services.json").exists()
+val discordSocialSdkAar = file("libs/discord_partner_sdk.aar")
+val discordRichPresenceEnabled = false
+val hasDiscordSocialSdk = discordRichPresenceEnabled && discordSocialSdkAar.isFile
 
 if (hasGoogleServicesConfig) {
     apply(plugin = "com.google.gms.google-services")
@@ -41,7 +44,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 14
-        versionName = "1.0.12.203"
+        versionName = "1.1.12.250"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -81,13 +84,15 @@ android {
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"
         buildConfigField("Boolean", "IS_NIGHTLY", isNightly.toString())
 
-        val discordApplicationId = "1518210534070292541"
-        val discordApplicationIdLong = 1518210534070292541L
+        val discordApplicationId = "1543937368900370554"
+        val discordApplicationIdLong = 1543937368900370554L
         val discordRedirectScheme = "discord-$discordApplicationId"
 
         buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
         buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
         buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
+        buildConfigField("Boolean", "DISCORD_RICH_PRESENCE_ENABLED", discordRichPresenceEnabled.toString())
+        buildConfigField("Boolean", "DISCORD_SOCIAL_SDK_AVAILABLE", hasDiscordSocialSdk.toString())
         manifestPlaceholders["discordRedirectScheme"] = discordRedirectScheme
     }
     
@@ -192,6 +197,15 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        prefab = hasDiscordSocialSdk
+    }
+
+    if (hasDiscordSocialSdk) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/discord/CMakeLists.txt")
+            }
+        }
     }
 
     dependenciesInfo {
@@ -212,7 +226,6 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
             keepDebugSymbols += listOf(
                 "**/libandroidx.graphics.path.so",
                 "**/libdatastore_shared_counter.so"
@@ -262,6 +275,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 }
 
 dependencies {
+    if (hasDiscordSocialSdk) {
+        implementation(files(discordSocialSdkAar))
+    }
+
     "gmsImplementation"(platform("com.google.firebase:firebase-bom:33.1.0"))
     "gmsImplementation"("com.google.firebase:firebase-analytics")
     "gmsImplementation"("com.google.firebase:firebase-crashlytics")
@@ -272,6 +289,8 @@ dependencies {
     "gmsImplementation"(libs.google.api.services.drive) {
         exclude(group = "org.apache.httpcomponents")
     }
+    "gmsImplementation"("com.google.android.play:app-update:2.1.0")
+    "gmsImplementation"("com.google.android.play:app-update-ktx:2.1.0")
 
     
     implementation(libs.haze)

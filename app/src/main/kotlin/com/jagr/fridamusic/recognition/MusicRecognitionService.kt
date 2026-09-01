@@ -10,7 +10,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.core.content.ContextCompat
-import com.music.shazamkit.Shazam
 import com.music.shazamkit.models.RecognitionStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +21,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.nio.ByteOrder
 
 
 object MusicRecognitionService {
@@ -34,11 +32,14 @@ object MusicRecognitionService {
     
     
     
-    private const val RECORDING_DURATION_MS = 4200L
+    private const val RECORDING_DURATION_MS = 6500L
+    private const val PRIMARY_SAMPLE_DURATION_MS = 4200L
+    private const val RETRY_SAMPLE_DURATION_MS = 5200L
     
     private val _recognitionStatus = MutableStateFlow<RecognitionStatus>(RecognitionStatus.Ready)
     val recognitionStatus: StateFlow<RecognitionStatus> = _recognitionStatus.asStateFlow()
     private val recognitionMutex = Mutex()
+    private val providers: List<MusicRecognitionProvider> = listOf(CurrentShazamProvider)
     
     fun hasRecordPermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
@@ -71,52 +72,26 @@ object MusicRecognitionService {
                 pcmEncoding = AUDIO_FORMAT
             )
             
-            val resampledAudio = AudioResampler.resample(
-                decodedAudio, 
-                VibraSignature.REQUIRED_SAMPLE_RATE
-            ).getOrElse { error ->
-                _recognitionStatus.value = RecognitionStatus.Error("Failed to resample audio: ${error.message}")
-                return@withContext _recognitionStatus.value
-            }
-            
-            
-            require(
-                resampledAudio.channelCount == 1 &&
-                resampledAudio.sampleRate == VibraSignature.REQUIRED_SAMPLE_RATE &&
-                resampledAudio.pcmEncoding == AudioFormat.ENCODING_PCM_16BIT &&
-                ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN &&
-                resampledAudio.data.isNotEmpty() && 
-                resampledAudio.data.size % 2 == 0
-            ) { "Invalid audio format for fingerprint generation" }
-            
-            
-            val signature = try {
-                VibraSignature.fromI16(resampledAudio.data)
-            } catch (e: Exception) {
-                _recognitionStatus.value = RecognitionStatus.Error("Failed to generate fingerprint: ${e.message}")
-                return@withContext _recognitionStatus.value
-            }
-            
-            
-            val sampleDurationMs = (resampledAudio.data.size / 2) * 1000L / VibraSignature.REQUIRED_SAMPLE_RATE
-            
-            val result = Shazam.recognize(signature, sampleDurationMs)
-            
-            result.fold(
-                onSuccess = { recognitionResult ->
-                    _recognitionStatus.value = RecognitionStatus.Success(recognitionResult)
-                },
-                onFailure = { error ->
-                    val message = error.message ?: "Unknown error"
-                    _recognitionStatus.value = if (
-                        message.contains("No match", ignoreCase = true) || message.contains("404")
-                    ) {
-                        RecognitionStatus.NoMatch("No matches found. Try again with clearer audio.")
-                    } else {
-                        RecognitionStatus.Error(message)
-                    }
-                }
+            val primaryAudio = decodedAudio.sliceForRecognition(
+                startMs = 0L,
+                durationMs = PRIMARY_SAMPLE_DURATION_MS,
             )
+            val primaryResult = recognizeWithProviders(primaryAudio)
+            val providerResult = if (primaryResult is MusicRecognitionProviderResult.NoMatch) {
+                decodedAudio.sliceForRecognition(
+                    startMs = (RECORDING_DURATION_MS - RETRY_SAMPLE_DURATION_MS).coerceAtLeast(0L),
+                    durationMs = RETRY_SAMPLE_DURATION_MS,
+                ).let { recognizeWithProviders(it) }
+            } else {
+                primaryResult
+            }
+
+            _recognitionStatus.value = when (providerResult) {
+                is MusicRecognitionProviderResult.Success -> RecognitionStatus.Success(providerResult.result)
+                MusicRecognitionProviderResult.NoMatch ->
+                    RecognitionStatus.NoMatch("No matches found. Try again with clearer audio.")
+                is MusicRecognitionProviderResult.Error -> RecognitionStatus.Error(providerResult.message)
+            }
             
             _recognitionStatus.value
         } catch (cancelled: CancellationException) {
@@ -126,6 +101,32 @@ object MusicRecognitionService {
             _recognitionStatus.value
         }
         }
+    }
+
+    private suspend fun recognizeWithProviders(audio: DecodedAudio): MusicRecognitionProviderResult {
+        var lastError: MusicRecognitionProviderResult.Error? = null
+        var sawNoMatch = false
+        providers.forEach { provider ->
+            when (val result = provider.recognize(audio)) {
+                is MusicRecognitionProviderResult.Success -> return result
+                MusicRecognitionProviderResult.NoMatch -> sawNoMatch = true
+                is MusicRecognitionProviderResult.Error -> {
+                    lastError = result
+                    if (!result.temporary) return result
+                }
+            }
+        }
+        return if (sawNoMatch) MusicRecognitionProviderResult.NoMatch
+        else lastError ?: MusicRecognitionProviderResult.Error("Recognition unavailable", temporary = true)
+    }
+
+    private fun DecodedAudio.sliceForRecognition(startMs: Long, durationMs: Long): DecodedAudio {
+        val bytesPerFrame = channelCount * 2
+        val startFrame = (startMs * sampleRate / 1_000L).toInt()
+        val requestedFrames = (durationMs * sampleRate / 1_000L).toInt()
+        val startByte = (startFrame * bytesPerFrame).coerceIn(0, data.size)
+        val endByte = (startByte + requestedFrames * bytesPerFrame).coerceAtMost(data.size)
+        return copy(data = data.copyOfRange(startByte, endByte))
     }
     
     @SuppressLint("MissingPermission")

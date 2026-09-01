@@ -1,5 +1,11 @@
 package com.jagr.fridamusic.presentation.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +16,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,6 +29,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,13 +55,16 @@ import com.jagr.fridamusic.viewmodels.AlbumViewModel
 import com.jagr.fridamusic.R
 import com.music.innertube.models.AlbumItem
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AlbumScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onAlbumClick: (AlbumItem) -> Unit,
+    onArtistClick: (String) -> Unit,
     onBack: () -> Unit,
     viewModel: AlbumViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -72,11 +85,40 @@ fun AlbumScreen(
 
     val songs = album.songs
     val thumbnailUrl = album.album.thumbnailUrl
-    val artistName = album.artists.joinToString(", ") { it.name }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuAlbum by remember { mutableStateOf<AlbumItem?>(null) }
     val albumArtists = remember(album.artists) {
         album.artists.map { SongNavigationTarget(name = it.name, id = it.id) }
+    }
+    val albumLink = album.album.playlistId
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let { "https://share.echomusic.fun/playlist?list=$it" }
+    val knownDurations = songs.mapNotNull { it.song.duration.takeIf { duration -> duration > 0 } }
+    val totalDuration = knownDurations.takeIf { it.size == songs.size && it.isNotEmpty() }?.sum()
+    val durationSummary = totalDuration?.let { formatDurationSummary(it) }
+    val summary = listOfNotNull(
+        album.album.year?.toString(),
+        songs.takeIf { it.isNotEmpty() }?.let {
+            pluralStringResource(R.plurals.n_song, it.size, it.size)
+        },
+        durationSummary,
+    ).joinToString(" • ")
+
+    fun copyAlbumLink() {
+        val link = albumLink ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(album.album.title, link))
+        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    fun shareAlbumLink() {
+        val link = albumLink ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, link)
+        }
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.share)))
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -125,6 +167,22 @@ fun AlbumScreen(
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
+                    if (albumLink != null) {
+                        IconButton(onClick = ::copyAlbumLink) {
+                            Icon(
+                                Icons.Rounded.Link,
+                                contentDescription = stringResource(R.string.copy_link),
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                        IconButton(onClick = ::shareAlbumLink) {
+                            Icon(
+                                Icons.Rounded.Share,
+                                contentDescription = stringResource(R.string.share),
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                    }
                     AnimatedLibraryHeartButton(
                         isSaved = album.album.bookmarkedAt != null,
                         enabled = !isBookmarkUpdating,
@@ -166,17 +224,32 @@ fun AlbumScreen(
                         color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center,
                     )
-                    Text(
-                        text = artistName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                    album.album.year?.let { year ->
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        album.artists.forEach { artist ->
+                            if (artist.id.isNotBlank()) {
+                                AssistChip(
+                                    onClick = { onArtistClick(artist.id) },
+                                    label = { Text(artist.name, maxLines = 1) },
+                                )
+                            } else {
+                                Text(
+                                    text = artist.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                    if (summary.isNotBlank()) {
                         Text(
-                            text = year.toString(),
+                            text = summary,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center,
                         )
                     }
 
@@ -410,4 +483,16 @@ private fun formatDuration(seconds: Int): String {
     val m = seconds / 60
     val s = seconds % 60
     return "%d:%02d".format(m, s)
+}
+
+@Composable
+private fun formatDurationSummary(seconds: Int): String {
+    val totalMinutes = seconds / 60
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) {
+        stringResource(R.string.duration_hours_minutes, hours, minutes)
+    } else {
+        stringResource(R.string.duration_minutes, totalMinutes)
+    }
 }
