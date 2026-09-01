@@ -125,6 +125,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.InetAddress
 import java.net.Inet4Address
 import java.net.Inet6Address
+import java.util.Locale
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.Event
 import com.jagr.fridamusic.db.entities.FormatEntity
@@ -208,6 +209,96 @@ import kotlin.time.Duration.Companion.seconds
 private const val INSTANT_SILENCE_SKIP_STEP_MS = 15_000L
 private const val INSTANT_SILENCE_SKIP_SETTLE_MS = 350L
 
+private data class AudioOutputRouteKey(
+    val transportFamily: String,
+    val stableIdentity: String,
+    val normalizedName: String,
+)
+
+private fun AudioDeviceInfo.audioOutputRouteKey(): AudioOutputRouteKey {
+    val normalizedName = productName.toString()
+        .trim()
+        .lowercase(Locale.ROOT)
+        .replace(Regex("\\s+"), " ")
+    val stableBluetoothAddress = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        address.trim().lowercase(Locale.ROOT).takeUnless {
+            it.isBlank() || it == "0" || it == "unknown" || it == "00:00:00:00:00:00"
+        }
+    } else {
+        null
+    }
+    return if (isBluetoothAudioOutput()) {
+        AudioOutputRouteKey(
+            transportFamily = "bluetooth",
+            stableIdentity = stableBluetoothAddress ?: "route:$type:$id",
+            normalizedName = normalizedName,
+        )
+    } else {
+        AudioOutputRouteKey(
+            transportFamily = audioOutputTransportFamily(),
+            stableIdentity = "route:$id",
+            normalizedName = normalizedName,
+        )
+    }
+}
+
+private fun AudioDeviceInfo.isBluetoothAudioOutput(): Boolean = when (type) {
+    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+    AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+    AudioDeviceInfo.TYPE_BLE_HEADSET,
+    AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    AudioDeviceInfo.TYPE_BLE_BROADCAST,
+    AudioDeviceInfo.TYPE_HEARING_AID -> true
+    else -> false
+}
+
+private fun AudioDeviceInfo.audioOutputTransportFamily(): String = when (type) {
+    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+    AudioDeviceInfo.TYPE_WIRED_HEADSET,
+    AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "wired"
+    AudioDeviceInfo.TYPE_USB_ACCESSORY,
+    AudioDeviceInfo.TYPE_USB_DEVICE,
+    AudioDeviceInfo.TYPE_USB_HEADSET -> "usb"
+    AudioDeviceInfo.TYPE_HDMI,
+    AudioDeviceInfo.TYPE_HDMI_ARC,
+    AudioDeviceInfo.TYPE_HDMI_EARC -> "hdmi"
+    else -> "other:$type"
+}
+
+private fun AudioDeviceInfo.mediaRoutePreference(): Int = when (type) {
+    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> 0
+    AudioDeviceInfo.TYPE_BLE_HEADSET,
+    AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    AudioDeviceInfo.TYPE_BLE_BROADCAST -> 1
+    AudioDeviceInfo.TYPE_HEARING_AID -> 2
+    AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 3
+    else -> 0
+}
+
+private fun AudioDeviceInfo.isUserSelectableMediaOutput(): Boolean =
+    isBluetoothAudioOutput() || when (type) {
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_ACCESSORY,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_HDMI,
+        AudioDeviceInfo.TYPE_HDMI_ARC,
+        AudioDeviceInfo.TYPE_HDMI_EARC -> true
+        else -> false
+    }
+
+private fun List<AudioDeviceInfo>.canonicalAudioOutputDevices(): List<AudioDeviceInfo> =
+    filter(AudioDeviceInfo::isUserSelectableMediaOutput)
+        .groupBy { it.audioOutputRouteKey() }
+        .values
+        .map { equivalentRoutes ->
+            equivalentRoutes.minWithOrNull(
+                compareBy<AudioDeviceInfo> { it.mediaRoutePreference() }.thenBy { it.id },
+            ) ?: equivalentRoutes.first()
+        }
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @androidx.annotation.OptIn(UnstableApi::class)
 @AndroidEntryPoint
@@ -247,6 +338,7 @@ class MusicService :
     private var isPausedByVolumeMute = false
     var preferredDeviceId: Int? = null
         private set
+    private var preferredAudioOutputRouteKey: AudioOutputRouteKey? = null
     val audioOutputDevices = MutableStateFlow<List<AudioDeviceInfo>>(emptyList())
     val selectedAudioOutputDeviceId = MutableStateFlow<Int?>(null)
 
@@ -316,23 +408,37 @@ class MusicService :
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             val deviceInfo = devices.find { it.id == deviceId }
-            player.setPreferredAudioDevice(deviceInfo)
-            preferredDeviceId = deviceInfo?.id
-            selectedAudioOutputDeviceId.value = deviceInfo?.id
+            applyPreferredAudioDevice(deviceInfo)
         }
     }
 
     private fun refreshAudioOutputDevices() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-            audioOutputDevices.value = devices
+            val canonicalDevices = devices.canonicalAudioOutputDevices()
+            audioOutputDevices.value = canonicalDevices
             val selectedId = selectedAudioOutputDeviceId.value
-            if (selectedId != null && devices.none { it.id == selectedId }) {
-                player.setPreferredAudioDevice(null)
-                preferredDeviceId = null
-                selectedAudioOutputDeviceId.value = null
+            if (selectedId != null) {
+                val selectedDevice = devices.find { it.id == selectedId }
+                val selectedRouteKey = preferredAudioOutputRouteKey
+                    ?: selectedDevice?.audioOutputRouteKey()
+                val replacement = selectedRouteKey?.let { routeKey ->
+                    canonicalDevices.find { it.audioOutputRouteKey() == routeKey }
+                }
+                when {
+                    replacement == null -> applyPreferredAudioDevice(null)
+                    replacement.id != selectedId -> applyPreferredAudioDevice(replacement)
+                    else -> preferredAudioOutputRouteKey = selectedRouteKey
+                }
             }
         }
+    }
+
+    private fun applyPreferredAudioDevice(deviceInfo: AudioDeviceInfo?) {
+        player.setPreferredAudioDevice(deviceInfo)
+        preferredDeviceId = deviceInfo?.id
+        preferredAudioOutputRouteKey = deviceInfo?.audioOutputRouteKey()
+        selectedAudioOutputDeviceId.value = deviceInfo?.id
     }
 
 
@@ -419,10 +525,7 @@ class MusicService :
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
             super.onAudioDevicesAdded(addedDevices)
             refreshAudioOutputDevices()
-            val hasBluetooth = addedDevices?.any {
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                        it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-            } == true
+            val hasBluetooth = addedDevices?.any(AudioDeviceInfo::isBluetoothAudioOutput) == true
 
             if (hasBluetooth) {
                 if (dataStore.get(ResumeOnBluetoothConnectKey, false)) {

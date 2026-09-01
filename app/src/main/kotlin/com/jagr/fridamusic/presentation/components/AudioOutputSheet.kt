@@ -65,7 +65,7 @@ fun AudioOutputSheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
             )
 
-            devices.distinctBy { it.id }.forEach { device ->
+            devices.forEach { device ->
                 AudioOutputRow(
                     icon = audioDeviceIcon(device.type),
                     name = device.productName.toString().trim().ifBlank {
@@ -82,7 +82,7 @@ fun AudioOutputSheet(
                 icon = Icons.Rounded.Settings,
                 name = stringResource(R.string.audio_output_system_option),
                 type = stringResource(R.string.audio_output_system_desc),
-                selected = selectedDeviceId == null,
+                selected = false,
                 onClick = {
                     service.setPreferredAudioDevice(null)
                     runCatching {
@@ -153,7 +153,9 @@ private fun audioDeviceIcon(type: Int): ImageVector = when (type) {
     AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
     AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
     AudioDeviceInfo.TYPE_BLE_HEADSET,
-    AudioDeviceInfo.TYPE_BLE_SPEAKER -> Icons.Rounded.BluetoothAudio
+    AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    AudioDeviceInfo.TYPE_BLE_BROADCAST,
+    AudioDeviceInfo.TYPE_HEARING_AID -> Icons.Rounded.BluetoothAudio
     AudioDeviceInfo.TYPE_USB_ACCESSORY,
     AudioDeviceInfo.TYPE_USB_DEVICE,
     AudioDeviceInfo.TYPE_USB_HEADSET -> Icons.Rounded.Usb
@@ -172,7 +174,9 @@ private fun audioDeviceTypeLabel(type: Int): String = stringResource(
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
         AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
         AudioDeviceInfo.TYPE_BLE_HEADSET,
-        AudioDeviceInfo.TYPE_BLE_SPEAKER -> R.string.audio_output_bluetooth
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BLE_BROADCAST,
+        AudioDeviceInfo.TYPE_HEARING_AID -> R.string.audio_output_bluetooth
         AudioDeviceInfo.TYPE_USB_ACCESSORY,
         AudioDeviceInfo.TYPE_USB_DEVICE,
         AudioDeviceInfo.TYPE_USB_HEADSET -> R.string.audio_output_usb

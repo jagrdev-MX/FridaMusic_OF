@@ -35,13 +35,17 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
@@ -97,6 +101,14 @@ fun SearchResultScreen(
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
+    val quickReturnState = rememberQuickReturnTopAppBarState()
+    var searchHeaderHeightPx by remember { mutableIntStateOf(0) }
+    var categoryHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val searchHeaderHeight = with(density) { searchHeaderHeightPx.toDp() }
+    val quickReturnHeaderHeight = with(density) {
+        (searchHeaderHeightPx + categoryHeaderHeightPx).toDp()
+    }
 
     fun closeSearchEditor() {
         keyboardController?.hide()
@@ -116,6 +128,16 @@ fun SearchResultScreen(
     LaunchedEffect(isSearchFocused) {
         if (isSearchFocused) {
             suggestionViewModel.query.value = searchText
+            quickReturnState.animateQuickReturnVisible()
+        }
+    }
+
+    LaunchedEffect(searchHeaderHeightPx, categoryHeaderHeightPx) {
+        val totalHeight = searchHeaderHeightPx + categoryHeaderHeightPx
+        if (totalHeight > 0) {
+            val limit = -totalHeight.toFloat()
+            quickReturnState.heightOffsetLimit = limit
+            quickReturnState.heightOffset = quickReturnState.heightOffset.coerceIn(limit, 0f)
         }
     }
 
@@ -123,16 +145,65 @@ fun SearchResultScreen(
         closeSearchEditor()
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
             .imePadding()
     ) {
+        key(viewModel.query) {
+            SearchCategoryPager(
+                tabs = tabs,
+                viewModel = viewModel,
+                onItemClick = onItemClick,
+                quickReturnState = quickReturnState,
+                searchHeaderHeight = searchHeaderHeight,
+                contentTopPadding = quickReturnHeaderHeight,
+                onCategoryHeaderHeightChanged = { categoryHeaderHeightPx = it },
+            )
+        }
+
+        if (isSearchFocused) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(2f),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                SearchSuggestionContent(
+                    text = searchText,
+                    viewState = suggestionState,
+                    onSubmit = ::submitQuery,
+                    onFill = { value ->
+                        searchText = value
+                        suggestionViewModel.query.value = value
+                        focusRequester.requestFocus()
+                    },
+                    onItemClick = { item ->
+                        closeSearchEditor()
+                        onItemClick(item)
+                    },
+                    onDeleteHistory = suggestionViewModel::deleteSearch,
+                    onClearHistory = suggestionViewModel::clearSearchHistory,
+                    topPadding = searchHeaderHeight,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .zIndex(3f)
+                .graphicsLayer {
+                    translationY = if (isSearchFocused) 0f else quickReturnState.heightOffset
+                }
+                .background(MaterialTheme.colorScheme.background)
+                .onSizeChanged { size ->
+                    if (size.height > 0 && searchHeaderHeightPx != size.height) {
+                        searchHeaderHeightPx = size.height
+                    }
+                }
+                .statusBarsPadding()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -163,42 +234,6 @@ fun SearchResultScreen(
                     .onFocusChanged { isSearchFocused = it.isFocused },
             )
         }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
-            key(viewModel.query) {
-                SearchCategoryPager(
-                    tabs = tabs,
-                    viewModel = viewModel,
-                    onItemClick = onItemClick,
-                )
-            }
-
-            if (isSearchFocused) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    SearchSuggestionContent(
-                        text = searchText,
-                        viewState = suggestionState,
-                        onSubmit = ::submitQuery,
-                        onFill = { value ->
-                            searchText = value
-                            suggestionViewModel.query.value = value
-                            focusRequester.requestFocus()
-                        },
-                        onItemClick = { item ->
-                            closeSearchEditor()
-                            onItemClick(item)
-                        },
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -208,6 +243,10 @@ private fun SearchCategoryPager(
     tabs: List<SearchTab>,
     viewModel: OnlineSearchViewModel,
     onItemClick: (YTItem) -> Unit,
+    quickReturnState: TopAppBarState,
+    searchHeaderHeight: Dp,
+    contentTopPadding: Dp,
+    onCategoryHeaderHeightChanged: (Int) -> Unit,
 ) {
     val initialPage = tabs.indexOfFirst { it.filter == viewModel.filter.value }.coerceAtLeast(0)
     val pagerState = rememberPagerState(initialPage = initialPage) { tabs.size }
@@ -216,11 +255,16 @@ private fun SearchCategoryPager(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val selectedTabIndex = pagerState.targetPage
+    val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.targetPage }.collect { page ->
             viewModel.selectFilter(tabs[page].filter)
         }
+    }
+
+    LaunchedEffect(pagerState.targetPage) {
+        quickReturnState.animateQuickReturnVisible()
     }
 
     LaunchedEffect(pagerState.settledPage) {
@@ -245,36 +289,14 @@ private fun SearchCategoryPager(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        LazyRow(
-            state = tabListState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            itemsIndexed(tabs, key = { _, tab -> tab.filter?.value ?: "summary" }) { index, tab ->
-                SearchCategoryChip(
-                    label = tab.label,
-                    icon = tab.icon,
-                    selected = selectedTabIndex == index,
-                    onClick = {
-                        if (index != pagerState.currentPage) {
-                            viewModel.selectFilter(tab.filter)
-                            scope.launch { pagerState.animateScrollToPage(index) }
-                        }
-                    },
-                )
-            }
-        }
-
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(quickReturnConnection),
+    ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             key = { page -> tabs[page].filter?.value ?: "summary" },
         ) { page ->
             val tab = tabs[page]
@@ -284,6 +306,7 @@ private fun SearchCategoryPager(
                     viewModel = viewModel,
                     listState = listState,
                     onItemClick = onItemClick,
+                    topPadding = contentTopPadding,
                 )
             } else {
                 SearchFilteredContent(
@@ -291,7 +314,44 @@ private fun SearchCategoryPager(
                     filterValue = tab.filter.value,
                     listState = listState,
                     onItemClick = onItemClick,
+                    topPadding = contentTopPadding,
                 )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(1f)
+                .graphicsLayer { translationY = quickReturnState.heightOffset }
+                .background(MaterialTheme.colorScheme.background),
+        ) {
+            Spacer(modifier = Modifier.height(searchHeaderHeight))
+            LazyRow(
+                state = tabListState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { size ->
+                        if (size.height > 0) onCategoryHeaderHeightChanged(size.height)
+                    }
+                    .padding(bottom = 8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                itemsIndexed(tabs, key = { _, tab -> tab.filter?.value ?: "summary" }) { index, tab ->
+                    SearchCategoryChip(
+                        label = tab.label,
+                        icon = tab.icon,
+                        selected = selectedTabIndex == index,
+                        onClick = {
+                            if (index != pagerState.currentPage) {
+                                viewModel.selectFilter(tab.filter)
+                                scope.launch { pagerState.animateScrollToPage(index) }
+                            }
+                        },
+                    )
+                }
             }
         }
     }
@@ -375,6 +435,7 @@ private fun SearchSummaryContent(
     viewModel: OnlineSearchViewModel,
     listState: LazyListState,
     onItemClick: (YTItem) -> Unit,
+    topPadding: Dp,
 ) {
     val summaryPage = viewModel.summaryPage
 
@@ -398,7 +459,7 @@ private fun SearchSummaryContent(
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        contentPadding = PaddingValues(top = topPadding, bottom = 140.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         summaryPage.summaries.forEach { summary ->
@@ -424,6 +485,7 @@ private fun SearchFilteredContent(
     filterValue: String,
     listState: LazyListState,
     onItemClick: (YTItem) -> Unit,
+    topPadding: Dp,
 ) {
     val viewState = viewModel.viewStateMap[filterValue]
 
@@ -447,7 +509,7 @@ private fun SearchFilteredContent(
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
+        contentPadding = PaddingValues(top = topPadding, bottom = 140.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         items(viewState.items, key = { it.id }) { item ->

@@ -31,6 +31,8 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.LyricsBackgroundStyle
+import com.jagr.fridamusic.presentation.components.FridaAppLinks
+import com.jagr.fridamusic.presentation.components.FridaQrCodeGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -122,6 +124,44 @@ object ComposeToImage {
         canvas.drawText(data.periodLabel, 72f, 205f, labelPaint)
         canvas.drawText(data.listeningTime, 72f, 1110f, headlinePaint)
         canvas.drawText(data.totalPlays, 76f, 1180f, labelPaint)
+        runCatching {
+            FridaQrCodeGenerator.create(FridaAppLinks.shareCardCtaUrl)
+        }.getOrNull()?.let { qrBitmap ->
+            val qrTarget = RectF(832f, 1032f, 1000f, 1200f)
+            canvas.drawBitmap(
+                qrBitmap,
+                null,
+                qrTarget,
+                Paint().apply {
+                    isAntiAlias = false
+                    isFilterBitmap = false
+                    isDither = false
+                },
+            )
+
+            val logoBackground = RectF(894f, 1094f, 938f, 1138f)
+            canvas.drawRoundRect(
+                logoBackground,
+                8f,
+                8f,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() },
+            )
+            context.getDrawable(R.drawable.frida_music_logo_monochrome)
+                ?.toBitmap()
+                ?.let { logo ->
+                    canvas.drawBitmap(
+                        logo,
+                        null,
+                        RectF(900f, 1100f, 932f, 1132f),
+                        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            colorFilter = PorterDuffColorFilter(
+                                0xFF000000.toInt(),
+                                PorterDuff.Mode.SRC_IN,
+                            )
+                        },
+                    )
+                }
+        }
 
         var y = 1270f
         listOfNotNull(

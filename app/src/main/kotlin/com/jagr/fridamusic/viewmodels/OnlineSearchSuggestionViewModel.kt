@@ -109,6 +109,18 @@ constructor(
         }
     }
 
+    fun deleteSearch(searchHistory: SearchHistory) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.delete(searchHistory)
+        }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.clearSearchHistory()
+        }
+    }
+
     private suspend fun fetchParsedUrlItem(parsedUrl: YouTubeUrlParser.ParsedUrl): YTItem? {
         return try {
             when (parsedUrl) {

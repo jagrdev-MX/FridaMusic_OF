@@ -3,6 +3,9 @@ package com.jagr.fridamusic.presentation.screens
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,7 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.stringResource
@@ -39,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
@@ -158,6 +166,10 @@ fun HomeScreen(
     val pullToRefreshState = rememberPullToRefreshState()
     val pullRefreshHaptic = LocalHapticFeedback.current
     var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
+    val quickReturnState = rememberTopAppBarState()
+    var quickReturnHeaderHeightPx by remember { mutableIntStateOf(0) }
+    val quickReturnHeaderHeight = with(LocalDensity.current) { quickReturnHeaderHeightPx.toDp() }
+    val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
 
     DisposableEffect(interstitialAdManager) {
         interstitialAdManager.load()
@@ -167,11 +179,23 @@ fun HomeScreen(
     LaunchedEffect(reselectToken) {
         val shouldScroll = reselectToken != handledReselectToken
         handledReselectToken = reselectToken
-        if (
-            shouldScroll &&
-            (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)
-        ) {
-            listState.animateReselectScrollToTop(directAnimationItemLimit = 8)
+        if (shouldScroll) {
+            if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0) {
+                listState.animateReselectScrollToTop(directAnimationItemLimit = 8)
+            }
+            if (quickReturnState.heightOffset != 0f) {
+                animate(
+                    initialValue = quickReturnState.heightOffset,
+                    targetValue = 0f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                ) { value, _ ->
+                    quickReturnState.heightOffset = value.coerceIn(
+                        quickReturnState.heightOffsetLimit,
+                        0f,
+                    )
+                }
+                quickReturnState.contentOffset = 0f
+            }
         }
     }
 
@@ -188,7 +212,8 @@ fun HomeScreen(
     PullToRefreshBox(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .nestedScroll(quickReturnConnection),
         state = pullToRefreshState,
         isRefreshing = isRefreshing,
         onRefresh = {
@@ -203,41 +228,15 @@ fun HomeScreen(
             )
         },
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 140.dp),
-        ) {
-        item(key = "header") {
-            HomeHeader(
-                onHistoryClick = onHistoryClick,
-                onRecapClick = onRecapClick,
-                onNotificationsClick = onNotificationsClick,
-                unreadNotificationCount = unreadNotificationCount,
-                onSettingsClick = onSettingsClick,
-                onSupportClick = { showSupportDialog = true } // Abrimos el diálogo
-            )
-        }
-
-        item(key = "chips") {
-            MoodChipsRow(
-                chips = homePage?.chips,
-                selectedChip = selectedChip,
-                pinnedTitle = pinnedTitle,
-                pinnedSelected = pinnedSelected,
-                onPinnedClick = {
-                    val nextSelected = !pinnedSelected
-                    pinnedSelected = nextSelected
-                    if (nextSelected && selectedChip != null) {
-                        viewModel.toggleChip(null)
-                    }
-                },
-                onChipClick = {
-                    pinnedSelected = false
-                    viewModel.toggleChip(it)
-                },
-            )
-        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = quickReturnHeaderHeight,
+                    bottom = 140.dp,
+                ),
+            ) {
 
         if (pinnedSelected) {
             ytSection(
@@ -469,6 +468,50 @@ fun HomeScreen(
         if (!isLoading && !hasVisibleContent) {
             item(key = "empty") { HomeEmptyState() }
         }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .zIndex(1f)
+                    .graphicsLayer { translationY = quickReturnState.heightOffset }
+                    .background(MaterialTheme.colorScheme.background)
+                    .onSizeChanged { size ->
+                        if (size.height > 0 && quickReturnHeaderHeightPx != size.height) {
+                            quickReturnHeaderHeightPx = size.height
+                            val limit = -size.height.toFloat()
+                            quickReturnState.heightOffsetLimit = limit
+                            quickReturnState.heightOffset =
+                                quickReturnState.heightOffset.coerceIn(limit, 0f)
+                        }
+                    },
+            ) {
+                HomeHeader(
+                    onHistoryClick = onHistoryClick,
+                    onRecapClick = onRecapClick,
+                    onNotificationsClick = onNotificationsClick,
+                    unreadNotificationCount = unreadNotificationCount,
+                    onSettingsClick = onSettingsClick,
+                    onSupportClick = { showSupportDialog = true },
+                )
+                MoodChipsRow(
+                    chips = homePage?.chips,
+                    selectedChip = selectedChip,
+                    pinnedTitle = pinnedTitle,
+                    pinnedSelected = pinnedSelected,
+                    onPinnedClick = {
+                        val nextSelected = !pinnedSelected
+                        pinnedSelected = nextSelected
+                        if (nextSelected && selectedChip != null) {
+                            viewModel.toggleChip(null)
+                        }
+                    },
+                    onChipClick = {
+                        pinnedSelected = false
+                        viewModel.toggleChip(it)
+                    },
+                )
+            }
         }
     }
 

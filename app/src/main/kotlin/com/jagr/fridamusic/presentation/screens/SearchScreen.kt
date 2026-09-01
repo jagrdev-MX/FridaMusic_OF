@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
 import androidx.compose.material.icons.rounded.Search
@@ -25,11 +27,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.db.entities.SearchHistory
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.SearchInput
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
@@ -136,6 +140,8 @@ fun SearchScreen(
                 keyboardController?.hide()
                 onItemClick(item)
             },
+            onDeleteHistory = viewModel::deleteSearch,
+            onClearHistory = viewModel::clearSearchHistory,
             listState = listState,
         )
     }
@@ -148,24 +154,45 @@ internal fun SearchSuggestionContent(
     onSubmit: (String) -> Unit,
     onFill: (String) -> Unit,
     onItemClick: (YTItem) -> Unit,
+    onDeleteHistory: (SearchHistory) -> Unit,
+    onClearHistory: () -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
+    topPadding: Dp = 0.dp,
 ) {
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(bottom = 140.dp),
+        contentPadding = PaddingValues(top = topPadding, bottom = 140.dp),
         modifier = modifier.fillMaxSize(),
     ) {
         if (text.isBlank()) {
             if (viewState.history.isNotEmpty()) {
                 item {
-                    Text(
-                        text = stringResource(R.string.recent_searches),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.recent_searches),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = onClearHistory,
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Delete,
+                                contentDescription = stringResource(R.string.clear),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
                 }
                 items(viewState.history, key = { it.id }) { history ->
                     SuggestionRow(
@@ -173,6 +200,7 @@ internal fun SearchSuggestionContent(
                         text = history.query,
                         onClick = { onSubmit(history.query) },
                         onFillClick = { onFill(history.query) },
+                        onDeleteClick = { onDeleteHistory(history) },
                     )
                 }
             }
@@ -210,6 +238,7 @@ private fun SuggestionRow(
     text: String,
     onClick: () -> Unit,
     onFillClick: () -> Unit,
+    onDeleteClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -232,16 +261,33 @@ private fun SuggestionRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(
-            onClick = onFillClick,
-            modifier = Modifier.size(32.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.NorthWest,
-                contentDescription = stringResource(R.string.complete_search),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
+            if (onDeleteClick != null) {
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.delete),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            IconButton(
+                onClick = onFillClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.NorthWest,
+                    contentDescription = stringResource(R.string.complete_search),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
