@@ -193,7 +193,6 @@ fun LibraryScreen(
     onCachedSongClick: (Song, List<Song>) -> Unit,
     onLocalItemClick: (LocalItem) -> Unit,
     onStatsClick: () -> Unit,
-    onExternalPlaylistClick: () -> Unit,
     reselectToken: Int = 0,
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
 ) {
@@ -438,7 +437,6 @@ fun LibraryScreen(
                     )
                     LibraryFilter.PLAYLISTS -> PlaylistsTab(
                         onLocalItemClick = onLocalItemClick,
-                        onExternalPlaylistClick = onExternalPlaylistClick,
                         selectedPlaylistIds = selectedPlaylistIds,
                         onSelectedPlaylistIdsChange = { selectedPlaylistIds = it },
                         viewModel = playlistsViewModel,
@@ -1006,7 +1004,6 @@ private fun ArtistMoreCard(onClick: () -> Unit) {
 @Composable
 private fun PlaylistsTab(
     onLocalItemClick: (LocalItem) -> Unit,
-    onExternalPlaylistClick: () -> Unit,
     selectedPlaylistIds: Set<String>,
     onSelectedPlaylistIdsChange: (Set<String>) -> Unit,
     reselectToken: Int,
@@ -1300,14 +1297,6 @@ private fun PlaylistsTab(
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        PlaylistCreateAction(
-                            label = stringResource(R.string.playlist_external),
-                            icon = Icons.Rounded.Public,
-                            onClick = {
-                                createMenuExpanded = false
-                                onExternalPlaylistClick()
-                            },
-                        )
                         PlaylistCreateAction(
                             label = stringResource(R.string.playlist_import),
                             icon = Icons.AutoMirrored.Rounded.Input,

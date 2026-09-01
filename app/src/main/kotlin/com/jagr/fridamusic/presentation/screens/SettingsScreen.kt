@@ -129,7 +129,6 @@ private sealed class SettingsPage {
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit = {},
-    onNavigateToSpotifyImport: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
 ) {
@@ -156,7 +155,6 @@ fun SettingsScreen(
             page = currentPage,
             onBack = { currentPage = SettingsPage.None },
             onNavigateToLogin = onNavigateToLogin,
-            onNavigateToSpotifyImport = onNavigateToSpotifyImport,
             onNavigateToAbout = onNavigateToAbout,
         )
         return
@@ -368,7 +366,6 @@ private fun SettingsDetailPage(
     page: SettingsPage,
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToSpotifyImport: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
 ) {
     Column(
@@ -396,7 +393,7 @@ private fun SettingsDetailPage(
                 SettingsPage.Appearance -> appearanceItems()
                 SettingsPage.Lyrics     -> lyricsItems()
                 SettingsPage.Content    -> contentItems()
-                SettingsPage.Services   -> servicesItems(onNavigateToSpotifyImport)
+                SettingsPage.Services   -> servicesItems()
                 SettingsPage.Privacy    -> privacyItems()
                 SettingsPage.Network    -> networkItems()
                 SettingsPage.About      -> {}
@@ -711,9 +708,7 @@ private fun CacheSection() {
     }
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
-    onNavigateToSpotifyImport: () -> Unit = {},
-) {
+private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
     item {
         SettingGroup(stringResource(R.string.notifications)) {
             PrefSwitch(
@@ -753,31 +748,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems(
     }
     item {
         SettingGroup(stringResource(R.string.group_listenbrainz)) { ListenBrainzSection() }
-    }
-    item {
-        SettingGroup(stringResource(R.string.spotify_import_title)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToSpotifyImport)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Icon(imageVector = Icons.Rounded.LibraryMusic, contentDescription = null,
-                    tint = Color(0xFF1DB954), modifier = Modifier.size(22.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(R.string.spotify_import_title),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground)
-                    Text(text = stringResource(R.string.spotify_import_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Icon(imageVector = Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null,
-                    modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = 180f },
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-            }
-        }
     }
     item {
         SettingGroup(stringResource(R.string.group_echobrain)) {

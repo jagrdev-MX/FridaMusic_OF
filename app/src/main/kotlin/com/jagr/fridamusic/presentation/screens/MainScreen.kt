@@ -334,7 +334,6 @@ fun MainScreen(
                     onCachedSongClick = { song, queue -> playerConnection?.playCachedSong(song, queue) },
                     onLocalItemClick = { item -> navController.navigateToDetail(item) },
                     onStatsClick = { navController.navigate("stats") },
-                    onExternalPlaylistClick = { navController.navigate("spotify_import") },
                     reselectToken = libraryReselectToken,
                 )
             }
@@ -350,7 +349,6 @@ fun MainScreen(
                 SettingsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToLogin = { navController.navigate("login") },
-                    onNavigateToSpotifyImport = { navController.navigate("spotify_import") },
                     onNavigateToStats = { navController.navigate("stats") },
                     onNavigateToAbout = { navController.navigate("about") },
                 )

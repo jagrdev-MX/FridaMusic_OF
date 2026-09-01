@@ -10,12 +10,13 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ fun MiniPlayer(
             imageUrl = song.thumbnailUrl?.resize(width = 96),
             contentDescription = song.title,
             progress = progress,
+            isPlaying = isPlaying,
             isBuffering = playbackState == Player.STATE_BUFFERING,
             modifier = Modifier.size(56.dp)
         )
@@ -150,6 +152,7 @@ fun CircularArtwork(
     imageUrl: String?,
     contentDescription: String?,
     progress: Float,
+    isPlaying: Boolean,
     isBuffering: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -163,8 +166,15 @@ fun CircularArtwork(
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
-        } else {
+        } else if (isPlaying) {
             CircularWavyProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.matchParentSize(),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+        } else {
+            CircularProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.matchParentSize(),
                 color = MaterialTheme.colorScheme.primary,
