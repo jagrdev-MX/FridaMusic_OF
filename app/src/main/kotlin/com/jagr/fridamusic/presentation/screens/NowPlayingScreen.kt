@@ -522,12 +522,30 @@ fun NowPlayingScreen(
                                 .padding(top = 40.dp)
                                 .graphicsLayer { scaleY = 0.84f },
                         )
-                        Row(Modifier.fillMaxWidth().offset(y = (-6).dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(formatMs(if (isDragging) (dragPosition * durationMs).toLong() else positionMs), color = Color.White, style = MaterialTheme.typography.bodyLarge)
-                            Surface(color = Color.White.copy(alpha = 0.12f), shape = RoundedCornerShape(7.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().offset(y = (-6).dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                formatMs(if (isDragging) (dragPosition * durationMs).toLong() else positionMs),
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.align(Alignment.CenterStart),
+                            )
+                            Surface(
+                                modifier = Modifier.align(Alignment.Center),
+                                color = Color.White.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(7.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                            ) {
                                 Text(audioQualityLabel, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
                             }
-                            Text(formatMs(durationMs), color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                formatMs(durationMs),
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.align(Alignment.CenterEnd),
+                            )
                         }
                         Spacer(Modifier.weight(1f).heightIn(min = 16.dp))
                         Row(
