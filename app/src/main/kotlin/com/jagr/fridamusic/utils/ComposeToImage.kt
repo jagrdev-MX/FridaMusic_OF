@@ -125,7 +125,7 @@ object ComposeToImage {
         canvas.drawText(data.listeningTime, 72f, 1110f, headlinePaint)
         canvas.drawText(data.totalPlays, 76f, 1180f, labelPaint)
         runCatching {
-            FridaQrCodeGenerator.create(FridaAppLinks.shareCardCtaUrl)
+            FridaQrCodeGenerator.create(FridaAppLinks.appCtaUrl)
         }.getOrNull()?.let { qrBitmap ->
             val qrTarget = RectF(832f, 1032f, 1000f, 1200f)
             canvas.drawBitmap(

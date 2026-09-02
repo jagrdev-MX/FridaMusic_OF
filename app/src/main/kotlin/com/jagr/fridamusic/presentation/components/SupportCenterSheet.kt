@@ -1,25 +1,25 @@
 package com.jagr.fridamusic.presentation.components
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -28,12 +28,13 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Coffee
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.LocalDining
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.StarRate
@@ -62,10 +63,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,7 +83,6 @@ import com.jagr.fridamusic.support.openSupportPayPal
 
 @OptIn(
     ExperimentalMaterial3Api::class,
-    ExperimentalLayoutApi::class,
 )
 @Composable
 fun SupportCenterSheet(
@@ -123,12 +122,25 @@ fun SupportCenterSheet(
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.94f)
                 .navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
                 SupportHeader(onDismiss = onDismiss)
+            }
+
+            if (capabilities.googlePlayRating) {
+                item {
+                    SupportActionCard(
+                        icon = Icons.Rounded.StarRate,
+                        title = stringResource(R.string.support_rate_title),
+                        description = stringResource(R.string.support_rate_description),
+                        trailing = Icons.AutoMirrored.Rounded.OpenInNew,
+                        onClick = {
+                            linkMessage = supportLinkMessage(openFridaMusicPlayStore(context))
+                        },
+                    )
+                }
             }
 
             supportStatusContent(
@@ -136,23 +148,15 @@ fun SupportCenterSheet(
                 debugPreview = debugPreview,
                 linkMessage = linkMessage,
                 showBillingStatus = capabilities.googlePlayBilling,
+                onRetry = billing::refresh,
             )
 
             if (capabilities.googlePlayBilling) {
-                item {
-                    SupportSectionHeader(
-                        title = stringResource(R.string.support_google_play_section),
-                        description = stringResource(R.string.support_google_play_section_description),
-                    )
-                }
-
-                if (billingState is SupportBillingState.BillingLoading && visibleProducts.isEmpty()) {
-                    item { BillingLoadingCard() }
-                } else if (visibleProducts.isEmpty()) {
+                if (visibleProducts.isEmpty() && billingState is SupportBillingState.BillingReady) {
                     item {
                         EmptyProductsCard(onRetry = billing::refresh)
                     }
-                } else {
+                } else if (visibleProducts.isNotEmpty()) {
                     val featured = visibleProducts.firstOrNull { it.id == FEATURED_PRODUCT_ID }
                     featured?.let { product ->
                         item(key = "featured_${product.id}") {
@@ -186,39 +190,14 @@ fun SupportCenterSheet(
 
             if (capabilities.paypal) {
                 item {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp))
-                }
-
-                item {
                     SupportActionCard(
                         icon = Icons.Rounded.Payments,
                         title = stringResource(R.string.support_paypal_title),
                         description = stringResource(R.string.support_paypal_description),
                         trailing = Icons.AutoMirrored.Rounded.OpenInNew,
+                        prominent = !capabilities.googlePlayBilling,
                         onClick = {
                             linkMessage = supportLinkMessage(openSupportPayPal(context))
-                        },
-                    )
-                }
-            }
-
-            item {
-                SupportSectionHeader(
-                    title = stringResource(R.string.support_other_ways),
-                    description = null,
-                )
-            }
-
-            if (capabilities.googlePlayRating) {
-                item {
-                    SupportActionCard(
-                        icon = Icons.Rounded.StarRate,
-                        title = stringResource(R.string.support_rate_title),
-                        description = stringResource(R.string.support_rate_description),
-                        label = stringResource(R.string.support_free),
-                        trailing = Icons.AutoMirrored.Rounded.OpenInNew,
-                        onClick = {
-                            linkMessage = supportLinkMessage(openFridaMusicPlayStore(context))
                         },
                     )
                 }
@@ -242,10 +221,6 @@ fun SupportCenterSheet(
                 }
             }
 
-            item {
-                LegalSupportText(capabilities)
-            }
-
             item { Spacer(modifier = Modifier.height(8.dp)) }
         }
     }
@@ -253,61 +228,50 @@ fun SupportCenterSheet(
 
 @Composable
 private fun SupportHeader(onDismiss: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 20.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.primaryContainer,
-                        MaterialTheme.colorScheme.tertiaryContainer,
-                    ),
-                ),
-            )
-            .padding(24.dp),
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
-                Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Rounded.Favorite,
                         contentDescription = null,
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
             Text(
                 text = stringResource(R.string.support_center_title),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
             )
-            Text(
-                text = stringResource(R.string.support_center_message),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                text = stringResource(R.string.support_center_optional_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
-            )
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.support_center_close),
+                )
+            }
         }
-        IconButton(
-            onClick = onDismiss,
-            modifier = Modifier.align(Alignment.TopEnd),
-        ) {
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = stringResource(R.string.support_center_close),
-            )
-        }
+        Text(
+            text = stringResource(R.string.support_center_message),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = stringResource(R.string.support_center_optional_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -316,6 +280,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.supportStatusContent(
     debugPreview: Boolean,
     linkMessage: Int?,
     showBillingStatus: Boolean,
+    onRetry: () -> Unit,
 ) {
     val status = if (showBillingStatus) when (billingState) {
         SupportBillingState.BillingLoading -> R.string.support_billing_loading
@@ -336,6 +301,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.supportStatusContent(
                 message = message,
                 loading = billingState is SupportBillingState.BillingLoading ||
                     billingState is SupportBillingState.PurchaseStarted,
+                onRetry = onRetry.takeIf {
+                    billingState is SupportBillingState.BillingUnavailable ||
+                        (billingState is SupportBillingState.PurchaseError &&
+                            billingState.issue != SupportBillingIssue.PURCHASE_CANCELLED)
+                },
             )
         }
     }
@@ -347,60 +317,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.supportStatusContent(
 }
 
 @Composable
-private fun SupportSectionHeader(title: String, description: String?) {
-    Column(
-        modifier = Modifier.padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        description?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun BillingLoadingCard() {
-    Card(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
-            Text(stringResource(R.string.support_billing_loading))
-        }
-    }
-}
-
-@Composable
 private fun EmptyProductsCard(onRetry: () -> Unit) {
-    Card(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                stringResource(R.string.support_google_play_no_products),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TextButton(onClick = onRetry) {
-                Icon(Icons.Rounded.Refresh, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.support_retry))
-            }
-        }
-    }
+    SupportMessageCard(message = R.string.support_google_play_no_products, onRetry = onRetry)
 }
 
 @Composable
@@ -413,50 +331,42 @@ private fun FeaturedSupportCard(
     Card(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(22.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SupportIconSurface(icon = supportProductIcon(product.id), featured = true)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ) {
-                    Text(
-                        stringResource(R.string.support_recommended),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    )
-                }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(R.string.support_recommended),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
                 Text(
                     stringResource(supportProductTitle(product.id)),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (loading) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
-                } else {
-                    Text(
-                        product.formattedPrice,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            }
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Text(
+                    product.formattedPrice,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.widthIn(max = 128.dp),
+                )
             }
         }
     }
@@ -470,14 +380,14 @@ private fun SupportProductsGrid(
     onProductClick: (SupportProduct) -> Unit,
 ) {
     BoxWithConstraints(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
     ) {
-        val columnCount = if (maxWidth >= 360.dp) 2 else 1
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val columnCount = if (maxWidth >= 280.dp * LocalDensity.current.fontScale) 2 else 1
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             products.chunked(columnCount).forEach { rowProducts ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     rowProducts.forEach { product ->
                         SupportProductCard(
@@ -485,11 +395,8 @@ private fun SupportProductsGrid(
                             enabled = enabled,
                             loading = activeProductId == product.id,
                             onClick = { onProductClick(product) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
-                    }
-                    repeat(columnCount - rowProducts.size) {
-                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -508,29 +415,27 @@ private fun SupportProductCard(
     Card(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(164.dp),
-        shape = RoundedCornerShape(24.dp),
+        modifier = modifier.heightIn(min = 104.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(18.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             SupportIconSurface(icon = supportProductIcon(product.id), featured = false)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     stringResource(supportProductTitle(product.id)),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 if (loading) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
                     Text(
                         product.formattedPrice,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                     )
@@ -543,7 +448,7 @@ private fun SupportProductCard(
 @Composable
 private fun SupportIconSurface(icon: ImageVector, featured: Boolean) {
     Surface(
-        shape = RoundedCornerShape(if (featured) 20.dp else 16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (featured) {
             MaterialTheme.colorScheme.primary
         } else {
@@ -556,10 +461,10 @@ private fun SupportIconSurface(icon: ImageVector, featured: Boolean) {
         },
     ) {
         Box(
-            modifier = Modifier.size(if (featured) 64.dp else 48.dp),
+            modifier = Modifier.size(if (featured) 40.dp else 32.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(if (featured) 30.dp else 24.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -570,124 +475,123 @@ private fun SupportActionCard(
     title: String,
     description: String,
     onClick: () -> Unit,
-    label: String? = null,
     trailing: ImageVector? = null,
+    prominent: Boolean = false,
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (prominent) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = if (prominent) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SupportIconSurface(icon = icon, featured = false)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    label?.let {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.tertiaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        ) {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            )
-                        }
-                    }
-                }
+            SupportIconSurface(icon = icon, featured = prominent)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
                     description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (prominent) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            trailing?.let { Icon(it, contentDescription = null) }
+            trailing?.let { Icon(it, contentDescription = null, modifier = Modifier.size(18.dp)) }
         }
     }
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DebugToolsCard(
     controller: SupportBillingDebugController,
     onLinkResult: (Int) -> Unit,
 ) {
     val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
     Card(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.BugReport, contentDescription = null)
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Rounded.BugReport, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(R.string.support_debug_tools),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = null,
                 )
             }
-            Text(
-                stringResource(R.string.support_debug_warning),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = controller::useMockProducts) {
-                    Text(stringResource(R.string.support_debug_use_mocks))
+            if (expanded) {
+                Text(
+                    stringResource(R.string.support_debug_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = controller::useMockProducts) {
+                        Text(stringResource(R.string.support_debug_use_mocks))
+                    }
+                    OutlinedButton(onClick = controller::useRealProducts) {
+                        Text(stringResource(R.string.support_debug_use_real))
+                    }
                 }
-                OutlinedButton(onClick = controller::useRealProducts) {
-                    Text(stringResource(R.string.support_debug_use_real))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DebugScenarioButton(R.string.support_debug_success) {
+                        controller.simulate(SupportDebugScenario.SUCCESS)
+                    }
+                    DebugScenarioButton(R.string.support_debug_pending) {
+                        controller.simulate(SupportDebugScenario.PENDING)
+                    }
+                    DebugScenarioButton(R.string.support_debug_cancelled) {
+                        controller.simulate(SupportDebugScenario.CANCELLED)
+                    }
+                    DebugScenarioButton(R.string.support_debug_error) {
+                        controller.simulate(SupportDebugScenario.ERROR)
+                    }
+                    DebugScenarioButton(R.string.support_debug_unavailable) {
+                        controller.simulate(SupportDebugScenario.BILLING_UNAVAILABLE)
+                    }
+                    DebugScenarioButton(R.string.support_debug_empty) {
+                        controller.simulate(SupportDebugScenario.EMPTY_PRODUCTS)
+                    }
                 }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DebugScenarioButton(R.string.support_debug_success) {
-                    controller.simulate(SupportDebugScenario.SUCCESS)
-                }
-                DebugScenarioButton(R.string.support_debug_pending) {
-                    controller.simulate(SupportDebugScenario.PENDING)
-                }
-                DebugScenarioButton(R.string.support_debug_cancelled) {
-                    controller.simulate(SupportDebugScenario.CANCELLED)
-                }
-                DebugScenarioButton(R.string.support_debug_error) {
-                    controller.simulate(SupportDebugScenario.ERROR)
-                }
-                DebugScenarioButton(R.string.support_debug_unavailable) {
-                    controller.simulate(SupportDebugScenario.BILLING_UNAVAILABLE)
-                }
-                DebugScenarioButton(R.string.support_debug_empty) {
-                    controller.simulate(SupportDebugScenario.EMPTY_PRODUCTS)
-                }
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.25f))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DebugScenarioButton(R.string.support_debug_open_paypal) {
-                    onLinkResult(supportLinkMessage(openSupportPayPal(context)))
-                }
-                DebugScenarioButton(R.string.support_debug_paypal_opened) {
-                    onLinkResult(R.string.support_paypal_opened)
-                }
-                DebugScenarioButton(R.string.support_debug_paypal_unavailable) {
-                    onLinkResult(R.string.support_no_compatible_app)
-                }
-                DebugScenarioButton(R.string.support_debug_test_play_store) {
-                    onLinkResult(supportLinkMessage(openFridaMusicPlayStore(context)))
-                }
-                DebugScenarioButton(R.string.support_debug_test_browser) {
-                    onLinkResult(supportLinkMessage(openFridaMusicPlayStore(context, forceBrowser = true)))
-                }
-                DebugScenarioButton(R.string.support_debug_play_unavailable) {
-                    onLinkResult(R.string.support_no_compatible_app)
+                HorizontalDivider()
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DebugScenarioButton(R.string.support_debug_open_paypal) {
+                        onLinkResult(supportLinkMessage(openSupportPayPal(context)))
+                    }
+                    DebugScenarioButton(R.string.support_debug_paypal_opened) {
+                        onLinkResult(R.string.support_paypal_opened)
+                    }
+                    DebugScenarioButton(R.string.support_debug_paypal_unavailable) {
+                        onLinkResult(R.string.support_no_compatible_app)
+                    }
+                    DebugScenarioButton(R.string.support_debug_test_play_store) {
+                        onLinkResult(supportLinkMessage(openFridaMusicPlayStore(context)))
+                    }
+                    DebugScenarioButton(R.string.support_debug_test_browser) {
+                        onLinkResult(supportLinkMessage(openFridaMusicPlayStore(context, forceBrowser = true)))
+                    }
+                    DebugScenarioButton(R.string.support_debug_play_unavailable) {
+                        onLinkResult(R.string.support_no_compatible_app)
+                    }
                 }
             }
         }
@@ -702,53 +606,37 @@ private fun DebugScenarioButton(@StringRes label: Int, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SupportMessageCard(@StringRes message: Int, loading: Boolean = false) {
+private fun SupportMessageCard(
+    @StringRes message: Int,
+    loading: Boolean = false,
+    onRetry: (() -> Unit)? = null,
+) {
     Surface(
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).heightIn(min = 40.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 3.dp)
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             }
             Text(
                 stringResource(message),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f),
             )
+            onRetry?.let { retry ->
+                TextButton(onClick = retry) {
+                    Text(stringResource(R.string.support_retry))
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun LegalSupportText(capabilities: com.jagr.fridamusic.support.SupportCapabilities) {
-    Column(
-        modifier = Modifier.padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            stringResource(R.string.support_legal_no_benefits),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val processorsText = when {
-            capabilities.googlePlayBilling && capabilities.paypal ->
-                R.string.support_legal_processors
-            capabilities.googlePlayBilling -> R.string.support_legal_processor_google_play
-            else -> R.string.support_legal_processor_paypal
-        }
-        Text(
-            stringResource(processorsText),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

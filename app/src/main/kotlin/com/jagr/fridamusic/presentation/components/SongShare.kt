@@ -130,7 +130,7 @@ data class FridaShareSnapshot(
     val song: SongActionContext,
     val positionMs: Long,
     val durationMs: Long,
-    val shareUrl: String,
+    val appCtaUrl: String,
 )
 
 @Composable
@@ -211,7 +211,7 @@ fun FridaShareCardDialog(
                 playbackPositionMs.coerceAtLeast(0L)
             },
             durationMs = durationMs,
-            shareUrl = FridaAppLinks.shareCardUrl(context.mediaId),
+            appCtaUrl = FridaAppLinks.appCtaUrl,
         )
     }
     FridaShareCardDialogContent(snapshot = snapshot, onDismiss = onDismiss)
@@ -226,6 +226,13 @@ private fun FridaShareCardDialogContent(
     val scope = rememberCoroutineScope()
     val colorScheme = MaterialTheme.colorScheme
     val links = remember(snapshot.song) { SongShareLinkResolver.resolveSongLinks(snapshot.song) }
+    val songShareUrl = remember(links) {
+        links.firstOrNull { link ->
+            val uri = Uri.parse(link.url)
+            (uri.scheme.equals("https", ignoreCase = true) || uri.scheme.equals("http", ignoreCase = true)) &&
+                !uri.host.isNullOrBlank()
+        }?.url ?: FridaAppLinks.DEEP_LINK_HOME
+    }
     var selectedTheme by remember(snapshot.song.mediaId) { mutableStateOf(FridaShareCardTheme.ARTWORK) }
     var artworkBitmap by remember(snapshot.song.artworkUrl) { mutableStateOf<Bitmap?>(null) }
     val artworkImage = remember(artworkBitmap) { artworkBitmap?.asImageBitmap() }
@@ -412,12 +419,12 @@ private fun FridaShareCardDialogContent(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     FridaQrCode(
-                        url = snapshot.shareUrl,
+                        url = songShareUrl,
                         size = 232.dp,
                         logoSize = 42.dp,
                     )
                     Text(
-                        text = snapshot.shareUrl,
+                        text = songShareUrl,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -425,10 +432,10 @@ private fun FridaShareCardDialogContent(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { copyShareLink(androidContext, snapshot.shareUrl) }) {
+                TextButton(onClick = { copyShareLink(androidContext, songShareUrl) }) {
                     Text(stringResource(R.string.copy_link))
                 }
-                TextButton(onClick = { shareText(androidContext, snapshot.shareUrl) }) {
+                TextButton(onClick = { shareText(androidContext, songShareUrl) }) {
                     Text(stringResource(R.string.share))
                 }
             },
@@ -604,7 +611,7 @@ fun FridaNowPlayingShareCard(
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FridaQrCode(
-                        url = snapshot.shareUrl,
+                        url = snapshot.appCtaUrl,
                         size = 88.dp * scale,
                         logoSize = 22.dp * scale,
                     )
@@ -863,7 +870,7 @@ private fun shareToInstagramStoryOrFallback(
 ) {
     val storyIntent = Intent("com.instagram.share.ADD_TO_STORY").apply {
         setDataAndType(imageUri, "image/png")
-        putExtra("content_url", link?.url ?: FridaAppLinks.shareCardUrl(song.mediaId))
+        putExtra("content_url", link?.url ?: FridaAppLinks.appCtaUrl)
         clipData = ClipData.newUri(context.contentResolver, null, imageUri)
         `package` = INSTAGRAM_PACKAGE
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -908,7 +915,7 @@ private fun shareCaption(song: SongActionContext, link: String?): String = build
     }
     append("\nen FridaMusic")
     append("\n")
-    append(link ?: FridaAppLinks.shareCardUrl(song.mediaId))
+    append(link ?: FridaAppLinks.appCtaUrl)
 }
 
 private fun formatDuration(milliseconds: Long): String {
