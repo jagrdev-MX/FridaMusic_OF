@@ -257,3 +257,7 @@ app/libs/**/*.zip
 
 # Native build directories created outside Gradle build/
 cmake-build-*/
+
+# Generated universal GMS GitHub artifacts
+/app/universalGms/github/baselineProfiles/
+/app/universalGms/github/output-metadata.json
