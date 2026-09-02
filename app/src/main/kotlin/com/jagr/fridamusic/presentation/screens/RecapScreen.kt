@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,8 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
@@ -186,11 +189,12 @@ fun RecapScreen(
             val pages = remember(state) { state.pages() }
             val pagerState = rememberPagerState(pageCount = { pages.size })
             val haptics = LocalHapticFeedback.current
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
             ) {
+                val navigationWidth = if (maxWidth < 400.dp) 40.dp else 64.dp
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { pageIndex ->
                     RecapStoryPage(
                         page = pages[pageIndex],
@@ -231,7 +235,7 @@ fun RecapScreen(
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .width(64.dp)
+                        .width(navigationWidth)
                         .fillMaxHeight()
                         .clickable(enabled = pagerState.currentPage > 0) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -241,7 +245,7 @@ fun RecapScreen(
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .width(64.dp)
+                        .width(navigationWidth)
                         .fillMaxHeight()
                         .clickable(enabled = pagerState.currentPage < pages.lastIndex) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -266,71 +270,96 @@ private fun RecapStoryPage(
         2 -> listOf(Color(0xFF7C2D12), Color(0xFF581C87))
         else -> listOf(Color(0xFF111827), Color(0xFF4C1D95))
     }
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.linearGradient(colors))
-            .padding(horizontal = 34.dp, vertical = 36.dp),
-        contentAlignment = Alignment.Center,
     ) {
-        when (page) {
-            RecapPage.INTRO -> RecapHeadline(
-                eyebrow = stringResource(R.string.fridamusic_recap).uppercase(),
-                headline = state.range.introText(),
-                supporting = state.range.label,
-                icon = Icons.Rounded.AutoAwesome,
-            )
-            RecapPage.TIME -> {
-                val minutes by animateIntAsState(
-                    targetValue = (state.totalPlayTimeMs / 60_000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-                    label = "recap_minutes",
-                )
-                RecapHeadline(
-                    eyebrow = stringResource(R.string.recap_time_title),
-                    headline = minutes.toString(),
-                    supporting = stringResource(R.string.recap_minutes_listened),
-                    icon = Icons.Rounded.Headphones,
-                )
-            }
-            RecapPage.ACTIVITY -> RecapActivity(state)
-            RecapPage.TOP_SONGS -> RecapRanking(
-                title = stringResource(R.string.recap_top_songs),
-                rows = state.topSongs.map { Triple(it.title, it.artistName.orEmpty(), it.thumbnailUrl) },
-            )
-            RecapPage.SONG_SPOTLIGHT -> state.topSongs.firstOrNull()?.let { song ->
-                RecapSpotlight(
-                    label = stringResource(R.string.recap_top_song),
-                    title = song.title,
-                    subtitle = stringResource(R.string.stat_plays, song.songCountListened),
-                    artworkUrl = song.thumbnailUrl,
-                    onClick = { onSongClick(song) },
-                )
-            }
-            RecapPage.ARTIST_SPOTLIGHT -> state.topArtists.firstOrNull()?.let { artist ->
-                RecapSpotlight(
-                    label = stringResource(R.string.recap_top_artist),
-                    title = artist.title,
-                    subtitle = stringResource(R.string.recap_artist_spotlight_subtitle),
-                    artworkUrl = artist.thumbnailUrl,
-                )
-            }
-            RecapPage.TOP_ARTISTS -> RecapRanking(
-                title = stringResource(R.string.recap_top_artists),
-                rows = state.topArtists.map { Triple(it.title, "", it.thumbnailUrl) },
-            )
-            RecapPage.TOP_ALBUMS -> RecapRanking(
-                title = stringResource(R.string.recap_top_albums),
-                rows = state.topAlbums.map { Triple(it.title, it.artists.joinToString(", ") { artist -> artist.name }, it.thumbnailUrl) },
-            )
-            RecapPage.PERSONALITY -> state.personality?.let { personality ->
-                RecapHeadline(
-                    eyebrow = stringResource(R.string.recap_personality),
-                    headline = personality.name,
-                    supporting = personality.description,
+        val compact = maxHeight < 560.dp || maxWidth < 360.dp
+        val horizontalPadding = when {
+            maxWidth < 360.dp -> 20.dp
+            maxWidth < 480.dp -> 24.dp
+            else -> 34.dp
+        }
+        val artworkSize = minOf(
+            if (compact) 168.dp else 260.dp,
+            maxWidth - horizontalPadding * 2,
+        )
+        // Keeps the pager indicator in its own top band rather than overlaying story content.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = horizontalPadding, end = horizontalPadding, top = 32.dp, bottom = if (compact) 16.dp else 28.dp),
+        ) {
+            when (page) {
+                RecapPage.INTRO -> RecapHeadline(
+                    eyebrow = stringResource(R.string.fridamusic_recap).uppercase(),
+                    headline = state.range.introText(),
+                    supporting = state.range.label,
                     icon = Icons.Rounded.AutoAwesome,
+                    compact = compact,
                 )
+                RecapPage.TIME -> {
+                    val minutes by animateIntAsState(
+                        targetValue = (state.totalPlayTimeMs / 60_000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                        label = "recap_minutes",
+                    )
+                    RecapHeadline(
+                        eyebrow = stringResource(R.string.recap_time_title),
+                        headline = minutes.toString(),
+                        supporting = stringResource(R.string.recap_minutes_listened),
+                        icon = Icons.Rounded.Headphones,
+                        compact = compact,
+                    )
+                }
+                RecapPage.ACTIVITY -> RecapActivity(state, compact)
+                RecapPage.TOP_SONGS -> RecapRanking(
+                    title = stringResource(R.string.recap_top_songs),
+                    rows = state.topSongs.map { Triple(it.title, it.artistName.orEmpty(), it.thumbnailUrl) },
+                    compact = compact,
+                )
+                RecapPage.SONG_SPOTLIGHT -> state.topSongs.firstOrNull()?.let { song ->
+                    RecapSpotlight(
+                        label = stringResource(R.string.recap_top_song),
+                        title = song.title,
+                        subtitle = stringResource(R.string.stat_plays, song.songCountListened),
+                        artworkUrl = song.thumbnailUrl,
+                        artworkSize = artworkSize,
+                        compact = compact,
+                        onClick = { onSongClick(song) },
+                    )
+                }
+                RecapPage.ARTIST_SPOTLIGHT -> state.topArtists.firstOrNull()?.let { artist ->
+                    RecapSpotlight(
+                        label = stringResource(R.string.recap_top_artist),
+                        title = artist.title,
+                        subtitle = stringResource(R.string.recap_artist_spotlight_subtitle),
+                        artworkUrl = artist.thumbnailUrl,
+                        artworkSize = artworkSize,
+                        compact = compact,
+                    )
+                }
+                RecapPage.TOP_ARTISTS -> RecapRanking(
+                    title = stringResource(R.string.recap_top_artists),
+                    rows = state.topArtists.map { Triple(it.title, "", it.thumbnailUrl) },
+                    compact = compact,
+                )
+                RecapPage.TOP_ALBUMS -> RecapRanking(
+                    title = stringResource(R.string.recap_top_albums),
+                    rows = state.topAlbums.map { Triple(it.title, it.artists.joinToString(", ") { artist -> artist.name }, it.thumbnailUrl) },
+                    compact = compact,
+                )
+                RecapPage.PERSONALITY -> state.personality?.let { personality ->
+                    RecapHeadline(
+                        eyebrow = stringResource(R.string.recap_personality),
+                        headline = personality.name,
+                        supporting = personality.description,
+                        icon = Icons.Rounded.AutoAwesome,
+                        compact = compact,
+                    )
+                }
+                RecapPage.SUMMARY -> RecapSummary(state, onShare, compact)
             }
-            RecapPage.SUMMARY -> RecapSummary(state, onShare)
         }
     }
 }
@@ -341,75 +370,130 @@ private fun RecapHeadline(
     headline: String,
     supporting: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    compact: Boolean,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(58.dp))
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(if (compact) 48.dp else 58.dp))
+        Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
         Text(eyebrow, color = Color.White.copy(alpha = 0.78f), fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
         Text(
             headline,
             color = Color.White,
-            fontSize = 52.sp,
-            lineHeight = 56.sp,
+            fontSize = if (compact) 40.sp else 52.sp,
+            lineHeight = if (compact) 44.sp else 56.sp,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
         Text(
             supporting,
             color = Color.White.copy(alpha = 0.84f),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-private fun RecapActivity(state: RecapUiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(stringResource(R.string.recap_activity), color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Black)
-        RecapMetric(stringResource(R.string.recap_total_plays), state.totalPlays.toString(), Icons.Rounded.MusicNote)
-        RecapMetric(stringResource(R.string.unique_songs), state.uniqueSongs.toString(), Icons.Rounded.Headphones)
-        RecapMetric(stringResource(R.string.unique_artists), state.uniqueArtists.toString(), Icons.Rounded.Person)
-        RecapMetric(stringResource(R.string.unique_albums), state.uniqueAlbums.toString(), Icons.Rounded.Album)
+private fun RecapActivity(state: RecapUiState, compact: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            stringResource(R.string.recap_activity),
+            color = Color.White,
+            fontSize = if (compact) 34.sp else 40.sp,
+            fontWeight = FontWeight.Black,
+        )
+        Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+        RecapMetric(stringResource(R.string.recap_total_plays), state.totalPlays.toString(), Icons.Rounded.MusicNote, compact)
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+        RecapMetric(stringResource(R.string.unique_songs), state.uniqueSongs.toString(), Icons.Rounded.Headphones, compact)
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+        RecapMetric(stringResource(R.string.unique_artists), state.uniqueArtists.toString(), Icons.Rounded.Person, compact)
+        Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+        RecapMetric(stringResource(R.string.unique_albums), state.uniqueAlbums.toString(), Icons.Rounded.Album, compact)
     }
 }
 
 @Composable
-private fun RecapMetric(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun RecapMetric(
+    label: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    compact: Boolean,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(if (compact) 18.dp else 22.dp))
             .background(Color.White.copy(alpha = 0.12f))
-            .padding(18.dp),
+            .padding(if (compact) 12.dp else 18.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 14.dp),
     ) {
         Icon(icon, contentDescription = null, tint = Color.White)
-        Text(label, modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.82f))
-        Text(value, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            color = Color.White.copy(alpha = 0.82f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            value,
+            modifier = Modifier.weight(1f, fill = false),
+            color = Color.White,
+            fontSize = if (compact) 20.sp else 24.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 @Composable
-private fun RecapRanking(title: String, rows: List<Triple<String, String, String?>>) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text(title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+private fun RecapRanking(title: String, rows: List<Triple<String, String, String?>>, compact: Boolean) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            title,
+            color = Color.White,
+            fontSize = if (compact) 32.sp else 38.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(if (compact) 10.dp else 14.dp))
         rows.take(5).forEachIndexed { index, (name, subtitle, artwork) ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(if (compact) 14.dp else 18.dp))
                     .background(Color.White.copy(alpha = 0.12f))
-                    .padding(10.dp),
+                    .padding(if (compact) 8.dp else 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
             ) {
-                Text("${index + 1}", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                Text("${index + 1}", color = Color.White, fontWeight = FontWeight.Black, fontSize = if (compact) 20.sp else 22.sp)
                 AsyncImage(
                     model = artwork,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)),
+                    modifier = Modifier.size(if (compact) 40.dp else 48.dp).clip(RoundedCornerShape(12.dp)),
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(name, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -418,6 +502,7 @@ private fun RecapRanking(title: String, rows: List<Triple<String, String, String
                     }
                 }
             }
+            if (index < minOf(rows.size, 5) - 1) Spacer(Modifier.height(if (compact) 8.dp else 10.dp))
         }
     }
 }
@@ -428,32 +513,86 @@ private fun RecapSpotlight(
     title: String,
     subtitle: String,
     artworkUrl: String?,
+    artworkSize: androidx.compose.ui.unit.Dp,
+    compact: Boolean,
     onClick: (() -> Unit)? = null,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
         Text(label, color = Color.White.copy(alpha = 0.78f), fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
         AsyncImage(
             model = artworkUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(260.dp)
-                .clip(RoundedCornerShape(34.dp))
+                .size(artworkSize)
+                .clip(RoundedCornerShape(if (compact) 24.dp else 34.dp))
                 .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         )
-        Text(title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
-        Text(subtitle, color = Color.White.copy(alpha = 0.78f), textAlign = TextAlign.Center)
+        Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
+        Text(
+            title,
+            color = Color.White,
+            fontSize = if (compact) 30.sp else 34.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            subtitle,
+            color = Color.White.copy(alpha = 0.78f),
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 @Composable
-private fun RecapSummary(state: RecapUiState, onShare: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Text(stringResource(R.string.recap_summary), color = Color.White, fontSize = 42.sp, fontWeight = FontWeight.Black)
-        Text(state.range.label, color = Color.White.copy(alpha = 0.8f))
-        RecapMetric(stringResource(R.string.recap_time_title), state.listeningTime(), Icons.Rounded.Headphones)
-        state.topSongs.firstOrNull()?.let { RecapMetric(stringResource(R.string.recap_top_song), it.title, Icons.Rounded.MusicNote) }
-        state.topArtists.firstOrNull()?.let { RecapMetric(stringResource(R.string.recap_top_artist), it.title, Icons.Rounded.Person) }
+private fun RecapSummary(state: RecapUiState, onShare: () -> Unit, compact: Boolean) {
+    Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                stringResource(R.string.recap_summary),
+                color = Color.White,
+                fontSize = if (compact) 36.sp else 42.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+            Text(
+                state.range.label,
+                color = Color.White.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
+            RecapMetric(stringResource(R.string.recap_time_title), state.listeningTime(), Icons.Rounded.Headphones, compact)
+            state.topSongs.firstOrNull()?.let {
+                Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+                RecapMetric(stringResource(R.string.recap_top_song), it.title, Icons.Rounded.MusicNote, compact)
+            }
+            state.topArtists.firstOrNull()?.let {
+                Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+                RecapMetric(stringResource(R.string.recap_top_artist), it.title, Icons.Rounded.Person, compact)
+            }
+        }
+        Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
         Button(onClick = onShare) {
             Icon(Icons.Rounded.IosShare, contentDescription = null)
             Spacer(Modifier.width(8.dp))
