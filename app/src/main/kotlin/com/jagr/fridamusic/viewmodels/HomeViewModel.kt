@@ -43,12 +43,15 @@ import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
@@ -75,6 +78,7 @@ sealed interface GlobalShuffleSelection {
     data class RemoteItem(val item: YTItem) : GlobalShuffleSelection
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     @ApplicationContext val context: Context,
@@ -106,24 +110,36 @@ class HomeViewModel @Inject constructor(
     val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
     val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
 
+    private val pinnedLocalSongs = localAudioPreferencesRepository.pinnedSongIds
+        .distinctUntilChanged()
+        .flatMapLatest { pinnedIds ->
+            if (pinnedIds.isEmpty()) {
+                flowOf(emptyList())
+            } else if (pinnedIds.size <= MAX_PINNED_IDS_PER_QUERY) {
+                database.localSongPreviewsByIds(pinnedIds)
+            } else {
+                database.localSongPreviews().map { songs ->
+                    songs.filter { song -> song.id in pinnedIds }
+                }
+            }
+        }
+
     val pinnedItems: StateFlow<List<YTItem>> =
         combine(
             database.speedDialDao.getAll(),
-            localAudioPreferencesRepository.pinnedSongIds,
-            database.localSongs(),
-        ) { speedDial, pinnedLocalIds, localSongs ->
+            pinnedLocalSongs,
+        ) { speedDial, localSongs ->
             buildList {
                 addAll(speedDial.map { it.toYTItem() })
                 addAll(
                     localSongs
-                        .filter { it.id in pinnedLocalIds }
                         .map { song ->
                             SongItem(
                                 id = song.id,
                                 title = song.title,
                                 artists = song.artists.map { Artist(name = it.name, id = it.id) },
-                                thumbnail = song.thumbnailUrl.orEmpty(),
-                                explicit = song.song.explicit,
+                                thumbnail = song.resolvedThumbnailUrl.orEmpty(),
+                                explicit = song.explicit,
                             )
                         },
                 )
@@ -718,6 +734,7 @@ class HomeViewModel @Inject constructor(
         const val NOTIFICATION_RECOMMENDATIONS_PER_SEED = 20
         const val NOTIFICATION_ITEMS_PER_REMOTE_SOURCE = 30
         const val NOTIFICATION_HOME_CACHE_LIMIT = 80
+        const val MAX_PINNED_IDS_PER_QUERY = 900
     }
 
     fun toggleChip(chip: HomePage.Chip?) {

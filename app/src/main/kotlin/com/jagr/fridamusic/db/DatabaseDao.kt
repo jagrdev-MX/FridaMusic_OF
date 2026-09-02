@@ -36,6 +36,8 @@ import com.jagr.fridamusic.db.entities.Event
 import com.jagr.fridamusic.db.entities.EventWithSong
 import com.jagr.fridamusic.db.entities.FormatEntity
 import com.jagr.fridamusic.db.entities.LyricsEntity
+import com.jagr.fridamusic.db.entities.LocalSongPreview
+import com.jagr.fridamusic.db.entities.LocalSongProjection
 import com.jagr.fridamusic.db.entities.NotificationHistoryEntity
 import com.jagr.fridamusic.db.entities.PlayCountEntity
 import com.jagr.fridamusic.db.entities.Playlist
@@ -2118,10 +2120,35 @@ interface DatabaseDao {
 
     @Transaction
     @Query("SELECT * FROM song WHERE isLocal = 1 ORDER BY title COLLATE NOCASE, id")
-    fun localSongs(): Flow<List<Song>>
+    fun localSongs(): Flow<List<LocalSongProjection>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT id, title, thumbnailUrl, albumId, explicit
+        FROM song
+        WHERE isLocal = 1 AND id IN (:ids)
+        ORDER BY title COLLATE NOCASE, id
+        """,
+    )
+    fun localSongPreviewsByIds(ids: Set<String>): Flow<List<LocalSongPreview>>
+
+    @Transaction
+    @Query(
+        """
+        SELECT id, title, thumbnailUrl, albumId, explicit
+        FROM song
+        WHERE isLocal = 1
+        ORDER BY title COLLATE NOCASE, id
+        """,
+    )
+    fun localSongPreviews(): Flow<List<LocalSongPreview>>
 
     @Query("SELECT id FROM song WHERE isLocal = 1")
     suspend fun localSongIds(): List<String>
+
+    @Query("SELECT id FROM song WHERE isLocal = 1")
+    fun observeLocalSongIds(): Flow<List<String>>
 
     @Query("DELETE FROM song WHERE isLocal = 1")
     fun clearLocalSongs()

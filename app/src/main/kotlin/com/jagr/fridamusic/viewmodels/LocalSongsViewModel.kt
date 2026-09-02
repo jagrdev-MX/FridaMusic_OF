@@ -78,11 +78,13 @@ constructor(
         LocalSongSortPreference(),
     )
 
-    private val allLocalSongs = database.localSongs().stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5_000),
-        emptyList(),
-    )
+    private val allLocalSongs = database.localSongs()
+        .map { projections -> projections.map { it.toSong() } }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            emptyList(),
+        )
 
     val songs = combine(
         allLocalSongs,
@@ -116,8 +118,8 @@ constructor(
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
-            allLocalSongs
-                .map { localSongs -> localSongs.mapTo(linkedSetOf()) { it.song.id } }
+            database.observeLocalSongIds()
+                .map { localSongIds -> localSongIds.toSet() }
                 .distinctUntilChanged()
                 .collect { localSongIds -> loadSortMetadata(localSongIds) }
         }

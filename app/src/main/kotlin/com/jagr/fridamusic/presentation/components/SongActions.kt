@@ -197,7 +197,7 @@ fun UniversalSongActionsHost(
     val database = playerConnection?.database
     val sortMetadata by localSongsViewModel.sortMetadata.collectAsState()
     val pinnedLocalIds by localSongsViewModel.pinnedSongIds.collectAsState()
-    val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsState()
+    val blacklistedSongIds by localSongsViewModel.blacklistedSongIds.collectAsState()
     val localMetadata = sortMetadata[selectedContext.mediaId]
     val storedSongFlow = remember(database, selectedContext.mediaId) {
         database?.song(selectedContext.mediaId) ?: flowOf(null)
@@ -226,7 +226,7 @@ fun UniversalSongActionsHost(
     }
     val isLocal = effectiveContext.source == SongActionSource.LOCAL_FILE
     val isPinned = if (isLocal) effectiveContext.mediaId in pinnedLocalIds else remotePinned
-    val isBlacklisted = isLocal && blacklistedSongs.any { it.song.id == effectiveContext.mediaId }
+    val isBlacklisted = isLocal && effectiveContext.mediaId in blacklistedSongIds
     val downloadUtil = playerConnection?.service?.mediaLibrarySessionCallback?.downloadUtil
     val downloadFlow = remember(downloadUtil, effectiveContext.mediaId) {
         downloadUtil?.getDownload(effectiveContext.mediaId) ?: flowOf(null)
