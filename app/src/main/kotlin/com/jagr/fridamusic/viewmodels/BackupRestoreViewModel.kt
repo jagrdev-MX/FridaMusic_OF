@@ -23,18 +23,17 @@ import com.jagr.fridamusic.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.viewModelScope
 import timber.log.Timber
+import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.zip.ZipEntry
 import javax.inject.Inject
 import kotlin.system.exitProcess
@@ -107,14 +106,14 @@ class BackupRestoreViewModel @Inject constructor(
                                 Timber.tag("RESTORE").i("Restoring DB (entry = ${entry.name})")
                                 foundAny = true
                                 
-                                val tempFile = java.io.File(context.cacheDir, "temp_restore.db")
-                                java.io.FileOutputStream(tempFile).use { outputStream ->
+                                val tempFile = File(context.cacheDir, "temp_restore.db")
+                                FileOutputStream(tempFile).use { outputStream ->
                                     inputStream.copyTo(outputStream)
                                 }
                                 
                                 var backupVersion = 0
                                 runCatching {
-                                    java.io.RandomAccessFile(tempFile, "r").use { raf ->
+                                    RandomAccessFile(tempFile, "r").use { raf ->
                                         raf.seek(60)
                                         backupVersion = raf.readInt()
                                     }
@@ -132,13 +131,14 @@ class BackupRestoreViewModel @Inject constructor(
                                 
                                 try {
                                     val dbPath = database.openHelper.writableDatabase.path
+                                        ?: throw IllegalStateException("Database path is null")
                                     database.checkpoint()
                                     database.close()
                                     Timber.tag("RESTORE").i("Overwriting DB at path: $dbPath")
                                     
-                                    val dbFile = java.io.File(dbPath)
-                                    val walFile = java.io.File(dbPath + "-wal")
-                                    val shmFile = java.io.File(dbPath + "-shm")
+                                    val dbFile = File(dbPath)
+                                    val walFile = File("$dbPath-wal")
+                                    val shmFile = File("$dbPath-shm")
                                     
                                     if (walFile.exists()) {
                                         walFile.delete()
@@ -243,11 +243,6 @@ class BackupRestoreViewModel @Inject constructor(
                             if (columnMapping.artistColumnIndex < parts.size && columnMapping.titleColumnIndex < parts.size) {
                                 val title = parts[columnMapping.titleColumnIndex].trim()
                                 val artistStr = parts[columnMapping.artistColumnIndex].trim()
-                                val url = if (columnMapping.urlColumnIndex >= 0 && columnMapping.urlColumnIndex < parts.size) {
-                                    parts[columnMapping.urlColumnIndex].trim()
-                                } else {
-                                    ""
-                                }
 
                                 if (title.isNotEmpty() && artistStr.isNotEmpty()) {
                                     val artists = artistStr.split(";", ",").map { it.trim() }
@@ -319,15 +314,19 @@ class BackupRestoreViewModel @Inject constructor(
 
     private fun parseCsvLine(line: String): List<String> {
         val result = mutableListOf<String>()
-        var current = StringBuilder()
+        val current = StringBuilder()
         var inQuotes = false
 
         for (char in line) {
-            when {
-                char == '"' -> inQuotes = !inQuotes
-                char == ',' && !inQuotes -> {
-                    result.add(current.toString())
-                    current = StringBuilder()
+            when (char) {
+                '"' -> inQuotes = !inQuotes
+                ',' -> {
+                    if (!inQuotes) {
+                        result.add(current.toString())
+                        current.setLength(0)
+                    } else {
+                        current.append(char)
+                    }
                 }
                 else -> current.append(char)
             }

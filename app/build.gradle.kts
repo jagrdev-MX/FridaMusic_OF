@@ -172,11 +172,23 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("String", "ARCHITECTURE", "\"release\"")
+            buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "true")
+            buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "false")
         }
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
             buildConfigField("String", "ARCHITECTURE", "\"debug\"")
+            buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "true")
+            buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "true")
+        }
+        create("github") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+            buildConfigField("String", "ARCHITECTURE", "\"github\"")
+            buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "false")
+            buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "true")
         }
     }
 
@@ -285,6 +297,7 @@ dependencies {
 
     "gmsImplementation"(libs.play.services.auth)
     "gmsImplementation"(libs.play.services.ads)
+    "gmsImplementation"(libs.play.billing)
     "gmsImplementation"(libs.google.api.client.android)
     "gmsImplementation"(libs.google.api.services.drive) {
         exclude(group = "org.apache.httpcomponents")

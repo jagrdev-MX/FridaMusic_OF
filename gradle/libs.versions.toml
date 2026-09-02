@@ -49,6 +49,7 @@ ffmpegKit = "6.0.1"
 youtubedlAndroid = "0.17.3"
 playServicesAuth = "21.2.0"
 playServicesAds = "25.4.0"
+playBilling = "9.1.0"
 googleApiClient = "2.9.0"
 googleDriveApi = "v3-rev20260428-2.0.0"
 browser = "1.8.0"
@@ -156,6 +157,7 @@ youtubedl-android-ffmpeg = { group = "io.github.junkfood02.youtubedl-android", n
 youtubedl-android-aria2c = { group = "io.github.junkfood02.youtubedl-android", name = "aria2c", version.ref = "youtubedlAndroid" }
 play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+play-billing = { module = "com.android.billingclient:billing", version.ref = "playBilling" }
 google-api-client-android = { module = "com.google.api-client:google-api-client-android", version.ref = "googleApiClient" }
 google-api-services-drive = { module = "com.google.apis:google-api-services-drive", version.ref = "googleDriveApi" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }

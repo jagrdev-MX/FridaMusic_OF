@@ -48,6 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
@@ -60,11 +63,13 @@ import com.jagr.fridamusic.presentation.components.HomeContentType
 import com.jagr.fridamusic.presentation.components.HomeMediaCard
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
 import com.jagr.fridamusic.presentation.components.SongActionContext
+import com.jagr.fridamusic.presentation.components.SupportCenterSheet
 import com.jagr.fridamusic.presentation.components.YTContentCard
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.support.SupportBillingManager
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
@@ -160,8 +165,13 @@ fun HomeScreen(
     var showSupportDialog by remember { mutableStateOf(false) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
-    val activity = LocalContext.current.findActivity()
+    val context = LocalContext.current
+    val activity = context.findActivity()
     val interstitialAdManager = remember(activity) { InterstitialAdManager(activity) }
+    val supportBillingManager = remember(context.applicationContext) {
+        SupportBillingManager(context.applicationContext)
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     val pullRefreshHaptic = LocalHapticFeedback.current
@@ -171,9 +181,23 @@ fun HomeScreen(
     val quickReturnHeaderHeight = with(LocalDensity.current) { quickReturnHeaderHeightPx.toDp() }
     val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
 
-    DisposableEffect(interstitialAdManager) {
+    DisposableEffect(interstitialAdManager, supportBillingManager) {
         interstitialAdManager.load()
-        onDispose { interstitialAdManager.release() }
+        supportBillingManager.start()
+        onDispose {
+            interstitialAdManager.release()
+            supportBillingManager.close()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, supportBillingManager) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                supportBillingManager.onResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(reselectToken) {
@@ -515,14 +539,14 @@ fun HomeScreen(
         }
     }
 
-    // Instancia del Diálogo de Apoyo
     if (showSupportDialog) {
-        SupportProjectDialog(
+        SupportCenterSheet(
+            billing = supportBillingManager,
             onDismiss = { showSupportDialog = false },
             onWatchAdClick = {
                 showSupportDialog = false
                 interstitialAdManager.show()
-            }
+            },
         )
     }
     UniversalSongActionsHost(
@@ -619,56 +643,6 @@ private fun HeaderIconButton(
         }
     }
 }
-
-// --- NUEVO COMPONENTE: DIÁLOGO DE APOYO ---
-@Composable
-private fun SupportProjectDialog(
-    onDismiss: () -> Unit,
-    onWatchAdClick: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(
-                imageVector = Icons.Rounded.VolunteerActivism,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp)
-            )
-        },
-        title = {
-            Text(
-                text = "Apoyar FridaMusic",
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-        },
-        text = {
-            Text(
-                text = "FridaMusic es un proyecto independiente desarrollado con mucho esfuerzo. Si disfrutas de la app, puedes apoyarme viendo un pequeño anuncio. ¡Esto me ayuda a cubrir los costos y seguir mejorándola para ti!",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = onWatchAdClick,
-                shape = RoundedCornerShape(50)
-            ) {
-                Text("Ver anuncio y apoyar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Quizás luego", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(24.dp)
-    )
-}
-// ------------------------------------------
 
 @Composable
 private fun MoodChipsRow(
