@@ -214,13 +214,13 @@ object SongShareLinkResolver {
     fun resolveSongLinks(context: SongActionContext): List<SongShareLink> = buildList {
         context.remoteIds.youtubeVideoId
             ?.takeIf { youtubeVideoId.matches(it) }
-            ?.let { add(SongShareLink("YouTube Music", "https://music.youtube.com/watch?v=$it")) }
+            ?.let { add(SongShareLink("Original source", "https://music.youtube.com/watch?v=$it")) }
         context.remoteIds.spotifyUrl
             ?.takeIf { it.startsWith("https://open.spotify.com/track/") }
-            ?.let { add(SongShareLink("Spotify", it)) }
+            ?.let { add(SongShareLink("Verdefy", it)) }
         context.remoteIds.spotifyId
             ?.takeIf { spotifyTrackId.matches(it) }
-            ?.let { add(SongShareLink("Spotify", "https://open.spotify.com/track/$it")) }
+            ?.let { add(SongShareLink("Verdefy", "https://open.spotify.com/track/$it")) }
         context.remoteIds.otherUrls.forEach { (label, url) ->
             if (url.startsWith("https://") || url.startsWith("http://")) add(SongShareLink(label, url))
         }

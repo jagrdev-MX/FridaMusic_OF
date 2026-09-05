@@ -90,6 +90,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.*
 import com.jagr.fridamusic.lyrics.LyricsProviderRegistry
 import com.jagr.fridamusic.notifications.NotificationCandidateType
+import com.jagr.fridamusic.presentation.toLyricsProviderDisplayName
 import com.jagr.fridamusic.utils.CrashReporter
 import com.jagr.fridamusic.notifications.RecommendationNotificationScheduler
 import com.jagr.fridamusic.utils.rememberEnumPreference
@@ -993,7 +994,7 @@ private fun LyricsProviderOrderSection() {
                     Text("${index + 1}", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
-                Text(LyricsProviderRegistry.getDisplayName(name), style = MaterialTheme.typography.bodyMedium,
+                Text(name.toLyricsProviderDisplayName(), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
                 if (index > 0) {
                     IconButton(onClick = {

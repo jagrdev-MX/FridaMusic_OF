@@ -2,7 +2,9 @@ package com.jagr.fridamusic.support
 
 import android.app.Activity
 import android.content.Context
-import com.jagr.fridamusic.BuildConfig
+import android.util.Log
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
@@ -14,10 +16,14 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.jagr.fridamusic.BuildConfig
+import java.lang.ref.WeakReference
+import java.security.MessageDigest
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import timber.log.Timber
 
 class SupportBillingManager(context: Context) :
     SupportBilling,
@@ -27,6 +33,11 @@ class SupportBillingManager(context: Context) :
     private data class ProductSelection(
         val details: ProductDetails,
         val offerToken: String?,
+        val formattedPrice: String,
+        val offerIndex: Int,
+        val offerCount: Int,
+        val offerType: String,
+        val selectionSource: String,
     )
 
     private val _state = MutableStateFlow<SupportBillingState>(SupportBillingState.BillingLoading)
@@ -44,6 +55,9 @@ class SupportBillingManager(context: Context) :
     private var connecting = false
     private var closed = false
     private var debugPreviewActive = false
+    private var activeInstanceRegistered = false
+    private var productQueryGeneration = 0
+    private val instanceId = nextInstanceId.incrementAndGet()
 
     private val billingClient by lazy(LazyThreadSafetyMode.NONE) {
         BillingClient.newBuilder(context.applicationContext)
@@ -62,6 +76,15 @@ class SupportBillingManager(context: Context) :
 
     override fun start() {
         if (!capabilities.googlePlayBilling || closed) return
+        registerActiveInstanceIfNeeded()
+        logInfo(
+            "start instance=%d buildType=%s flavor=%s applicationId=%s ready=%s",
+            instanceId,
+            BuildConfig.BUILD_TYPE,
+            BuildConfig.FLAVOR,
+            BuildConfig.APPLICATION_ID,
+            billingClient.isReady,
+        )
         if (billingClient.isReady) {
             queryProducts()
             queryOwnedPurchases()
@@ -79,6 +102,7 @@ class SupportBillingManager(context: Context) :
 
     override fun onResume() {
         if (!capabilities.googlePlayBilling || closed) return
+        logDebug("foreground instance=%d ready=%s", instanceId, billingClient.isReady)
         if (billingClient.isReady) {
             queryOwnedPurchases()
         } else {
@@ -93,6 +117,33 @@ class SupportBillingManager(context: Context) :
             return
         }
 
+        val lifecycleState = activity.lifecycleState()
+        logInfo(
+            "Purchase requested: instance=%d productId=%s ready=%s activity=%s lifecycle=%s finishing=%s destroyed=%s",
+            instanceId,
+            product.id,
+            billingClient.isReady,
+            activity.javaClass.name,
+            lifecycleState,
+            activity.isFinishing,
+            activity.isDestroyed,
+        )
+        if (!activity.isReadyForBilling()) {
+            pendingProductId = null
+            _state.value = SupportBillingState.PurchaseError(SupportBillingIssue.PURCHASE_ERROR)
+            logWarning("Purchase rejected because the Activity is not foreground and valid")
+            return
+        }
+
+        if (pendingProductId != null) {
+            logWarning(
+                "Purchase ignored because another request is active: requested=%s active=%s",
+                product.id,
+                pendingProductId,
+            )
+            return
+        }
+
         if (!billingClient.isReady) {
             _state.value = SupportBillingState.BillingUnavailable(
                 SupportBillingIssue.SERVICE_DISCONNECTED,
@@ -101,30 +152,82 @@ class SupportBillingManager(context: Context) :
             return
         }
 
-        val selection = productDetails[product.id]
-        if (selection == null) {
-            _state.value = SupportBillingState.PurchaseError(
-                SupportBillingIssue.PRODUCT_UNAVAILABLE,
-            )
-            return
-        }
+        pendingProductId = product.id
+        _state.value = SupportBillingState.PurchaseStarted(product.id)
+        val activityReference = WeakReference(activity)
+        queryProductDetails(
+            productIds = listOf(product.id),
+            operation = "purchase_refresh",
+        ) { billingResult, detailsList ->
+            if (closed || pendingProductId != product.id) return@queryProductDetails
+            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                handleLaunchError(billingResult)
+                return@queryProductDetails
+            }
 
+            val freshDetails = detailsList.singleOrNull { it.productId == product.id }
+            val selection = freshDetails?.let(::selectProductOffer)
+            if (selection == null) {
+                pendingProductId = null
+                _state.value = SupportBillingState.PurchaseError(
+                    SupportBillingIssue.PRODUCT_UNAVAILABLE,
+                )
+                logWarning("No unambiguous eligible offer for productId=%s", product.id)
+                return@queryProductDetails
+            }
+
+            val currentActivity = activityReference.get()
+            if (currentActivity == null || !currentActivity.isReadyForBilling()) {
+                pendingProductId = null
+                _state.value = SupportBillingState.PurchaseError(SupportBillingIssue.PURCHASE_ERROR)
+                logWarning(
+                    "Purchase aborted after refresh because Activity is no longer foreground: productId=%s",
+                    product.id,
+                )
+                return@queryProductDetails
+            }
+
+            productDetails[product.id] = selection
+            launchBillingFlow(currentActivity, product.id, selection)
+        }
+    }
+
+    private fun launchBillingFlow(
+        activity: Activity,
+        productId: String,
+        selection: ProductSelection,
+    ) {
         val detailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
             .setProductDetails(selection.details)
             .apply {
                 selection.offerToken?.takeIf(String::isNotBlank)?.let(::setOfferToken)
             }
             .build()
+        logInfo(
+            "Launching official billing flow: productId=%s activity=%s lifecycle=%s offerIndex=%d offerCount=%d offerType=%s source=%s",
+            productId,
+            activity.javaClass.name,
+            activity.lifecycleState(),
+            selection.offerIndex,
+            selection.offerCount,
+            selection.offerType,
+            selection.selectionSource,
+        )
         val result = billingClient.launchBillingFlow(
             activity,
             BillingFlowParams.newBuilder()
                 .setProductDetailsParamsList(listOf(detailsParams))
                 .build(),
         )
-
+        logInfo(
+            "launchBillingFlow result: productId=%s code=%d message=%s ready=%s",
+            productId,
+            result.responseCode,
+            result.debugMessage,
+            billingClient.isReady,
+        )
         if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-            pendingProductId = product.id
-            _state.value = SupportBillingState.PurchaseStarted(product.id)
+            _state.value = SupportBillingState.PurchaseStarted(productId)
         } else {
             handleLaunchError(result)
         }
@@ -134,9 +237,17 @@ class SupportBillingManager(context: Context) :
         billingResult: BillingResult,
         purchases: List<Purchase>?,
     ) {
+        logInfo(
+            "Purchase update: code=%d message=%s purchaseCount=%d ready=%s",
+            billingResult.responseCode,
+            billingResult.debugMessage,
+            purchases?.size ?: 0,
+            billingClient.isReady,
+        )
         when (billingResult.responseCode) {
             BillingClient.BillingResponseCode.OK -> {
                 if (purchases.isNullOrEmpty()) {
+                    pendingProductId = null
                     _state.value = SupportBillingState.PurchaseError(
                         SupportBillingIssue.PURCHASE_ERROR,
                     )
@@ -158,6 +269,7 @@ class SupportBillingManager(context: Context) :
             BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE,
             BillingClient.BillingResponseCode.BILLING_UNAVAILABLE,
             -> {
+                pendingProductId = null
                 _state.value = SupportBillingState.BillingUnavailable(
                     SupportBillingIssue.SERVICE_DISCONNECTED,
                 )
@@ -168,7 +280,7 @@ class SupportBillingManager(context: Context) :
                 _state.value = SupportBillingState.PurchaseError(
                     SupportBillingIssue.PURCHASE_ERROR,
                 )
-                Timber.tag(TAG).w(
+                logWarning(
                     "Purchase update failed: code=%d message=%s",
                     billingResult.responseCode,
                     billingResult.debugMessage,
@@ -182,9 +294,13 @@ class SupportBillingManager(context: Context) :
         closed = true
         if (!capabilities.googlePlayBilling) return
         connecting = false
+        productQueryGeneration++
+        pendingProductId = null
         productDetails.clear()
         consumingTokens.clear()
         billingClient.endConnection()
+        unregisterActiveInstanceIfNeeded()
+        logInfo("closed instance=%d", instanceId)
     }
 
     override fun showDebugProducts(products: List<SupportProduct>) {
@@ -215,10 +331,18 @@ class SupportBillingManager(context: Context) :
     private fun connect() {
         if (closed || connecting || billingClient.isReady) return
         connecting = true
+        logInfo("Connecting instance=%d ready=%s", instanceId, billingClient.isReady)
         billingClient.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(billingResult: BillingResult) {
                 connecting = false
                 if (closed) return
+                logInfo(
+                    "Billing setup: instance=%d code=%d message=%s ready=%s",
+                    instanceId,
+                    billingResult.responseCode,
+                    billingResult.debugMessage,
+                    billingClient.isReady,
+                )
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                     queryProducts()
                     queryOwnedPurchases()
@@ -226,7 +350,7 @@ class SupportBillingManager(context: Context) :
                     _state.value = SupportBillingState.BillingUnavailable(
                         SupportBillingIssue.BILLING_UNAVAILABLE,
                     )
-                    Timber.tag(TAG).w(
+                    logWarning(
                         "Billing setup failed: code=%d message=%s",
                         billingResult.responseCode,
                         billingResult.debugMessage,
@@ -236,6 +360,11 @@ class SupportBillingManager(context: Context) :
 
             override fun onBillingServiceDisconnected() {
                 connecting = false
+                logWarning(
+                    "Billing service disconnected: instance=%d ready=%s",
+                    instanceId,
+                    billingClient.isReady,
+                )
                 if (!closed && !debugPreviewActive) {
                     _state.value = SupportBillingState.BillingUnavailable(
                         SupportBillingIssue.SERVICE_DISCONNECTED,
@@ -247,46 +376,33 @@ class SupportBillingManager(context: Context) :
 
     private fun queryProducts() {
         if (closed || !billingClient.isReady) return
-        val products = SUPPORT_PRODUCT_IDS.map { productId ->
-            QueryProductDetailsParams.Product.newBuilder()
-                .setProductId(productId)
-                .setProductType(BillingClient.ProductType.INAPP)
-                .build()
-        }
-        billingClient.queryProductDetailsAsync(
-            QueryProductDetailsParams.newBuilder()
-                .setProductList(products)
-                .build(),
-        ) { billingResult, queryResult ->
-            if (closed) return@queryProductDetailsAsync
+        val generation = ++productQueryGeneration
+        queryProductDetails(
+            productIds = SUPPORT_PRODUCT_IDS,
+            operation = "catalog",
+        ) { billingResult, detailsList ->
+            if (closed || generation != productQueryGeneration) return@queryProductDetails
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 if (!debugPreviewActive) {
                     _state.value = SupportBillingState.BillingUnavailable(
                         SupportBillingIssue.BILLING_UNAVAILABLE,
                     )
                 }
-                return@queryProductDetailsAsync
+                return@queryProductDetails
             }
 
             productDetails.clear()
-            queryResult.productDetailsList.forEach { details ->
+            detailsList.forEach { details ->
                 if (details.productId !in SUPPORT_PRODUCT_IDS) return@forEach
-                val offer = details.oneTimePurchaseOfferDetailsList?.firstOrNull()
-                    ?: details.oneTimePurchaseOfferDetails
-                    ?: return@forEach
-                productDetails[details.productId] = ProductSelection(
-                    details = details,
-                    offerToken = offer.offerToken,
-                )
+                selectProductOffer(details)?.let { selection ->
+                    productDetails[details.productId] = selection
+                }
             }
             realProducts = SUPPORT_PRODUCT_IDS.mapNotNull { productId ->
                 val selection = productDetails[productId] ?: return@mapNotNull null
-                val offer = selection.details.oneTimePurchaseOfferDetailsList?.firstOrNull()
-                    ?: selection.details.oneTimePurchaseOfferDetails
-                    ?: return@mapNotNull null
                 SupportProduct(
                     id = productId,
-                    formattedPrice = offer.formattedPrice,
+                    formattedPrice = selection.formattedPrice,
                 )
             }
             if (!debugPreviewActive && _state.value !is SupportBillingState.PurchaseStarted &&
@@ -299,6 +415,94 @@ class SupportBillingManager(context: Context) :
         }
     }
 
+    private fun queryProductDetails(
+        productIds: List<String>,
+        operation: String,
+        onResult: (BillingResult, List<ProductDetails>) -> Unit,
+    ) {
+        val products = productIds.map { productId ->
+            QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(productId)
+                .setProductType(BillingClient.ProductType.INAPP)
+                .build()
+        }
+        billingClient.queryProductDetailsAsync(
+            QueryProductDetailsParams.newBuilder()
+                .setProductList(products)
+                .build(),
+        ) { billingResult, queryResult ->
+            if (closed) return@queryProductDetailsAsync
+            logInfo(
+                "Product details result: operation=%s code=%d message=%s requested=%d fetched=%d unfetched=%d ready=%s",
+                operation,
+                billingResult.responseCode,
+                billingResult.debugMessage,
+                productIds.size,
+                queryResult.productDetailsList.size,
+                queryResult.unfetchedProductList.size,
+                billingClient.isReady,
+            )
+            queryResult.unfetchedProductList.forEach { unfetched ->
+                logWarning(
+                    "Unfetched product: operation=%s productId=%s type=%s status=%d",
+                    operation,
+                    unfetched.productId,
+                    unfetched.productType,
+                    unfetched.statusCode,
+                )
+            }
+            onResult(billingResult, queryResult.productDetailsList)
+        }
+    }
+
+    private fun selectProductOffer(details: ProductDetails): ProductSelection? {
+        val eligibleOffers = details.oneTimePurchaseOfferDetailsList.orEmpty()
+        val backwardCompatibleOffer = details.oneTimePurchaseOfferDetails
+        val selectedOffer = backwardCompatibleOffer ?: eligibleOffers.singleOrNull()
+        if (selectedOffer == null) {
+            logWarning(
+                "Offer selection is ambiguous: productId=%s eligibleOfferCount=%d backwardCompatible=false",
+                details.productId,
+                eligibleOffers.size,
+            )
+            return null
+        }
+
+        val selectedIndex = eligibleOffers.indexOfFirst {
+            it.offerToken == selectedOffer.offerToken
+        }.takeIf { it >= 0 } ?: 0
+        val offerCount = eligibleOffers.size.takeIf { it > 0 } ?: 1
+        val offerType = when {
+            selectedOffer.rentalDetails != null -> "rental"
+            selectedOffer.preorderDetails != null -> "preorder"
+            selectedOffer.discountDisplayInfo != null -> "discount"
+            else -> "base"
+        }
+        val selectionSource = if (backwardCompatibleOffer != null) {
+            "backward_compatible"
+        } else {
+            "single_eligible"
+        }
+        logInfo(
+            "Offer selected: productId=%s eligibleOfferCount=%d selectedIndex=%d type=%s source=%s currency=%s",
+            details.productId,
+            offerCount,
+            selectedIndex,
+            offerType,
+            selectionSource,
+            selectedOffer.priceCurrencyCode,
+        )
+        return ProductSelection(
+            details = details,
+            offerToken = selectedOffer.offerToken,
+            formattedPrice = selectedOffer.formattedPrice,
+            offerIndex = selectedIndex,
+            offerCount = offerCount,
+            offerType = offerType,
+            selectionSource = selectionSource,
+        )
+    }
+
     private fun queryOwnedPurchases() {
         if (closed || !billingClient.isReady) return
         billingClient.queryPurchasesAsync(
@@ -307,6 +511,13 @@ class SupportBillingManager(context: Context) :
                 .build(),
         ) { billingResult, purchases ->
             if (closed) return@queryPurchasesAsync
+            logInfo(
+                "Owned purchases result: code=%d message=%s count=%d ready=%s",
+                billingResult.responseCode,
+                billingResult.debugMessage,
+                purchases.size,
+                billingClient.isReady,
+            )
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 purchases.forEach(::processPurchase)
             } else if (!debugPreviewActive) {
@@ -319,6 +530,13 @@ class SupportBillingManager(context: Context) :
 
     private fun processPurchase(purchase: Purchase) {
         val supportProductId = purchase.products.firstOrNull { it in SUPPORT_PRODUCT_IDS } ?: return
+        logInfo(
+            "Processing purchase: productId=%s state=%d tokenHash=%s acknowledged=%s",
+            supportProductId,
+            purchase.purchaseState,
+            purchase.purchaseToken.safeHash(),
+            purchase.isAcknowledged,
+        )
         when (purchase.purchaseState) {
             Purchase.PurchaseState.PENDING -> {
                 pendingProductId = supportProductId
@@ -333,21 +551,43 @@ class SupportBillingManager(context: Context) :
     }
 
     private fun consumePurchase(purchaseToken: String, productId: String) {
-        if (!consumingTokens.add(purchaseToken)) return
+        if (!consumingTokens.add(purchaseToken)) {
+            logDebug(
+                "Consumption already active: productId=%s tokenHash=%s",
+                productId,
+                purchaseToken.safeHash(),
+            )
+            return
+        }
+        logInfo(
+            "Consuming purchase: productId=%s tokenHash=%s ready=%s",
+            productId,
+            purchaseToken.safeHash(),
+            billingClient.isReady,
+        )
         billingClient.consumeAsync(
             ConsumeParams.newBuilder()
                 .setPurchaseToken(purchaseToken)
                 .build(),
         ) { billingResult, returnedToken ->
+            consumingTokens.remove(purchaseToken)
             consumingTokens.remove(returnedToken)
+            if (closed) return@consumeAsync
             pendingProductId = null
+            logInfo(
+                "Consumption result: productId=%s tokenHash=%s code=%d message=%s",
+                productId,
+                returnedToken.safeHash(),
+                billingResult.responseCode,
+                billingResult.debugMessage,
+            )
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 _state.value = SupportBillingState.PurchaseCompleted(productId)
             } else {
                 _state.value = SupportBillingState.PurchaseError(
                     SupportBillingIssue.CONSUMPTION_ERROR,
                 )
-                Timber.tag(TAG).w(
+                logWarning(
                     "Purchase consumption failed: code=%d message=%s",
                     billingResult.responseCode,
                     billingResult.debugMessage,
@@ -358,6 +598,12 @@ class SupportBillingManager(context: Context) :
 
     private fun handleLaunchError(result: BillingResult) {
         pendingProductId = null
+        logWarning(
+            "Purchase launch failed: code=%d message=%s ready=%s",
+            result.responseCode,
+            result.debugMessage,
+            billingClient.isReady,
+        )
         val issue = when (result.responseCode) {
             BillingClient.BillingResponseCode.USER_CANCELED ->
                 SupportBillingIssue.PURCHASE_CANCELLED
@@ -379,7 +625,50 @@ class SupportBillingManager(context: Context) :
         }
     }
 
+    private fun registerActiveInstanceIfNeeded() {
+        if (activeInstanceRegistered) return
+        activeInstanceRegistered = true
+        val count = activeInstances.incrementAndGet()
+        if (count > 1) {
+            logWarning("Multiple active billing managers detected: count=%d", count)
+        }
+    }
+
+    private fun unregisterActiveInstanceIfNeeded() {
+        if (!activeInstanceRegistered) return
+        activeInstanceRegistered = false
+        activeInstances.decrementAndGet()
+    }
+
+    private fun Activity.lifecycleState(): Lifecycle.State? =
+        (this as? LifecycleOwner)?.lifecycle?.currentState
+
+    private fun Activity.isReadyForBilling(): Boolean {
+        if (isFinishing || isDestroyed) return false
+        val state = lifecycleState()
+        return state == null || state.isAtLeast(Lifecycle.State.RESUMED)
+    }
+
+    private fun logInfo(message: String, vararg args: Any?) {
+        Log.i(TAG, String.format(Locale.US, message, *args))
+    }
+
+    private fun logWarning(message: String, vararg args: Any?) {
+        Log.w(TAG, String.format(Locale.US, message, *args))
+    }
+
+    private fun logDebug(message: String, vararg args: Any?) {
+        if (BuildConfig.DEBUG) Log.d(TAG, String.format(Locale.US, message, *args))
+    }
+
+    private fun String.safeHash(): String = MessageDigest.getInstance("SHA-256")
+        .digest(toByteArray(Charsets.UTF_8))
+        .take(6)
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
     private companion object {
         const val TAG = "SupportBilling"
+        val nextInstanceId = AtomicInteger(0)
+        val activeInstances = AtomicInteger(0)
     }
 }

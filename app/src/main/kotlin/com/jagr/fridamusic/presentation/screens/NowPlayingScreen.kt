@@ -96,6 +96,7 @@ import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.LocalSongActionsNavigation
 import com.jagr.fridamusic.presentation.SongActionsNavigation
+import com.jagr.fridamusic.presentation.toLyricsProviderDisplayName
 import com.jagr.fridamusic.presentation.components.KaraokeLyrics
 import com.jagr.fridamusic.presentation.components.AudioOutputSheet
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
@@ -1415,7 +1416,7 @@ private fun LyricsSourceSheet(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = lyricsEntity?.provider.orEmpty(),
+                        text = lyricsEntity?.provider.orEmpty().toLyricsProviderDisplayName(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1454,7 +1455,10 @@ private fun LyricsSourceSheet(
                     ) { result ->
                         ListItem(
                             headlineContent = {
-                                Text(result.providerName, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    result.providerName.toLyricsProviderDisplayName(),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
                             },
                             supportingContent = {
                                 Text("${result.syncType.name.replace('_', ' ')} · ${result.score}")

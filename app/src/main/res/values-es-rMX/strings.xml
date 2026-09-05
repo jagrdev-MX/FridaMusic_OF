@@ -28,7 +28,7 @@
     <string name="quick_picks_empty">Escucha canciones para generar tus selecciones rápidas</string>
     <string name="forgotten_favorites">Favoritos olvidados</string>
     <string name="keep_listening">Seguir escuchando</string>
-    <string name="your_youtube_playlists">Tus listas de YouTube</string>
+    <string name="your_youtube_playlists">Tus listas de sincronización</string>
     <string name="similar_to">Similar a</string>
     <string name="new_release_albums">Nuevos lanzamientos</string>
 
@@ -45,7 +45,7 @@
 
     <!-- Búsqueda -->
     <string name="search">Buscar</string>
-    <string name="search_yt_music">Buscar en YouTube Music…</string>
+    <string name="search_yt_music">Buscar música…</string>
     <string name="search_library">Buscar en la biblioteca…</string>
     <string name="filter_library">Biblioteca</string>
     <string name="filter_liked">Me gusta</string>
@@ -313,7 +313,7 @@
     <string name="right">Derecha</string>
     <string name="player_slider_style">Estilo de la barra de progreso</string>
     <string name="default_">Predeterminado</string>
-    <string name="apple_music">Apple Music</string>
+    <string name="apple_music">Estilo clásico</string>
     <string name="squiggly">Ondulado</string>
     <string name="misc">Miscelánea</string>
 
@@ -339,7 +339,7 @@
 
     <string name="content_language">Idioma de contenido predeterminado</string>
     <string name="content_country">País de contenido predeterminado</string>
-    <string name="content_sponsor_block">SponsorBlock (Auto-omitir)</string>
+    <string name="content_sponsor_block">Omisión automática</string>
     <string name="content_sponsor_block_desc">Omitir automáticamente patrocinios e intros en videos</string>
     <string name="system_default">Predeterminado del sistema</string>
     <string name="enable_proxy">Habilitar proxy</string>
@@ -558,7 +558,7 @@
     <string name="quality">Calidad</string>
     <string name="language_region">Idioma y Región</string>
     <string name="filters">Filtros</string>
-    <string name="sponsorblock">SponsorBlock</string>
+    <string name="sponsorblock">Omisión automática</string>
     <string name="downloads">Sincronización</string>
     <string name="cache_storage">Caché y Almacenamiento</string>
     <string name="echobrain_ia">EchoBrain IA</string>
@@ -582,9 +582,9 @@
     <string name="quality_high_description">Preferencia por la mejor experiencia disponible.</string>
     <string name="audio_quality_fallback">La calidad seleccionada no está disponible para esta canción. Usando una opción compatible.</string>
     <string name="opus_recommended">Opus (recomendado)</string>
-    <string name="saavn">Saavn</string>
+    <string name="saavn">Fuente alternativa</string>
     <string name="lossless">Sin pérdida</string>
-    <string name="youtube">YouTube</string>
+    <string name="youtube">Fuente principal</string>
     <string name="color_mode">Modo de color</string>
     <string name="dark">Oscuro</string>
     <string name="light">Claro</string>
@@ -598,9 +598,9 @@
     <string name="preload_lyrics_desc">Descarga letras antes de que empiece la canción</string>
     <string name="lyrics_providers_label">Proveedores</string>
     <string name="hide_explicit_desc">Filtra canciones marcadas como explícitas</string>
-    <string name="hide_video_songs_desc">Filtra canciones provenientes de videos de YTube</string>
+    <string name="hide_video_songs_desc">Filtra canciones provenientes de videos</string>
     <string name="hide_youtube_shorts_desc">No incluir cortos en los resultados</string>
-    <string name="enable_sponsorblock">Habilitar SponsorBlock</string>
+    <string name="enable_sponsorblock">Activar omisión automática</string>
     <string name="enable_sponsorblock_desc">Omite segmentos de patrocinios automáticamente</string>
     <string name="download_on_like_desc">Sincroniza automáticamente al añadir a favoritos</string>
     <string name="show_cached_playlists">Mostrar listas en caché</string>
@@ -772,7 +772,7 @@
     <string name="syncing_progress">Sincronizando %1$d de %2$d canciones…</string>
     <string name="sync_disabled">Sincronización desactivada</string>
     <string name="elements_selected">%1$d elementos seleccionados</string>
-    <string name="allows_for_sync_witch_youtube">Nota: Esto permite la sincronización con YouTube Music. No se puede cambiar después.</string>
+    <string name="allows_for_sync_witch_youtube">Nota: Esto permite la sincronización. No se puede cambiar después.</string>
     <string name="generating_image">Generando imagen</string>
     <string name="please_wait">Por favor espera</string>
     <string name="cancel">Cancelar</string>
@@ -808,7 +808,7 @@
     <string name="download_in_progress_desc">Descarga en curso</string>
     <string name="share_playlist_desc">Compartir esta lista con otros</string>
     <string name="delete_playlist_desc">Eliminar esta lista permanentemente</string>
-    <string name="sync_playlist_desc">Sincronizar lista con YouTube Music</string>
+    <string name="sync_playlist_desc">Sincronizar lista</string>
     <string name="copy_link">Copiar enlace</string>
     <string name="select">Seleccionar todo</string>
     <string name="like_all">Me gusta a todo</string>
@@ -910,11 +910,11 @@
     <string name="discord">Discord</string>
     <string name="advanced_login">Ingresar con token</string>
     <string name="token_adv_login_description">Este es un método AVANZADO. Puedes ingresar tu token de acceso directamente aquí.</string>
-    <string name="ytm_sync">Sincronizar automáticamente con tu cuenta de YouTube Music</string>
+    <string name="ytm_sync">Sincronizar automáticamente con tu cuenta</string>
     <string name="yt_sync">Sincronización automática con cuenta</string>
     <string name="more_content">Más contenido</string>
     <string name="edit_playlist_cover">Editar portada de la lista</string>
-    <string name="edit_playlist_cover_note">Nota: Tu cuenta debe estar vinculada a un número y verificada en YouTube Music.</string>
+    <string name="edit_playlist_cover_note">Nota: Tu cuenta debe estar vinculada a un número y verificada para cambiar la portada de la lista.</string>
     <string name="edit_playlist_cover_note_wait">Tras seleccionar la imagen, espera un momento para que aparezca.</string>
     <string name="choose_from_library">Elegir de la biblioteca</string>
     <string name="remove_custom_image">Quitar imagen personalizada</string>
@@ -962,8 +962,8 @@
     <string name="logout_dialog_title">Cerrar sesión</string>
     <string name="logout_dialog_message">¿Deseas conservar la biblioteca y otros datos?</string>
     <string name="disable">Desactivar</string>
-    <string name="pause_remote_listen_history">Pausar compartir historial con YouTube Music</string>
-    <string name="not_logged_in_youtube">No has iniciado sesión en YouTube</string>
+    <string name="pause_remote_listen_history">Pausar compartir el historial con tu biblioteca sincronizada</string>
+    <string name="not_logged_in_youtube">No has iniciado sesión para sincronizar</string>
     <string name="default_links">Abrir enlaces compatibles</string>
     <string name="open_app_settings_error">No se pudieron abrir los ajustes de la app</string>
     <string name="release_notes">Notas de la versión</string>
@@ -1058,7 +1058,7 @@
     <string name="scrobble_min_track_duration">Scrobblear canciones de más de</string>
     <string name="scrobble_delay_percent">Porcentaje de retraso de scrobble</string>
     <string name="scrobble_delay_minutes">Minutos de retraso de scrobble</string>
-    <string name="hide_video_songs">Ocultar videos de YTube</string>
+    <string name="hide_video_songs">Ocultar contenido proveniente de videos</string>
     <string name="hide_youtube_shorts">Ocultar Cortos</string>
     <string name="details_desc">Ver información de la canción</string>
     <string name="edit_desc">Cambiar título o artista</string>
@@ -1084,7 +1084,7 @@
     <string name="export_channel_name">Exportación de música</string>
     <string name="filter_exported">Exportado</string>
     <string name="add_to_playlist_desc">Añadir a una lista de reproducción</string>
-    <string name="refetch_desc">Obtener metadatos actualizados de YouTube Music</string>
+    <string name="refetch_desc">Obtener los metadatos actualizados</string>
     <string name="share_desc">Compartir enlace a este elemento</string>
     <string name="delete_desc">Eliminar este elemento permanentemente</string>
     <string name="advanced_desc">Cambiar tempo y tono</string>
@@ -1103,10 +1103,10 @@
     <string name="glow">Resplandor</string>
     <string name="slide">Deslizar</string>
     <string name="karaoke">Karaoke</string>
-    <string name="apple_music_style">Apple Music</string>
-    <string name="apple_music_style_letter">Apple Music V2 (Letra por letra)</string>
+    <string name="apple_music_style">Estilo clásico</string>
+    <string name="apple_music_style_letter">Letra por letra</string>
     <string name="echomusic_1">Vivi Music (Fluido)</string>
-    <string name="apple_music_lyrics_blur">Desenfoque de letras Apple Music</string>
+    <string name="apple_music_lyrics_blur">Desenfoque de letras</string>
     <string name="apple_music_lyrics_blur_desc">Aplica desenfoque a las líneas inactivas</string>
     <string name="lyrics_v2_fluid">Letras V2 (Fluido)</string>
     <string name="lyrics_animation_metro">MetroLyrics</string>
@@ -1135,14 +1135,14 @@
     <string name="wrapped_total_artists_subtitle">artistas únicos</string>
     <string name="wrapped_total_songs_title">Escuchaste</string>
     <string name="wrapped_total_songs_subtitle">canciones únicas</string>
-    <string name="wrapped_intro_title">echomusic</string>
+    <string name="wrapped_intro_title">FridaMusic</string>
     <string name="wrapped_intro_subtitle">es hora de ver qué has estado escuchando</string>
     <string name="wrapped_intro_button">¡vamos!</string>
-    <string name="wrapped_end_thanks">¡Gracias por escuchar con echomusic!</string>
+    <string name="wrapped_end_thanks">¡Gracias por escuchar con FridaMusic!</string>
     <string name="wrapped_end_create_playlist">Crear tu lista Wrapped</string>
     <string name="wrapped_end_creating_playlist">Creando…</string>
     <string name="wrapped_end_playlist_saved">Lista guardada</string>
-    <string name="wrapped_logo_content_description">Logo de echomusic</string>
+    <string name="wrapped_logo_content_description">Logo de FridaMusic</string>
     <string name="wrapped_year">2025</string>
     <string name="wrapped_ready_title">¡TU WRAPPED ESTÁ LISTO!</string>
     <string name="wrapped_ready_subtitle">Es hora de ver qué amaste este año.</string>
@@ -1216,9 +1216,9 @@
     <string name="plays">reproducciones</string>
     <string name="casting_to">Transmitiendo a %s</string>
     <string name="progress_percent">Progreso %s%%</string>
-    <string name="listening_to_echomusic">Escuchando en echomusic</string>
-    <string name="listen_on_youtube_music">Escuchar en YouTube Music</string>
-    <string name="visit_echomusic">Visitar echomusic</string>
+    <string name="listening_to_echomusic">Escuchando en FridaMusic</string>
+    <string name="listen_on_youtube_music">Abrir fuente original</string>
+    <string name="visit_echomusic">Visitar FridaMusic</string>
     <string name="open">Abrir</string>
     <string name="failed_to_create_image">Error al crear imagen: %s</string>
     <string name="copied_title">Título copiado</string>
@@ -1231,28 +1231,28 @@
     <string name="error_copy_hint">Copia info de error para ayudar a los desarrolladores</string>
     <string name="album_art">Arte del álbum</string>
     <string name="no_song_playing">No hay canción sonando</string>
-    <string name="tap_to_open">Toca para abrir echomusic</string>
+    <string name="tap_to_open">Toca para abrir FridaMusic</string>
     <string name="previous">Anterior</string>
     <string name="play_pause">Play/Pausa</string>
     <string name="next">Siguiente</string>
     <string name="like">Me gusta</string>
     <string name="not_playing">Sin música</string>
-    <string name="tap_to_play">Toca para abrir echomusic</string>
+    <string name="tap_to_play">Toca para abrir FridaMusic</string>
     <string name="widget_description">Widget con controles de reproducción</string>
     <string name="queue_widget_description">Reproductor con vista previa de cola</string>
     <string name="turntable_widget_description">Widget circular con controles</string>
     <string name="widget_music_player">Reproductor de Música</string>
     <string name="widget_turntable">Tocadiscos</string>
     <string name="player_client">Cliente del reproductor</string>
-    <string name="player_client_android_vr">Android VR</string>
-    <string name="player_client_android_vr_desc">Opción más rápida. URLs directas sin descifrado de firma.</string>
-    <string name="player_client_web_remix">Web Remix</string>
-    <string name="player_client_web_remix_desc">Más lento pero soporta formatos premium.</string>
-    <string name="decryption_library">Biblioteca de descifrado</string>
-    <string name="decryption_library_newpipe">NewPipe Extractor (Oficial)</string>
-    <string name="decryption_library_newpipe_desc">Biblioteca oficial TeamNewPipe. Recomendada.</string>
-    <string name="decryption_library_pipepipe_api">PipePipe API</string>
-    <string name="decryption_library_pipepipe_api_desc">Descifrado basado en API usando MetroExtractor.</string>
+    <string name="player_client_android_vr">Cliente rápido</string>
+    <string name="player_client_android_vr_desc">Opción más rápida para la mayoría de usuarios.</string>
+    <string name="player_client_web_remix">Cliente compatible</string>
+    <string name="player_client_web_remix_desc">Opción de compatibilidad para los formatos que la necesiten. Puede tardar más en iniciar la reproducción.</string>
+    <string name="decryption_library">Motor de reproducción</string>
+    <string name="decryption_library_newpipe">Motor recomendado</string>
+    <string name="decryption_library_newpipe_desc">Opción más rápida y recomendada para la mayoría de usuarios.</string>
+    <string name="decryption_library_pipepipe_api">Motor alternativo</string>
+    <string name="decryption_library_pipepipe_api_desc">Motor alternativo de compatibilidad. Puede tardar más en resolver la reproducción.</string>
     <string name="together">Juntos</string>
     <string name="listen_together">Escuchar juntos</string>
     <string name="listen_together_desc">Escucha música con amigos en tiempo real</string>
@@ -1388,7 +1388,7 @@
     <string name="crash_share_logs">Compartir registros</string>
     <string name="copy_logs">Copiar registros</string>
     <string name="crash_share_title">Compartir reporte de error</string>
-    <string name="crash_report_subject">Reporte de error echomusic</string>
+    <string name="crash_report_subject">Reporte de error FridaMusic</string>
     <string name="crash_close">Cerrar</string>
     <string name="crash_no_log">No hay registro disponible</string>
     <string name="crash_send_report">Enviar reporte</string>
@@ -1443,7 +1443,7 @@
     <string name="first_row_is_header">La primera fila es encabezado</string>
     <string name="artist_name_column">Columna de artista</string>
     <string name="song_title_column">Columna de título</string>
-    <string name="youtube_url_column">Columna URL YouTube (Opcional)</string>
+    <string name="youtube_url_column">Columna URL de fuente original (Opcional)</string>
     <string name="continue_action">Continuar</string>
     <string name="importing_csv">Importando CSV</string>
     <string name="recently_converted">Convertidos recientemente</string>
@@ -1534,14 +1534,14 @@
     <string name="get_started">Empezar</string>
     <string name="perm_required">Requerido</string>
     <string name="perm_permissions">Permisos</string>
-    <string name="perm_intro_text">Estos permisos son necesarios para que echomusic funcione.</string>
+    <string name="perm_intro_text">Estos permisos son necesarios para que FridaMusic funcione.</string>
     <string name="perm_notif_title">Notificaciones</string>
     <string name="perm_notif_desc">Controla la música desde la barra de notificaciones.</string>
     <string name="perm_install_title">Instalación de apps</string>
     <string name="perm_install_desc">Necesario para instalar actualizaciones sin problemas.</string>
     <string name="feat_discover">Descubrir</string>
     <string name="feat_features">Funciones</string>
-    <string name="feat_intro">Explora todo lo que echomusic tiene para ofrecer.</string>
+    <string name="feat_intro">Explora todo lo que FridaMusic tiene para ofrecer.</string>
     <string name="feat_lyrics_title">Letras inteligentes</string>
     <string name="feat_lyrics_desc">Letras sincronizadas para millones de canciones.</string>
     <string name="feat_download_title">Escucha sin conexión</string>
@@ -1559,7 +1559,7 @@
     <string name="welcome_update_status">Actualizado</string>
     <string name="welcome_update_intro">Asegurando que tengas las últimas mejoras.</string>
     <string name="welcome_checking_updates">Buscando actualizaciones…</string>
-    <string name="welcome_up_to_date">¡echomusic está al día!</string>
+    <string name="welcome_up_to_date">¡FridaMusic está al día!</string>
     <string name="welcome_update_available">Nueva versión: %s</string>
     <string name="welcome_everything_ready">Todo está listo</string>
     <string name="commits_title">Commits</string>
@@ -1672,7 +1672,9 @@
     <string name="playback_desc_short">Comportamiento del audio, calidad y cola</string>
     <string name="appearance_desc_short">Temas, colores e idioma</string>
     <string name="lyrics_desc_short">Proveedores de letras, precarga y karaoke</string>
-    <string name="services_desc_short">Last.fm, ListenBrainz, Discord y Frida Labs AI</string>
+    <string name="services_desc_short">Frida Labs AI, Notificaciones, Last.fm, ListenBrainz…</string>
+    <string name="lyrics_provider_synced_subtitle">Sincronizado Subtitle</string>
+    <string name="lyrics_provider_synced_music">Sincronizado Music</string>
     <string name="privacy_desc_short">Historial de escucha, búsqueda y capturas</string>
     <string name="network_desc_short">Proxy y configuración de conexión</string>
     <string name="podcasts">Pódcasts</string>
@@ -1735,9 +1737,9 @@
     <string name="stat_period_1y">1 año</string>
     <string name="stat_period_all">Todo el tiempo</string>
     <string name="stats_desc_short">Canciones, artistas y álbumes más escuchados</string>
-    <string name="library_refresh">Actualizar biblioteca de YouTube Music</string>
+    <string name="library_refresh">Actualizar biblioteca sincronizada</string>
     <string name="library_sync_offline">No hay conexión. Tu biblioteca guardada sigue disponible.</string>
-    <string name="library_sync_session_expired">Tu sesión de YouTube Music expiró. Inicia sesión de nuevo para continuar la sincronización.</string>
+    <string name="library_sync_session_expired">Tu sesión de sincronización expiró. Inicia sesión de nuevo para continuar.</string>
     <string name="library_sync_failed">No se pudo actualizar la biblioteca. Tus datos guardados siguen disponibles.</string>
     <string name="about_desc_short">Equipo, versión y licencias de código abierto</string>
     <string name="about_team">Equipo</string>

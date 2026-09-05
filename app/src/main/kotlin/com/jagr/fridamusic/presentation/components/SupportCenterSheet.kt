@@ -1,6 +1,7 @@
 package com.jagr.fridamusic.presentation.components
 
 import androidx.annotation.StringRes
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,6 +92,7 @@ fun SupportCenterSheet(
     onWatchAdClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val billingState by billing.state.collectAsState()
     val capabilities = billing.capabilities
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -165,9 +167,7 @@ fun SupportCenterSheet(
                                 enabled = !purchaseBusy,
                                 loading = activeProductId == product.id,
                                 onClick = {
-                                    context.findActivity()?.let { activity ->
-                                        billing.launchPurchase(activity, product)
-                                    }
+                                    activity?.let { billing.launchPurchase(it, product) }
                                 },
                             )
                         }
@@ -179,9 +179,7 @@ fun SupportCenterSheet(
                             enabled = !purchaseBusy,
                             activeProductId = activeProductId,
                             onProductClick = { product ->
-                                context.findActivity()?.let { activity ->
-                                    billing.launchPurchase(activity, product)
-                                }
+                                activity?.let { billing.launchPurchase(it, product) }
                             },
                         )
                     }
@@ -683,10 +681,5 @@ private fun supportLinkMessage(result: SupportLinkResult): Int = when (result) {
     SupportLinkResult.UNAVAILABLE -> R.string.support_no_compatible_app
 }
 
-private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
-    is android.app.Activity -> this
-    is android.content.ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 private const val FEATURED_PRODUCT_ID = "support_50"
