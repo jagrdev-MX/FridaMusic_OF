@@ -40,9 +40,10 @@ data class Playlist(
             else songThumbnails.filterNotNull()
         }
 
-    val effectiveSongCount: Int
+    val effectiveSongCount: Int?
         get() = if (playlist.browseId != null && !playlist.isLocal) {
-            maxOf(songCount, playlist.remoteSongCount ?: 0)
+            playlist.remoteSongCount?.let { maxOf(songCount, it) }
+                ?: songCount.takeIf { it > 0 }
         } else {
             songCount
         }

@@ -12,6 +12,10 @@ data class Artist(
     val songCount: Int,
     val timeListened: Int? = 0,
 ) : LocalItem() {
+    // This is the materialized library count, never a remote discography total.
+    val effectiveSongCount: Int?
+        get() = songCount.takeIf { it > 0 || artist.isLocal }
+
     override val id: String
         get() = artist.id
     override val title: String

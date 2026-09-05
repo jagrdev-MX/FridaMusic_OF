@@ -1,5 +1,7 @@
 package com.jagr.fridamusic.presentation.components
 
+import androidx.compose.ui.platform.LocalContext
+import com.jagr.fridamusic.utils.songCountText
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -238,11 +240,13 @@ fun PlaylistLibraryListItem(
                     overflow = TextOverflow.Ellipsis,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                playlist.songCountText(LocalContext.current.resources)?.let { countText ->
+                    Text(
+                        text = countText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (selectionMode) {
                 Icon(
@@ -363,12 +367,14 @@ fun PlaylistLibraryGridItem(
                 overflow = TextOverflow.Ellipsis,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
+            playlist.songCountText(LocalContext.current.resources)?.let { countText ->
+                Text(
+                    text = countText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -556,11 +562,13 @@ fun PlaylistLibraryActionsSheet(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = stringResource(R.string.playlist_song_count, playlist.effectiveSongCount),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    playlist.songCountText(LocalContext.current.resources)?.let { countText ->
+                        Text(
+                            text = countText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

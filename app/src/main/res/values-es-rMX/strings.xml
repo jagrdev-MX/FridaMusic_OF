@@ -1697,7 +1697,7 @@
     <string name="internal_crashlytics_test_title">Firebase / Crashlytics</string>
     <string name="internal_crashlytics_nonfatal">Enviar non-fatal de prueba</string>
     <string name="internal_crashlytics_fatal">Provocar crash fatal de prueba</string>
-    <string name="internal_crashlytics_nonfatal_sent">Non-fatal enviado a Crashlytics</string>
+    <string name="internal_crashlytics_nonfatal_sent">Non-fatal registrado localmente; verifica recepción en Firebase</string>
     <string name="internal_crashlytics_fatal_confirm_title">Crash de prueba</string>
     <string name="internal_crashlytics_fatal_confirm_message">Esta acción cerrará FridaMusic intencionalmente para verificar Firebase Crashlytics.</string>
     <string name="internal_crashlytics_fatal_confirm">Provocar crash</string>
@@ -2036,4 +2036,6 @@
         <item>Descubre las canciones y artistas que marcaron %1$s.</item>
         <item>Abre tu resumen local de reproducción de %1$s.</item>
     </string-array>
+    <string name="library_artist_song_count">%1$d canciones en biblioteca</string>
+    <string name="internal_crashlytics_unavailable">Crashlytics no disponible o recolección deshabilitada</string>
 </resources>

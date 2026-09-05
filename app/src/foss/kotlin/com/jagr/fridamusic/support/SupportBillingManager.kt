@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class SupportBillingManager(context: Context) : SupportBilling {
     private val _state = MutableStateFlow<SupportBillingState>(
-        SupportBillingState.BillingReady(emptyList()),
+        SupportBillingState().catalogReady(emptyList()),
     )
 
     override val state: StateFlow<SupportBillingState> = _state.asStateFlow()
@@ -23,5 +23,6 @@ class SupportBillingManager(context: Context) : SupportBilling {
     override fun refresh() = Unit
     override fun onResume() = Unit
     override fun launchPurchase(activity: Activity, product: SupportProduct) = Unit
+    override fun clearTransientPurchaseState() = Unit
     override fun close() = Unit
 }

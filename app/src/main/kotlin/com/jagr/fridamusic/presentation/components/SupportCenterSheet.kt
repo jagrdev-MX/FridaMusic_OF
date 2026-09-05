@@ -73,14 +73,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.support.SupportBilling
+import com.jagr.fridamusic.support.SupportCatalogStatus
 import com.jagr.fridamusic.support.SupportBillingDebugController
 import com.jagr.fridamusic.support.SupportBillingIssue
 import com.jagr.fridamusic.support.SupportBillingState
 import com.jagr.fridamusic.support.SupportDebugScenario
 import com.jagr.fridamusic.support.SupportLinkResult
 import com.jagr.fridamusic.support.SupportProduct
+import com.jagr.fridamusic.support.SupportPurchaseState
+import com.jagr.fridamusic.support.isBusy
+import com.jagr.fridamusic.support.isTransientTerminal
 import com.jagr.fridamusic.support.openFridaMusicPlayStore
 import com.jagr.fridamusic.support.openSupportPayPal
+import kotlinx.coroutines.delay
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -96,28 +101,36 @@ fun SupportCenterSheet(
     val billingState by billing.state.collectAsState()
     val capabilities = billing.capabilities
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var visibleProducts by remember { mutableStateOf(emptyList<SupportProduct>()) }
-    var debugPreview by remember { mutableStateOf(false) }
     var linkMessage by remember { mutableStateOf<Int?>(null) }
+    val catalog = billingState.catalog
+    val purchase = billingState.purchase
+    val visibleProducts = catalog.products
+    val debugPreview = catalog.isDebugPreview
 
-    LaunchedEffect(billingState) {
-        if (billingState is SupportBillingState.BillingReady) {
-            val ready = billingState as SupportBillingState.BillingReady
-            visibleProducts = ready.products
-            debugPreview = ready.isDebugPreview
+    LaunchedEffect(billing) {
+        billing.clearTransientPurchaseState()
+    }
+    LaunchedEffect(purchase) {
+        if (purchase.isTransientTerminal) {
+            delay(PURCHASE_STATUS_DURATION_MS)
+            billing.clearTransientPurchaseState()
         }
     }
 
-    val activeProductId = when (val current = billingState) {
-        is SupportBillingState.PurchaseStarted -> current.productId
-        is SupportBillingState.PurchasePending -> current.productId
+    val activeProductId = when (purchase) {
+        is SupportPurchaseState.Started -> purchase.productId
+        is SupportPurchaseState.Pending -> purchase.productId
         else -> null
     }
-    val purchaseBusy = billingState is SupportBillingState.PurchaseStarted ||
-        billingState is SupportBillingState.PurchasePending
+    val purchaseBusy = purchase.isBusy
+    val productsEnabled = !purchaseBusy && catalog.status == SupportCatalogStatus.READY
+    val dismissSheet = {
+        billing.clearTransientPurchaseState()
+        onDismiss()
+    }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissSheet,
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
     ) {
@@ -128,7 +141,7 @@ fun SupportCenterSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
-                SupportHeader(onDismiss = onDismiss)
+                SupportHeader(onDismiss = dismissSheet)
             }
 
             if (capabilities.googlePlayRating) {
@@ -154,7 +167,7 @@ fun SupportCenterSheet(
             )
 
             if (capabilities.googlePlayBilling) {
-                if (visibleProducts.isEmpty() && billingState is SupportBillingState.BillingReady) {
+                if (visibleProducts.isEmpty() && catalog.status == SupportCatalogStatus.READY) {
                     item {
                         EmptyProductsCard(onRetry = billing::refresh)
                     }
@@ -164,7 +177,7 @@ fun SupportCenterSheet(
                         item(key = "featured_${product.id}") {
                             FeaturedSupportCard(
                                 product = product,
-                                enabled = !purchaseBusy,
+                                enabled = productsEnabled,
                                 loading = activeProductId == product.id,
                                 onClick = {
                                     activity?.let { billing.launchPurchase(it, product) }
@@ -176,7 +189,7 @@ fun SupportCenterSheet(
                     item {
                         SupportProductsGrid(
                             products = visibleProducts.filterNot { it.id == FEATURED_PRODUCT_ID },
-                            enabled = !purchaseBusy,
+                            enabled = productsEnabled,
                             activeProductId = activeProductId,
                             onProductClick = { product ->
                                 activity?.let { billing.launchPurchase(it, product) }
@@ -206,7 +219,10 @@ fun SupportCenterSheet(
                     icon = Icons.Rounded.PlayArrow,
                     title = stringResource(R.string.support_watch_ad_title),
                     description = stringResource(R.string.support_watch_ad_description),
-                    onClick = onWatchAdClick,
+                    onClick = {
+                        billing.clearTransientPurchaseState()
+                        onWatchAdClick()
+                    },
                 )
             }
 
@@ -280,29 +296,37 @@ private fun androidx.compose.foundation.lazy.LazyListScope.supportStatusContent(
     showBillingStatus: Boolean,
     onRetry: () -> Unit,
 ) {
-    val status = if (showBillingStatus) when (billingState) {
-        SupportBillingState.BillingLoading -> R.string.support_billing_loading
-        is SupportBillingState.BillingReady -> null
-        is SupportBillingState.BillingUnavailable -> billingIssueMessage(billingState.issue)
-        is SupportBillingState.PurchaseStarted -> if (debugPreview) {
+    val purchase = billingState.purchase
+    val catalog = billingState.catalog
+    val purchaseStatus = when (purchase) {
+        SupportPurchaseState.Idle -> null
+        is SupportPurchaseState.Started -> if (debugPreview) {
             R.string.support_debug_purchase_started
         } else {
             R.string.support_purchase_started
         }
-        is SupportBillingState.PurchasePending -> R.string.support_purchase_pending
-        is SupportBillingState.PurchaseCompleted -> R.string.support_purchase_completed
-        is SupportBillingState.PurchaseError -> billingIssueMessage(billingState.issue)
-    } else null
+        is SupportPurchaseState.Pending -> R.string.support_purchase_pending
+        is SupportPurchaseState.Completed -> R.string.support_purchase_completed
+        SupportPurchaseState.Cancelled -> R.string.support_purchase_cancelled
+        is SupportPurchaseState.Error -> billingIssueMessage(purchase.issue)
+    }
+    val catalogStatus = when (catalog.status) {
+        SupportCatalogStatus.LOADING -> R.string.support_billing_loading
+        SupportCatalogStatus.READY -> null
+        SupportCatalogStatus.UNAVAILABLE -> billingIssueMessage(
+            catalog.issue ?: SupportBillingIssue.BILLING_UNAVAILABLE,
+        )
+    }
+    val status = if (showBillingStatus) purchaseStatus ?: catalogStatus else null
     status?.let { message ->
         item(key = "billing_status") {
             SupportMessageCard(
                 message = message,
-                loading = billingState is SupportBillingState.BillingLoading ||
-                    billingState is SupportBillingState.PurchaseStarted,
+                loading = catalog.status == SupportCatalogStatus.LOADING ||
+                    purchase is SupportPurchaseState.Started,
                 onRetry = onRetry.takeIf {
-                    billingState is SupportBillingState.BillingUnavailable ||
-                        (billingState is SupportBillingState.PurchaseError &&
-                            billingState.issue != SupportBillingIssue.PURCHASE_CANCELLED)
+                    catalog.status == SupportCatalogStatus.UNAVAILABLE ||
+                        purchase is SupportPurchaseState.Error
                 },
             )
         }
@@ -668,7 +692,6 @@ private fun billingIssueMessage(issue: SupportBillingIssue): Int = when (issue) 
     SupportBillingIssue.BILLING_UNAVAILABLE -> R.string.support_billing_unavailable
     SupportBillingIssue.SERVICE_DISCONNECTED -> R.string.support_billing_disconnected
     SupportBillingIssue.PRODUCT_UNAVAILABLE -> R.string.support_product_unavailable
-    SupportBillingIssue.PURCHASE_CANCELLED -> R.string.support_purchase_cancelled
     SupportBillingIssue.PURCHASE_ERROR -> R.string.support_purchase_error
     SupportBillingIssue.CONSUMPTION_ERROR -> R.string.support_consumption_error
 }
@@ -683,3 +706,4 @@ private fun supportLinkMessage(result: SupportLinkResult): Int = when (result) {
 
 
 private const val FEATURED_PRODUCT_ID = "support_50"
+private const val PURCHASE_STATUS_DURATION_MS = 4_000L

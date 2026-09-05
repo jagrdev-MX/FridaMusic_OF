@@ -13,28 +13,37 @@ class UniversalGmsDebugSupportTools(
     }
 
     override fun simulate(scenario: SupportDebugScenario) {
-        val state = when (scenario) {
-            SupportDebugScenario.SUCCESS -> SupportBillingState.PurchaseCompleted("support_50")
-            SupportDebugScenario.PENDING -> SupportBillingState.PurchasePending("support_50")
-            SupportDebugScenario.CANCELLED -> SupportBillingState.PurchaseError(
-                SupportBillingIssue.PURCHASE_CANCELLED,
+        when (scenario) {
+            SupportDebugScenario.SUCCESS -> host.simulateDebugPurchaseState(
+                SupportPurchaseState.Completed("support_50"),
             )
-            SupportDebugScenario.ERROR -> SupportBillingState.PurchaseError(
-                SupportBillingIssue.PURCHASE_ERROR,
+            SupportDebugScenario.PENDING -> host.simulateDebugPurchaseState(
+                SupportPurchaseState.Pending("support_50"),
             )
-            SupportDebugScenario.BILLING_UNAVAILABLE -> SupportBillingState.BillingUnavailable(
-                SupportBillingIssue.BILLING_UNAVAILABLE,
+            SupportDebugScenario.CANCELLED -> host.simulateDebugPurchaseState(
+                SupportPurchaseState.Cancelled,
             )
-            SupportDebugScenario.EMPTY_PRODUCTS -> SupportBillingState.BillingReady(
-                products = emptyList(),
-                isDebugPreview = true,
+            SupportDebugScenario.ERROR -> host.simulateDebugPurchaseState(
+                SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR),
+            )
+            SupportDebugScenario.BILLING_UNAVAILABLE -> host.simulateDebugCatalogState(
+                SupportCatalogState(
+                    status = SupportCatalogStatus.UNAVAILABLE,
+                    issue = SupportBillingIssue.BILLING_UNAVAILABLE,
+                    isDebugPreview = true,
+                ),
+            )
+            SupportDebugScenario.EMPTY_PRODUCTS -> host.simulateDebugCatalogState(
+                SupportCatalogState(
+                    status = SupportCatalogStatus.READY,
+                    isDebugPreview = true,
+                ),
             )
         }
-        host.simulateDebugState(state)
     }
 
     override fun onMockProductClick(productId: String) {
-        host.simulateDebugState(SupportBillingState.PurchaseStarted(productId))
+        host.simulateDebugPurchaseState(SupportPurchaseState.Started(productId))
     }
 
     private companion object {

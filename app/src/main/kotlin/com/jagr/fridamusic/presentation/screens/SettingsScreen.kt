@@ -831,10 +831,10 @@ private fun InternalCrashlyticsTestAction() {
         )
         Button(
             onClick = {
-                CrashReporter.recordNonFatal(
+                val dispatched = CrashReporter.recordNonFatal(
                     RuntimeException("FridaMusic Crashlytics non-fatal test"),
                 )
-                Toast.makeText(context, nonFatalSentMessage, Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, if (dispatched) nonFatalSentMessage else context.getString(R.string.internal_crashlytics_unavailable), Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth(),
         ) {

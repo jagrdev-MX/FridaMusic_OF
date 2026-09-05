@@ -2,6 +2,7 @@
 
 package com.jagr.fridamusic.playback
 
+import com.jagr.fridamusic.utils.songCountText
 import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
@@ -147,11 +148,7 @@ constructor(
                             browsableMediaItem(
                                 "${MusicService.ARTIST}/${artist.id}",
                                 artist.artist.name,
-                                context.resources.getQuantityString(
-                                    R.plurals.n_song,
-                                    artist.songCount,
-                                    artist.songCount
-                                ),
+                                artist.songCountText(context.resources),
                                 artist.artist.thumbnailUrl?.toUri(),
                                 MediaMetadata.MEDIA_TYPE_ARTIST,
                                 singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
@@ -662,11 +659,7 @@ constructor(
                         browsableMediaItem(
                             "${MusicService.ARTIST}/${artist.id}",
                             artist.artist.name,
-                            context.resources.getQuantityString(
-                                R.plurals.n_song,
-                                artist.songCount,
-                                artist.songCount
-                            ),
+                            artist.songCountText(context.resources),
                             artist.artist.thumbnailUrl?.toUri(),
                             MediaMetadata.MEDIA_TYPE_ARTIST,
                             singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
@@ -801,11 +794,7 @@ constructor(
     private fun com.jagr.fridamusic.db.entities.Playlist.toBrowsableMediaItem() = browsableMediaItem(
         "${MusicService.PLAYLIST}/$id",
         playlist.name,
-        context.resources.getQuantityString(
-            R.plurals.n_song,
-            songCount,
-            songCount
-        ),
+        songCountText(context.resources),
         thumbnails.firstOrNull()?.toUri(),
         MediaMetadata.MEDIA_TYPE_PLAYLIST,
         singleItemStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,

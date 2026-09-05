@@ -71,6 +71,8 @@ data class PlaylistItem(
     val isEditable: Boolean = false,
     val description: String? = null,
 ) : YTItem() {
+    val songCount: Int? get() = parsePlaylistSongCount(songCountText)
+
     override val explicit: Boolean
         get() = false
     override val shareLink: String

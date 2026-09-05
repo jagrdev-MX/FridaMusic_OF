@@ -6,6 +6,7 @@ import com.music.innertube.models.Artist
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.MusicResponsiveListItemRenderer
 import com.music.innertube.models.MusicTwoRowItemRenderer
+import com.music.innertube.models.playlistSongCountText
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.Run
 import com.music.innertube.models.SongItem
@@ -44,7 +45,7 @@ data class LibraryPage(
                             id = it.navigationEndpoint?.browseEndpoint?.browseId
                         )
                     },
-                    songCountText = renderer.subtitle?.runs?.lastOrNull()?.text,
+                    songCountText = renderer.subtitle.playlistSongCountText(),
                     thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                     playEndpoint = renderer.thumbnailOverlay
                         ?.musicItemThumbnailOverlayRenderer?.content

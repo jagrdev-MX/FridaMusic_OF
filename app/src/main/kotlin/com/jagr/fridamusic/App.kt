@@ -68,6 +68,7 @@ class App : Application(), SingletonImageLoader.Factory {
         com.music.jiosaavn.DeviceRouter.init(this)
         timber.log.Timber.d("Device ID: ${com.music.jiosaavn.DeviceRouter.getDeviceId()} | Assigned JioSaavn Server: ${com.music.jiosaavn.DeviceRouter.getCurrentServer()}")
         
+        com.jagr.fridamusic.utils.CrashReporter.logDiagnostics(this)
         CrashHandler.install(this)
         showPendingCrashIfPresent()
 

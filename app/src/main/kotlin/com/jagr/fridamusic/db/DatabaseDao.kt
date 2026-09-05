@@ -1086,22 +1086,22 @@ interface DatabaseDao {
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY title")
+    @Query("SELECT * FROM album WHERE album.isUploaded = 1 ORDER BY title")
     fun albumsUploadedByNameAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY year")
+    @Query("SELECT * FROM album WHERE album.isUploaded = 1 ORDER BY year")
     fun albumsUploadedByYearAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY songCount")
+    @Query("SELECT * FROM album WHERE album.isUploaded = 1 ORDER BY songCount")
     fun albumsUploadedBySongCountAsc(): Flow<List<Album>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
-    @Query("SELECT * FROM album WHERE bookmarkedAt IS NOT NULL ORDER BY duration")
+    @Query("SELECT * FROM album WHERE album.isUploaded = 1 ORDER BY duration")
     fun albumsUploadedByLengthAsc(): Flow<List<Album>>
 
     @Transaction
@@ -1112,7 +1112,7 @@ interface DatabaseDao {
         FROM album
                  JOIN song
                       ON song.albumId = album.id
-        WHERE bookmarkedAt IS NOT NULL
+        WHERE album.isUploaded = 1
         GROUP BY album.id
         ORDER BY SUM(song.totalPlayTime)
     """
@@ -1819,9 +1819,7 @@ interface DatabaseDao {
                         name = item.title,
                         browseId = item.id,
                         isEditable = item.isEditable,
-                        remoteSongCount = item.songCountText
-                            ?.filter(Char::isDigit)
-                            ?.toIntOrNull(),
+                        remoteSongCount = item.songCount,
                         thumbnailUrl = item.thumbnail,
                         isLocal = false,
                     ),
@@ -2036,6 +2034,10 @@ interface DatabaseDao {
         }
     }
 
+    // Target only count metadata: a detail response must not overwrite a concurrent rename/bookmark.
+    @Query("UPDATE playlist SET remoteSongCount = :count WHERE browseId = :browseId AND isLocal = 0 AND (remoteSongCount IS NULL OR remoteSongCount != :count)")
+    fun updateRemotePlaylistSongCount(browseId: String, count: Int)
+
     @Update
     fun update(playlistEntity: PlaylistEntity, playlistItem: PlaylistItem) {
         update(
@@ -2044,7 +2046,7 @@ interface DatabaseDao {
                 browseId = playlistItem.id,
                 thumbnailUrl = playlistItem.thumbnail,
                 isEditable = playlistItem.isEditable,
-                remoteSongCount = playlistItem.songCountText?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },
+                remoteSongCount = playlistItem.songCount ?: playlistEntity.remoteSongCount,
                 playEndpointParams = playlistItem.playEndpoint?.params,
                 shuffleEndpointParams = playlistItem.shuffleEndpoint?.params,
                 radioEndpointParams = playlistItem.radioEndpoint?.params

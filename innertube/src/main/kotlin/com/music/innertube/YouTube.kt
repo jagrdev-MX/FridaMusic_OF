@@ -23,6 +23,8 @@ import com.music.innertube.models.YouTubeClient
 import com.music.innertube.models.YouTubeClient.Companion.WEB
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.YouTubeLocale
+import com.music.innertube.models.playlistSongCountText
+import com.music.innertube.models.parsePlaylistSongCount
 import com.music.innertube.models.extractCountText
 import com.music.innertube.models.getContinuation
 import com.music.innertube.models.getItems
@@ -616,10 +618,9 @@ object YouTube {
             ?: fallbackMusicShelf?.contents?.getContinuation()
             ?: fallbackMusicShelf?.continuations?.getContinuation()
 
-        val songCountText = responsiveHeader?.secondSubtitle?.runs?.firstOrNull()?.text
-            ?: detailHeader?.secondSubtitle?.runs?.firstOrNull()?.text
-        val reportedSongCount = songCountText
-            ?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() }
+        val songCountText = responsiveHeader?.secondSubtitle.playlistSongCountText()
+            ?: detailHeader?.secondSubtitle.playlistSongCountText()
+        val reportedSongCount = parsePlaylistSongCount(songCountText)
         val hasSongSection = playlistShelf != null ||
             fallbackMusicShelf != null ||
             itemSectionRenderers.isNotEmpty()
@@ -957,7 +958,7 @@ object YouTube {
             author = renderer.subtitle?.runs?.lastOrNull()?.text?.let {
                 Artist(name = it, id = null)
             },
-            songCountText = renderer.subtitle?.extractCountText(),
+            songCountText = renderer.subtitle.playlistSongCountText(),
             thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl(),
             playEndpoint = playEndpoint,
             shuffleEndpoint = menuItems.firstNotNullOfOrNull { item ->

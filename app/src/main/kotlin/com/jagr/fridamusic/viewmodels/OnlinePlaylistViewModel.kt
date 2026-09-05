@@ -34,7 +34,7 @@ import javax.inject.Inject
 class OnlinePlaylistViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
-    database: MusicDatabase
+    private val database: MusicDatabase
 ) : ViewModel() {
     private val playlistId = savedStateHandle.get<String>("playlistId")!!
 
@@ -56,6 +56,8 @@ class OnlinePlaylistViewModel @Inject constructor(
 
     var continuation: String? = null
         private set
+
+    private var loadedEntryCount = 0
 
     private val continuationMutex = Mutex()
     private val seenContinuations = mutableSetOf<String>()
@@ -80,7 +82,13 @@ class OnlinePlaylistViewModel @Inject constructor(
 
             YouTube.playlist(playlistId)
                 .onSuccess { playlistPage ->
-                    playlist.value = playlistPage.playlist
+                    loadedEntryCount = playlistPage.songs.size
+                    val knownCount = playlistPage.playlist.songCount
+                        ?: loadedEntryCount.takeIf { playlistPage.songsContinuation == null }
+                    knownCount?.let { database.updateRemotePlaylistSongCount(playlistId.removePrefix("VL"), it) }
+                    playlist.value = playlistPage.playlist.copy(
+                        songCountText = knownCount?.toString() ?: playlistPage.playlist.songCountText,
+                    )
                     playlistSongs.value = applySongFilters(playlistPage.songs)
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
@@ -122,6 +130,12 @@ class OnlinePlaylistViewModel @Inject constructor(
 
             continuationResult
                 .onSuccess { playlistContinuationPage ->
+                    loadedEntryCount += playlistContinuationPage.songs.size
+                    if (playlistContinuationPage.continuation == null) {
+                        val count = playlist.value?.songCount ?: loadedEntryCount
+                        database.updateRemotePlaylistSongCount(playlistId.removePrefix("VL"), count)
+                        playlist.value = playlist.value?.copy(songCountText = count.toString())
+                    }
                     val currentSongs = playlistSongs.value.toMutableList()
                     currentSongs.addAll(playlistContinuationPage.songs)
                     playlistSongs.value = applySongFilters(currentSongs)

@@ -1,5 +1,7 @@
 package com.jagr.fridamusic.presentation.screens
 
+import androidx.compose.ui.platform.LocalContext
+import com.jagr.fridamusic.utils.songCountText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -161,7 +163,7 @@ fun HomeCollectionScreen(
                         is Song -> item.artists.joinToString(", ") { it.name }
                         is Album -> item.artists.joinToString(", ") { it.name }
                         is Artist -> stringResource(R.string.artists)
-                        is Playlist -> stringResource(R.string.playlist_song_count, item.songCount)
+                        is Playlist -> item.songCountText(LocalContext.current.resources)
                     }
                     val active = when (item) {
                         is Song -> item.id == mediaMetadata?.id

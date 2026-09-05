@@ -123,8 +123,7 @@ constructor(
                         name = playlist.title,
                         browseId = browseId,
                         isEditable = playlist.isEditable,
-                        remoteSongCount = playlist.songCountText
-                            ?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },
+                        remoteSongCount = playlist.songCount,
                         playEndpointParams = playlist.playEndpoint?.params,
                         thumbnailUrl = playlist.thumbnail,
                         shuffleEndpointParams = playlist.shuffleEndpoint?.params,

@@ -23,14 +23,28 @@ plugins {
     alias(libs.plugins.protobufPlugin)
 }
 
-val hasGoogleServicesConfig = file("google-services.json").exists()
 val discordSocialSdkAar = file("libs/discord_partner_sdk.aar")
 val discordRichPresenceEnabled = false
 val hasDiscordSocialSdk = discordRichPresenceEnabled && discordSocialSdkAar.isFile
 
-if (hasGoogleServicesConfig) {
-    apply(plugin = "com.google.gms.google-services")
-    apply(plugin = "com.google.firebase.crashlytics")
+// Always register processing: GMS Debug/Play builds must fail if their
+// variant JSON is missing or has no matching applicationId client.
+apply(plugin = "com.google.gms.google-services")
+apply(plugin = "com.google.firebase.crashlytics")
+
+// Plugins are project-scoped; skip their tasks for distributions without Firebase.
+tasks.configureEach {
+    if ((name.contains("Foss") || name.contains("Github")) &&
+        (name.contains("GoogleServices") || name.contains("Crashlytics"))) {
+        enabled = false
+    }
+}
+
+// Do not reuse Google resource outputs left by older FOSS/GitHub builds.
+tasks.withType<com.google.gms.googleservices.GoogleServicesTask>().configureEach {
+    if (name.contains("Foss") || name.contains("Github")) {
+        outputDirectory.set(layout.buildDirectory.dir("generated/res/firebaseDisabled/$name"))
+    }
 }
 
 android {
@@ -43,8 +57,8 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.4.17.253"
+        versionCode = 18
+        versionName = "1.5.18.254"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -255,6 +269,22 @@ android {
     }
 }
 
+// Firebase only in GMS debug/Play release; GitHub keeps the other GMS services.
+listOf("universal", "arm64", "armeabi", "x86", "x86_64").forEach { abi ->
+    listOf("Debug", "Release", "Github").forEach { buildType ->
+        val variantName = "${abi}Gms$buildType"
+        android.sourceSets.maybeCreate(variantName).kotlin.srcDir(
+            if (buildType == "Github") "src/noFirebase/kotlin" else "src/firebase/kotlin"
+        )
+        if (buildType != "Github") {
+            configurations.maybeCreate("${variantName}Implementation")
+            dependencies.add("${variantName}Implementation", dependencies.platform("com.google.firebase:firebase-bom:33.1.0"))
+            dependencies.add("${variantName}Implementation", "com.google.firebase:firebase-analytics")
+            dependencies.add("${variantName}Implementation", "com.google.firebase:firebase-crashlytics")
+        }
+    }
+}
+
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
@@ -291,9 +321,6 @@ dependencies {
         implementation(files(discordSocialSdkAar))
     }
 
-    "gmsImplementation"(platform("com.google.firebase:firebase-bom:33.1.0"))
-    "gmsImplementation"("com.google.firebase:firebase-analytics")
-    "gmsImplementation"("com.google.firebase:firebase-crashlytics")
 
     "gmsImplementation"(libs.play.services.auth)
     "gmsImplementation"(libs.play.services.ads)

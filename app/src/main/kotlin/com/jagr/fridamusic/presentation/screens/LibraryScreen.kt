@@ -1,5 +1,6 @@
 package com.jagr.fridamusic.presentation.screens
 
+import com.jagr.fridamusic.utils.songCountText
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -75,6 +76,10 @@ import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
 import com.jagr.fridamusic.constants.MiniPlayerHeight
 import com.jagr.fridamusic.constants.NavigationBarHeight
 import com.jagr.fridamusic.constants.MediumAnimationSpec
+import com.jagr.fridamusic.constants.LibraryAlbumsGridViewKey
+import com.jagr.fridamusic.constants.LibraryArtistsGridViewKey
+import com.jagr.fridamusic.constants.LibrarySongsGridViewKey
+import com.jagr.fridamusic.constants.LocalSongsGridViewKey
 import com.jagr.fridamusic.constants.PlaylistSortType
 import com.jagr.fridamusic.constants.SongSortType
 import com.jagr.fridamusic.db.entities.Album
@@ -108,6 +113,7 @@ import com.jagr.fridamusic.presentation.components.LibraryViewModeToggle
 import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.playback.queues.YouTubeQueue
+import com.jagr.fridamusic.utils.rememberPreference
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.CachePlaylistViewModel
 import com.jagr.fridamusic.viewmodels.LibraryAlbumsViewModel
@@ -591,6 +597,7 @@ private fun LibraryMixTab(
     cacheViewModel: CachePlaylistViewModel = hiltViewModel(),
     localSongsViewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val playlists by playlistsViewModel.allPlaylists.collectAsState()
     val artists by artistsViewModel.allArtists.collectAsState()
     val favoriteSongs by songsViewModel.favoriteSongs.collectAsState()
@@ -718,7 +725,7 @@ private fun LibraryMixTab(
                                 collectionMenu = LocalCollectionActionContext(
                                     id = playlist.id,
                                     title = playlist.title,
-                                    subtitle = "${playlist.effectiveSongCount} canciones",
+                                    subtitle = playlist.songCountText(context.resources),
                                     thumbnail = playlist.thumbnails.firstOrNull(),
                                     circularThumbnail = false,
                                     onOpen = { onLocalItemClick(playlist) },
@@ -868,6 +875,7 @@ private fun PlaylistCompactCard(
     onClick: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
+    val context = LocalContext.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -915,10 +923,12 @@ private fun PlaylistCompactCard(
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onBackground)
-        Text(text = "${playlist.effectiveSongCount} canciones",
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        playlist.songCountText(context.resources)?.let { countText ->
+            Text(text = countText,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        }
     }
 }
 
@@ -1352,7 +1362,7 @@ private fun PlaylistsTab(
     }
 
     menuPlaylist?.let { playlist ->
-        val hasSongs = playlist.effectiveSongCount > 0 || playlist.playlist.playEndpoint != null
+        val hasSongs = (playlist.effectiveSongCount ?: 0) > 0 || playlist.playlist.playEndpoint != null
         PlaylistLibraryActionsSheet(
             playlist = playlist,
             canEditMetadata = true,
@@ -1563,7 +1573,7 @@ private fun SongsTab(
     val hasError = isAvailabilityMode && availabilityError
     val playSong = if (mode == LibrarySongMode.CACHED) onCachedSongClick else onSongClick
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
-    var gridView by rememberSaveable { mutableStateOf(false) }
+    var gridView by rememberPreference(LibrarySongsGridViewKey, false)
     var menuSong by remember { mutableStateOf<Song?>(null) }
     val gridState = rememberLazyGridState()
 
@@ -1841,7 +1851,7 @@ private fun LocalSongsTab(
     }
     val sortAscending = !sortPreference.descending
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
-    var gridView by rememberSaveable { mutableStateOf(false) }
+    var gridView by rememberPreference(LocalSongsGridViewKey, false)
     var menuSong by remember { mutableStateOf<Song?>(null) }
     val gridState = rememberLazyGridState()
     val blacklistListState = rememberLazyListState()
@@ -2614,73 +2624,134 @@ private fun ArtistsTab(
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
     val artists by viewModel.allArtists.collectAsState()
-    val listState = rememberLazyListState()
+    val resources = LocalResources.current
+    var gridView by rememberPreference(LibraryArtistsGridViewKey, false)
+    val gridState = rememberLazyGridState()
     var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
 
     RootReselectScrollEffect(
         reselectToken = reselectToken,
         isActive = isActive,
         isAtTop = {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
         },
-        animateScrollToTop = { listState.animateReselectScrollToTop() },
+        animateScrollToTop = { gridState.animateScrollToItem(0) },
     )
 
-    LazyColumn(
-        state = listState,
+    LazyVerticalGrid(
+        columns = if (gridView) GridCells.Fixed(2) else GridCells.Fixed(1),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 16.dp, end = 16.dp, top = LibraryContentTopPadding, bottom = 140.dp,
+            start = 16.dp,
+            end = 16.dp,
+            top = LibraryContentTopPadding,
+            bottom = 140.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (gridView) 16.dp else 8.dp),
     ) {
-        items(artists, key = { it.artist.id }) { artistWithSongs ->
-            val showActions = {
-                artistMenuItem = ArtistItem(
-                    id = artistWithSongs.id,
-                    title = artistWithSongs.title,
-                    thumbnail = artistWithSongs.thumbnailUrl,
-                    channelId = artistWithSongs.artist.channelId,
-                    shuffleEndpoint = null,
-                    radioEndpoint = null,
+        item(key = "artist_view_mode", span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                LibraryViewModeToggle(
+                    gridView = gridView,
+                    onGridViewChanged = { gridView = it },
                 )
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .universalMediaClickable(
-                        onClick = { onLocalItemClick(artistWithSongs) },
-                        onLongClick = showActions,
+        }
+        gridItems(artists, key = { it.id }) { artist ->
+            val showActions = {
+                artistMenuItem = ArtistItem(id = artist.id, title = artist.title,
+                    thumbnail = artist.thumbnailUrl, channelId = artist.artist.channelId,
+                    shuffleEndpoint = null, radioEndpoint = null)
+            }
+            if (gridView) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .universalMediaClickable(
+                            onClick = { onLocalItemClick(artist) },
+                            onLongClick = showActions,
+                        ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    AsyncImage(
+                        model = artist.thumbnailUrl?.resize(width = 320),
+                        contentDescription = artist.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AsyncImage(
-                    model = artistWithSongs.artist.thumbnailUrl?.resize(width = 96),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(52.dp).clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = artistWithSongs.artist.name,
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onBackground)
-                    Text(text = "${artistWithSongs.songCount} canciones",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = artist.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                    artist.songCountText(resources)?.let { countText ->
+                        Text(
+                            text = countText,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .universalMediaClickable(
+                            onClick = { onLocalItemClick(artist) },
+                            onLongClick = showActions,
+                        )
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    AsyncImage(
+                        model = artist.thumbnailUrl?.resize(width = 96),
+                        contentDescription = artist.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = artist.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        artist.songCountText(resources)?.let { countText ->
+                            Text(
+                                text = countText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    SongOptionsButton(onClick = showActions)
                 }
             }
         }
     }
-    UniversalYTItemActionsHost(
-        item = artistMenuItem,
-        onDismiss = { artistMenuItem = null },
-        onOpen = {},
-    )
+    UniversalYTItemActionsHost(item = artistMenuItem, onDismiss = { artistMenuItem = null }, onOpen = {})
 }
 
 @Composable
@@ -2692,84 +2763,144 @@ private fun AlbumsTab(
 ) {
     val albums by viewModel.allAlbums.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val listState = rememberLazyListState()
+    var gridView by rememberPreference(LibraryAlbumsGridViewKey, false)
+    val gridState = rememberLazyGridState()
     var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
-
     if (isLoading) {
-        FridaLoadingIndicator(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = LibraryContentTopPadding + 32.dp),
-            indicatorSize = FridaLoadingDefaults.SmallIndicatorSize,
-            contentAlignment = Alignment.TopCenter,
-        )
+        FridaLoadingIndicator(modifier = Modifier.fillMaxSize().padding(top = LibraryContentTopPadding + 32.dp),
+            indicatorSize = FridaLoadingDefaults.SmallIndicatorSize, contentAlignment = Alignment.TopCenter)
         return
     }
-
     RootReselectScrollEffect(
         reselectToken = reselectToken,
         isActive = isActive,
         isAtTop = {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
         },
-        animateScrollToTop = { listState.animateReselectScrollToTop() },
+        animateScrollToTop = { gridState.animateScrollToItem(0) },
     )
 
-    LazyColumn(
-        state = listState,
+    LazyVerticalGrid(
+        columns = if (gridView) GridCells.Fixed(2) else GridCells.Fixed(1),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 16.dp, end = 16.dp, top = LibraryContentTopPadding, bottom = 140.dp,
+            start = 16.dp,
+            end = 16.dp,
+            top = LibraryContentTopPadding,
+            bottom = 140.dp,
         ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (gridView) 16.dp else 8.dp),
     ) {
-        items(albums, key = { it.id }) { album ->
-            val showActions = {
-                collectionMenu = LocalCollectionActionContext(
-                    id = album.id,
-                    title = album.title,
-                    subtitle = album.artists.joinToString(", ") { it.name },
-                    thumbnail = album.thumbnailUrl,
-                    circularThumbnail = false,
-                    onOpen = { onLocalItemClick(album) },
+        item(key = "album_view_mode", span = { GridItemSpan(maxLineSpan) }) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                LibraryViewModeToggle(
+                    gridView = gridView,
+                    onGridViewChanged = { gridView = it },
                 )
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                    .universalMediaClickable(
-                        onClick = { onLocalItemClick(album) },
-                        onLongClick = showActions,
+        }
+        gridItems(albums, key = { it.id }) { album ->
+            val showActions = {
+                collectionMenu = LocalCollectionActionContext(id = album.id, title = album.title,
+                    subtitle = album.artists.joinToString(", ") { it.name }, thumbnail = album.thumbnailUrl,
+                    circularThumbnail = false, onOpen = { onLocalItemClick(album) })
+            }
+            val subtitle = album.artists.joinToString(", ") { it.name }
+            if (gridView) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .universalMediaClickable(
+                            onClick = { onLocalItemClick(album) },
+                            onLongClick = showActions,
+                        )
+                        .padding(10.dp),
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+                        AsyncImage(
+                            model = album.thumbnailUrl?.resize(width = 360),
+                            contentDescription = album.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                        )
+                        SongOptionsButton(
+                            onClick = showActions,
+                            modifier = Modifier.align(Alignment.TopEnd),
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = album.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                AsyncImage(
-                    model = album.album.thumbnailUrl?.resize(width = 120),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = album.album.title,
-                        style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onBackground)
-                    Text(text = album.artists.joinToString(", ") { it.name },
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                SongOptionsButton(onClick = showActions)
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .universalMediaClickable(
+                            onClick = { onLocalItemClick(album) },
+                            onLongClick = showActions,
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    AsyncImage(
+                        model = album.thumbnailUrl?.resize(width = 120),
+                        contentDescription = album.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = album.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    SongOptionsButton(onClick = showActions)
+                }
             }
         }
     }
-    UniversalLocalCollectionActionsHost(
-        context = collectionMenu,
-        onDismiss = { collectionMenu = null },
-    )
+    UniversalLocalCollectionActionsHost(context = collectionMenu, onDismiss = { collectionMenu = null })
 }

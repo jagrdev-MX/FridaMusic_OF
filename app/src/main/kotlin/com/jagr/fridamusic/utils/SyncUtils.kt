@@ -1219,7 +1219,7 @@ class SyncUtils @Inject constructor(
             val refreshedPlaylist = storedPlaylist?.withRemoteMetadata(
                 playlist = page.playlist,
                 bookmarkedAt = storedPlaylist.bookmarkedAt,
-                remoteSongCount = songs.size,
+                remoteSongCount = page.playlist.songCount ?: songs.size,
             )
 
             if (remoteIds == localIds) {
@@ -1262,7 +1262,7 @@ class SyncUtils @Inject constructor(
     }
 
     private fun PlaylistItem.remoteSongCount(): Int? =
-        songCountText?.filter(Char::isDigit)?.toIntOrNull()
+        songCount
 
     private fun PlaylistEntity.withRemoteMetadata(
         playlist: PlaylistItem,
@@ -1274,7 +1274,7 @@ class SyncUtils @Inject constructor(
         thumbnailUrl = playlist.thumbnail,
         isEditable = playlist.isEditable,
         bookmarkedAt = bookmarkedAt,
-        remoteSongCount = remoteSongCount,
+        remoteSongCount = remoteSongCount ?: this.remoteSongCount,
         playEndpointParams = playlist.playEndpoint?.params,
         shuffleEndpointParams = playlist.shuffleEndpoint?.params,
         radioEndpointParams = playlist.radioEndpoint?.params,

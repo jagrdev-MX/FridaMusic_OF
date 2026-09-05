@@ -17,13 +17,23 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.jagr.fridamusic.BuildConfig
+import com.jagr.fridamusic.constants.AccountEmailKey
+import com.jagr.fridamusic.utils.dataStore
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SupportBillingManager(context: Context) :
     SupportBilling,
@@ -40,7 +50,9 @@ class SupportBillingManager(context: Context) :
         val selectionSource: String,
     )
 
-    private val _state = MutableStateFlow<SupportBillingState>(SupportBillingState.BillingLoading)
+    private val applicationContext = context.applicationContext
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _state = MutableStateFlow(SupportBillingState())
     override val state: StateFlow<SupportBillingState> = _state.asStateFlow()
     override val capabilities = SupportCapabilities(
         googlePlayBilling = BuildConfig.SUPPORT_GOOGLE_PLAY_ENABLED,
@@ -60,7 +72,7 @@ class SupportBillingManager(context: Context) :
     private val instanceId = nextInstanceId.incrementAndGet()
 
     private val billingClient by lazy(LazyThreadSafetyMode.NONE) {
-        BillingClient.newBuilder(context.applicationContext)
+        BillingClient.newBuilder(applicationContext)
             .setListener(this)
             .enablePendingPurchases(
                 PendingPurchasesParams.newBuilder()
@@ -96,7 +108,7 @@ class SupportBillingManager(context: Context) :
     override fun refresh() {
         if (!capabilities.googlePlayBilling || closed) return
         debugPreviewActive = false
-        _state.value = SupportBillingState.BillingLoading
+        _state.update { it.catalogLoading().clearTransientPurchase() }
         start()
     }
 
@@ -130,7 +142,7 @@ class SupportBillingManager(context: Context) :
         )
         if (!activity.isReadyForBilling()) {
             pendingProductId = null
-            _state.value = SupportBillingState.PurchaseError(SupportBillingIssue.PURCHASE_ERROR)
+            setPurchaseState(SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR))
             logWarning("Purchase rejected because the Activity is not foreground and valid")
             return
         }
@@ -145,15 +157,13 @@ class SupportBillingManager(context: Context) :
         }
 
         if (!billingClient.isReady) {
-            _state.value = SupportBillingState.BillingUnavailable(
-                SupportBillingIssue.SERVICE_DISCONNECTED,
-            )
+            setCatalogUnavailable(SupportBillingIssue.SERVICE_DISCONNECTED)
             connect()
             return
         }
 
         pendingProductId = product.id
-        _state.value = SupportBillingState.PurchaseStarted(product.id)
+        setPurchaseState(SupportPurchaseState.Started(product.id))
         val activityReference = WeakReference(activity)
         queryProductDetails(
             productIds = listOf(product.id),
@@ -169,8 +179,8 @@ class SupportBillingManager(context: Context) :
             val selection = freshDetails?.let(::selectProductOffer)
             if (selection == null) {
                 pendingProductId = null
-                _state.value = SupportBillingState.PurchaseError(
-                    SupportBillingIssue.PRODUCT_UNAVAILABLE,
+                setPurchaseState(
+                    SupportPurchaseState.Error(SupportBillingIssue.PRODUCT_UNAVAILABLE),
                 )
                 logWarning("No unambiguous eligible offer for productId=%s", product.id)
                 return@queryProductDetails
@@ -179,7 +189,7 @@ class SupportBillingManager(context: Context) :
             val currentActivity = activityReference.get()
             if (currentActivity == null || !currentActivity.isReadyForBilling()) {
                 pendingProductId = null
-                _state.value = SupportBillingState.PurchaseError(SupportBillingIssue.PURCHASE_ERROR)
+                setPurchaseState(SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR))
                 logWarning(
                     "Purchase aborted after refresh because Activity is no longer foreground: productId=%s",
                     product.id,
@@ -188,7 +198,27 @@ class SupportBillingManager(context: Context) :
             }
 
             productDetails[product.id] = selection
-            launchBillingFlow(currentActivity, product.id, selection)
+            managerScope.launch {
+                val obfuscatedAccountId = resolveCurrentObfuscatedAccountId()
+                if (closed || pendingProductId != product.id) return@launch
+                if (!currentActivity.isReadyForBilling()) {
+                    pendingProductId = null
+                    setPurchaseState(
+                        SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR),
+                    )
+                    logWarning(
+                        "Purchase aborted after identity resolution because Activity is no longer foreground: productId=%s",
+                        product.id,
+                    )
+                    return@launch
+                }
+                launchBillingFlow(
+                    activity = currentActivity,
+                    productId = product.id,
+                    selection = selection,
+                    obfuscatedAccountId = obfuscatedAccountId,
+                )
+            }
         }
     }
 
@@ -196,6 +226,7 @@ class SupportBillingManager(context: Context) :
         activity: Activity,
         productId: String,
         selection: ProductSelection,
+        obfuscatedAccountId: String?,
     ) {
         val detailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
             .setProductDetails(selection.details)
@@ -213,12 +244,18 @@ class SupportBillingManager(context: Context) :
             selection.offerType,
             selection.selectionSource,
         )
-        val result = billingClient.launchBillingFlow(
-            activity,
-            BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(listOf(detailsParams))
-                .build(),
+        val flowParams = BillingFlowParams.newBuilder()
+            .setProductDetailsParamsList(listOf(detailsParams))
+            .apply {
+                obfuscatedAccountId?.let(::setObfuscatedAccountId)
+            }
+            .build()
+        logInfo(
+            "Billing identity: productId=%s accountIdentityPresent=%s",
+            productId,
+            obfuscatedAccountId != null,
         )
+        val result = billingClient.launchBillingFlow(activity, flowParams)
         logInfo(
             "launchBillingFlow result: productId=%s code=%d message=%s ready=%s",
             productId,
@@ -227,7 +264,7 @@ class SupportBillingManager(context: Context) :
             billingClient.isReady,
         )
         if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-            _state.value = SupportBillingState.PurchaseStarted(productId)
+            setPurchaseState(SupportPurchaseState.Started(productId))
         } else {
             handleLaunchError(result)
         }
@@ -248,8 +285,8 @@ class SupportBillingManager(context: Context) :
             BillingClient.BillingResponseCode.OK -> {
                 if (purchases.isNullOrEmpty()) {
                     pendingProductId = null
-                    _state.value = SupportBillingState.PurchaseError(
-                        SupportBillingIssue.PURCHASE_ERROR,
+                    setPurchaseState(
+                        SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR),
                     )
                 } else {
                     purchases.forEach(::processPurchase)
@@ -258,9 +295,7 @@ class SupportBillingManager(context: Context) :
 
             BillingClient.BillingResponseCode.USER_CANCELED -> {
                 pendingProductId = null
-                _state.value = SupportBillingState.PurchaseError(
-                    SupportBillingIssue.PURCHASE_CANCELLED,
-                )
+                setPurchaseState(SupportPurchaseState.Cancelled)
             }
 
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> queryOwnedPurchases()
@@ -270,15 +305,16 @@ class SupportBillingManager(context: Context) :
             BillingClient.BillingResponseCode.BILLING_UNAVAILABLE,
             -> {
                 pendingProductId = null
-                _state.value = SupportBillingState.BillingUnavailable(
-                    SupportBillingIssue.SERVICE_DISCONNECTED,
+                setPurchaseState(
+                    SupportPurchaseState.Error(SupportBillingIssue.SERVICE_DISCONNECTED),
                 )
+                setCatalogUnavailable(SupportBillingIssue.SERVICE_DISCONNECTED)
             }
 
             else -> {
                 pendingProductId = null
-                _state.value = SupportBillingState.PurchaseError(
-                    SupportBillingIssue.PURCHASE_ERROR,
+                setPurchaseState(
+                    SupportPurchaseState.Error(SupportBillingIssue.PURCHASE_ERROR),
                 )
                 logWarning(
                     "Purchase update failed: code=%d message=%s",
@@ -299,6 +335,7 @@ class SupportBillingManager(context: Context) :
         productDetails.clear()
         consumingTokens.clear()
         billingClient.endConnection()
+        managerScope.cancel()
         unregisterActiveInstanceIfNeeded()
         logInfo("closed instance=%d", instanceId)
     }
@@ -306,26 +343,30 @@ class SupportBillingManager(context: Context) :
     override fun showDebugProducts(products: List<SupportProduct>) {
         if (closed) return
         debugPreviewActive = true
-        _state.value = SupportBillingState.BillingReady(
-            products = products,
-            isDebugPreview = true,
-        )
+        _state.update { it.catalogReady(products, isDebugPreview = true) }
     }
 
     override fun restoreRealProducts() {
         if (closed) return
         debugPreviewActive = false
-        _state.value = SupportBillingState.BillingLoading
+        _state.update { it.catalogLoading().clearTransientPurchase() }
         if (billingClient.isReady) {
             queryProducts()
         } else {
-            _state.value = SupportBillingState.BillingLoading
             connect()
         }
     }
 
-    override fun simulateDebugState(state: SupportBillingState) {
-        if (!closed) _state.value = state
+    override fun simulateDebugPurchaseState(state: SupportPurchaseState) {
+        if (!closed) setPurchaseState(state)
+    }
+
+    override fun simulateDebugCatalogState(state: SupportCatalogState) {
+        if (!closed) _state.update { it.copy(catalog = state) }
+    }
+
+    override fun clearTransientPurchaseState() {
+        if (!closed) _state.update(SupportBillingState::clearTransientPurchase)
     }
 
     private fun connect() {
@@ -347,9 +388,7 @@ class SupportBillingManager(context: Context) :
                     queryProducts()
                     queryOwnedPurchases()
                 } else if (!debugPreviewActive) {
-                    _state.value = SupportBillingState.BillingUnavailable(
-                        SupportBillingIssue.BILLING_UNAVAILABLE,
-                    )
+                    setCatalogUnavailable(SupportBillingIssue.BILLING_UNAVAILABLE)
                     logWarning(
                         "Billing setup failed: code=%d message=%s",
                         billingResult.responseCode,
@@ -366,9 +405,7 @@ class SupportBillingManager(context: Context) :
                     billingClient.isReady,
                 )
                 if (!closed && !debugPreviewActive) {
-                    _state.value = SupportBillingState.BillingUnavailable(
-                        SupportBillingIssue.SERVICE_DISCONNECTED,
-                    )
+                    setCatalogUnavailable(SupportBillingIssue.SERVICE_DISCONNECTED)
                 }
             }
         })
@@ -384,9 +421,7 @@ class SupportBillingManager(context: Context) :
             if (closed || generation != productQueryGeneration) return@queryProductDetails
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 if (!debugPreviewActive) {
-                    _state.value = SupportBillingState.BillingUnavailable(
-                        SupportBillingIssue.BILLING_UNAVAILABLE,
-                    )
+                    setCatalogUnavailable(SupportBillingIssue.BILLING_UNAVAILABLE)
                 }
                 return@queryProductDetails
             }
@@ -405,12 +440,9 @@ class SupportBillingManager(context: Context) :
                     formattedPrice = selection.formattedPrice,
                 )
             }
-            if (!debugPreviewActive && _state.value !is SupportBillingState.PurchaseStarted &&
-                _state.value !is SupportBillingState.PurchasePending &&
-                _state.value !is SupportBillingState.PurchaseCompleted &&
-                _state.value !is SupportBillingState.PurchaseError
-            ) {
-                _state.value = SupportBillingState.BillingReady(realProducts)
+            if (!debugPreviewActive) {
+                _state.update { it.catalogReady(realProducts) }
+                logInfo("Catalog ready: productCount=%d", realProducts.size)
             }
         }
     }
@@ -521,9 +553,7 @@ class SupportBillingManager(context: Context) :
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 purchases.forEach(::processPurchase)
             } else if (!debugPreviewActive) {
-                _state.value = SupportBillingState.BillingUnavailable(
-                    SupportBillingIssue.SERVICE_DISCONNECTED,
-                )
+                setCatalogUnavailable(SupportBillingIssue.SERVICE_DISCONNECTED)
             }
         }
     }
@@ -540,7 +570,7 @@ class SupportBillingManager(context: Context) :
         when (purchase.purchaseState) {
             Purchase.PurchaseState.PENDING -> {
                 pendingProductId = supportProductId
-                _state.value = SupportBillingState.PurchasePending(supportProductId)
+                setPurchaseState(SupportPurchaseState.Pending(supportProductId))
             }
 
             Purchase.PurchaseState.PURCHASED -> consumePurchase(
@@ -582,10 +612,10 @@ class SupportBillingManager(context: Context) :
                 billingResult.debugMessage,
             )
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                _state.value = SupportBillingState.PurchaseCompleted(productId)
+                setPurchaseState(SupportPurchaseState.Completed(productId))
             } else {
-                _state.value = SupportBillingState.PurchaseError(
-                    SupportBillingIssue.CONSUMPTION_ERROR,
+                setPurchaseState(
+                    SupportPurchaseState.Error(SupportBillingIssue.CONSUMPTION_ERROR),
                 )
                 logWarning(
                     "Purchase consumption failed: code=%d message=%s",
@@ -604,9 +634,11 @@ class SupportBillingManager(context: Context) :
             result.debugMessage,
             billingClient.isReady,
         )
+        if (result.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
+            setPurchaseState(SupportPurchaseState.Cancelled)
+            return
+        }
         val issue = when (result.responseCode) {
-            BillingClient.BillingResponseCode.USER_CANCELED ->
-                SupportBillingIssue.PURCHASE_CANCELLED
 
             BillingClient.BillingResponseCode.SERVICE_DISCONNECTED,
             BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE,
@@ -618,11 +650,40 @@ class SupportBillingManager(context: Context) :
 
             else -> SupportBillingIssue.PURCHASE_ERROR
         }
-        _state.value = if (issue == SupportBillingIssue.SERVICE_DISCONNECTED) {
-            SupportBillingState.BillingUnavailable(issue)
+        if (issue == SupportBillingIssue.SERVICE_DISCONNECTED) {
+            setPurchaseState(SupportPurchaseState.Error(issue))
+            setCatalogUnavailable(issue)
         } else {
-            SupportBillingState.PurchaseError(issue)
+            setPurchaseState(SupportPurchaseState.Error(issue))
         }
+    }
+
+    private fun setPurchaseState(purchase: SupportPurchaseState) {
+        _state.update { it.purchase(purchase) }
+        logInfo(
+            "Billing state: catalog=%s catalogSize=%d purchase=%s",
+            _state.value.catalog.status,
+            _state.value.catalog.products.size,
+            purchase.javaClass.simpleName,
+        )
+    }
+
+    private fun setCatalogUnavailable(issue: SupportBillingIssue) {
+        _state.update { it.catalogUnavailable(issue) }
+        logWarning(
+            "Catalog unavailable: issue=%s retainedProductCount=%d",
+            issue,
+            _state.value.catalog.products.size,
+        )
+    }
+
+    private suspend fun resolveCurrentObfuscatedAccountId(): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val accountEmail = applicationContext.dataStore.data.first()[AccountEmailKey]
+            obfuscateSupportAccountId(accountEmail)
+        }.onFailure {
+            logWarning("Billing identity unavailable: %s", it.javaClass.simpleName)
+        }.getOrNull()
     }
 
     private fun registerActiveInstanceIfNeeded() {
