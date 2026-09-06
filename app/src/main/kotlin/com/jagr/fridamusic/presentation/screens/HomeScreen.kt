@@ -51,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
@@ -70,6 +71,7 @@ import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.support.SupportBillingManager
+import com.jagr.fridamusic.utils.MemoryDiagnostics
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.HomeViewModel
@@ -103,28 +105,35 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     notificationHistoryViewModel: NotificationHistoryViewModel = hiltViewModel(),
 ) {
-    val quickPicks by viewModel.quickPicks.collectAsState()
-    val dailyDiscover by viewModel.dailyDiscover.collectAsState()
-    val forgottenFavorites by viewModel.forgottenFavorites.collectAsState()
-    val keepListening by viewModel.keepListening.collectAsState()
-    val similarRecommendations by viewModel.similarRecommendations.collectAsState()
-    val accountPlaylists by viewModel.accountPlaylists.collectAsState()
-    val homePage by viewModel.homePage.collectAsState()
-    val explorePage by viewModel.explorePage.collectAsState()
-    val communityPlaylists by viewModel.communityPlaylists.collectAsState()
-    val echoBrainPlaylists by viewModel.echoBrainPlaylists.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val selectedChip by viewModel.selectedChip.collectAsState()
-    val pinnedItems by viewModel.pinnedItems.collectAsState()
-    val unreadNotificationCount by notificationHistoryViewModel.unreadCount.collectAsState()
+    val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
+    val dailyDiscover by viewModel.dailyDiscover.collectAsStateWithLifecycle()
+    val forgottenFavorites by viewModel.forgottenFavorites.collectAsStateWithLifecycle()
+    val keepListening by viewModel.keepListening.collectAsStateWithLifecycle()
+    val similarRecommendations by viewModel.similarRecommendations.collectAsStateWithLifecycle()
+    val accountPlaylists by viewModel.accountPlaylists.collectAsStateWithLifecycle()
+    val homePage by viewModel.homePage.collectAsStateWithLifecycle()
+    val explorePage by viewModel.explorePage.collectAsStateWithLifecycle()
+    val communityPlaylists by viewModel.communityPlaylists.collectAsStateWithLifecycle()
+    val echoBrainPlaylists by viewModel.echoBrainPlaylists.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val selectedChip by viewModel.selectedChip.collectAsStateWithLifecycle()
+    val pinnedItems by viewModel.pinnedItems.collectAsStateWithLifecycle()
+    val unreadNotificationCount by notificationHistoryViewModel.unreadCount.collectAsStateWithLifecycle()
     var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
-    val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
-    val currentIsPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
+    val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    val currentIsPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value == true
     val isLowEnd = rememberIsLowEndDevice()
     val quickPickItems = quickPicks.orEmpty()
     val dailyDiscoverItems = dailyDiscover.orEmpty()
+    val dailyDiscoverPreviewItems = remember(dailyDiscover) {
+        dailyDiscover.orEmpty()
+            .asSequence()
+            .map { it.recommendation }
+            .take(HOME_SECTION_PREVIEW_LIMIT)
+            .toList()
+    }
     val forgottenFavoriteItems = forgottenFavorites.orEmpty()
     val keepListeningItems = keepListening.orEmpty()
     val similarRecommendationItems = similarRecommendations.orEmpty()
@@ -182,12 +191,20 @@ fun HomeScreen(
     val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
 
     DisposableEffect(interstitialAdManager, supportBillingManager) {
-        interstitialAdManager.load()
+        MemoryDiagnostics.log("Home entered")
         supportBillingManager.start()
         onDispose {
             interstitialAdManager.release()
             supportBillingManager.close()
         }
+    }
+
+    LaunchedEffect(showSupportDialog, interstitialAdManager) {
+        if (showSupportDialog) interstitialAdManager.load()
+    }
+
+    LaunchedEffect(isLoading, hasGeneralContent) {
+        if (!isLoading && hasGeneralContent) MemoryDiagnostics.log("Home loaded")
     }
 
     DisposableEffect(lifecycleOwner, supportBillingManager) {
@@ -296,7 +313,7 @@ fun HomeScreen(
             ytSection(
                 key = "daily_discover",
                 title = dailyDiscoverTitle,
-                items = dailyDiscoverItems.map { it.recommendation }.take(HOME_SECTION_PREVIEW_LIMIT),
+                items = dailyDiscoverPreviewItems,
                 isLowEnd = isLowEnd,
                 onItemClick = onItemClick,
                 onPlayItem = onPlayItem,

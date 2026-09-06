@@ -57,8 +57,8 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "1.5.18.254"
+        versionCode = 19
+        versionName = "1.6.19.255"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -353,6 +353,7 @@ dependencies {
     implementation(libs.viewmodel)
     implementation(libs.viewmodel.compose)
     implementation(libs.lifecycle.process)
+    implementation(libs.lifecycle.runtime.compose)
 
     implementation(libs.compose.shimmer.v130)
 

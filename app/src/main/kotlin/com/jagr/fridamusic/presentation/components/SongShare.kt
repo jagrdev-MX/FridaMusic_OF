@@ -105,6 +105,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.presentation.theme.FridaPink
+import com.jagr.fridamusic.utils.MemoryDiagnostics
 import com.jagr.fridamusic.utils.shareLocalAudio
 import com.materialkolor.ktx.themeColor
 import kotlinx.coroutines.Dispatchers
@@ -233,6 +234,9 @@ private fun FridaShareCardDialogContent(
                 !uri.host.isNullOrBlank()
         }?.url ?: FridaAppLinks.DEEP_LINK_HOME
     }
+    val appQrImage = remember(snapshot.appCtaUrl) {
+        runCatching { FridaQrCodeGenerator.create(snapshot.appCtaUrl).asImageBitmap() }.getOrNull()
+    }
     var selectedTheme by remember(snapshot.song.mediaId) { mutableStateOf(FridaShareCardTheme.ARTWORK) }
     var artworkBitmap by remember(snapshot.song.artworkUrl) { mutableStateOf<Bitmap?>(null) }
     val artworkImage = remember(artworkBitmap) { artworkBitmap?.asImageBitmap() }
@@ -258,12 +262,14 @@ private fun FridaShareCardDialogContent(
                     snapshot = snapshot,
                     theme = selectedTheme,
                     artwork = artworkBitmap,
+                    qrBitmap = appQrImage,
                     dominantColor = dominantColor,
                     colorScheme = colorScheme,
                 )
             }.onSuccess { bitmap ->
                 runCatching { action(bitmap) }
                     .onFailure { Toast.makeText(androidContext, R.string.song_share_failed, Toast.LENGTH_SHORT).show() }
+                MemoryDiagnostics.log("After share finished")
             }.onFailure {
                 Toast.makeText(androidContext, R.string.song_share_failed, Toast.LENGTH_SHORT).show()
             }
@@ -318,6 +324,7 @@ private fun FridaShareCardDialogContent(
                         snapshot = snapshot,
                         theme = selectedTheme,
                         artwork = artworkImage,
+                        qrBitmap = appQrImage,
                         dominantColor = dominantColor,
                         modifier = Modifier
                             .fillMaxWidth(0.64f)
@@ -451,6 +458,7 @@ fun FridaNowPlayingShareCard(
     snapshot: FridaShareSnapshot,
     theme: FridaShareCardTheme,
     artwork: ImageBitmap?,
+    qrBitmap: ImageBitmap?,
     dominantColor: Color,
     modifier: Modifier = Modifier,
 ) {
@@ -612,6 +620,7 @@ fun FridaNowPlayingShareCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FridaQrCode(
                         url = snapshot.appCtaUrl,
+                        providedBitmap = qrBitmap,
                         size = 88.dp * scale,
                         logoSize = 22.dp * scale,
                     )
@@ -646,11 +655,14 @@ private fun FridaLogo(
 @Composable
 private fun FridaQrCode(
     url: String,
+    providedBitmap: ImageBitmap? = null,
     size: androidx.compose.ui.unit.Dp,
     logoSize: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-    val qrBitmap = remember(url) { runCatching { FridaQrCodeGenerator.create(url).asImageBitmap() }.getOrNull() }
+    val qrBitmap = remember(url, providedBitmap) {
+        providedBitmap ?: runCatching { FridaQrCodeGenerator.create(url).asImageBitmap() }.getOrNull()
+    }
     Surface(
         modifier = modifier
             .size(size)
@@ -769,9 +781,11 @@ private suspend fun renderShareCardBitmap(
     snapshot: FridaShareSnapshot,
     theme: FridaShareCardTheme,
     artwork: Bitmap?,
+    qrBitmap: ImageBitmap?,
     dominantColor: Color,
     colorScheme: ColorScheme,
 ): Bitmap = withContext(Dispatchers.Main) {
+    MemoryDiagnostics.log("Before share bitmap")
     val activity = context.findActivity() ?: error("Share card rendering requires an Activity")
     val root = activity.findViewById<ViewGroup>(android.R.id.content)
     val width = 1080
@@ -783,6 +797,7 @@ private suspend fun renderShareCardBitmap(
                     snapshot = snapshot,
                     theme = theme,
                     artwork = artwork?.asImageBitmap(),
+                    qrBitmap = qrBitmap,
                     dominantColor = dominantColor,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -803,7 +818,10 @@ private suspend fun renderShareCardBitmap(
             android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.EXACTLY),
         )
         composeView.layout(0, 0, width, height)
-        createBitmap(width, height).also { composeView.draw(AndroidCanvas(it)) }
+        createBitmap(width, height).also {
+            composeView.draw(AndroidCanvas(it))
+            MemoryDiagnostics.log("After share bitmap")
+        }
     } finally {
         composeView.disposeComposition()
         root.removeView(holder)

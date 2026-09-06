@@ -105,6 +105,7 @@ import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.utils.MemoryDiagnostics
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LyricsMenuViewModel
@@ -127,6 +128,10 @@ fun NowPlayingScreen(
     playlistsViewModel: PlaylistsViewModel? = null,
 ) {
     val context = LocalContext.current
+    DisposableEffect(Unit) {
+        MemoryDiagnostics.log("NowPlaying entered")
+        onDispose { }
+    }
 
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)

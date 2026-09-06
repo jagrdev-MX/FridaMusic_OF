@@ -20,10 +20,9 @@ import android.graphics.Shader
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import coil3.ImageLoader
+import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
-import coil3.request.crossfade
 import coil3.toBitmap
 import com.jagr.fridamusic.MainActivity
 import com.jagr.fridamusic.R
@@ -66,9 +65,8 @@ class MusicRecognizerWidgetService : Service() {
     private var recognitionJob: Job? = null
     private var pulseJob: Job? = null
 
-    private val imageLoader by lazy {
-        ImageLoader.Builder(this).crossfade(false).build()
-    }
+    private val imageLoader
+        get() = applicationContext.imageLoader
 
     override fun onBind(intent: Intent?): IBinder? = null
 

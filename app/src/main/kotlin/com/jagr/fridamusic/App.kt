@@ -283,7 +283,7 @@ class App : Application(), SingletonImageLoader.Factory {
             
             memoryCache {
                 MemoryCache.Builder()
-                    .maxSizePercent(context, 0.25)
+                    .maxSizePercent(context, COIL_MEMORY_CACHE_PERCENT)
                     .build()
             }
             if (cacheSize == 0) {
@@ -301,6 +301,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     companion object {
         private const val CRASH_HANDLER_TAG = "CrashHandler"
+        private const val COIL_MEMORY_CACHE_PERCENT = 0.12
 
         suspend fun forgetAccount(context: Context) {
             Timber.d("forgetAccount: Starting logout process")

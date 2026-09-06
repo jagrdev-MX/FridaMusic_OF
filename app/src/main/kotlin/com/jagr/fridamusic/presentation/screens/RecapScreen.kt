@@ -74,6 +74,7 @@ import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.SongWithStats
 import com.jagr.fridamusic.recap.RecapPeriodType
 import com.jagr.fridamusic.utils.ComposeToImage
+import com.jagr.fridamusic.utils.MemoryDiagnostics
 import com.jagr.fridamusic.viewmodels.RecapUiState
 import com.jagr.fridamusic.viewmodels.RecapViewModel
 import kotlinx.coroutines.Dispatchers
@@ -654,6 +655,7 @@ private suspend fun shareRecap(context: android.content.Context, state: RecapUiS
     val uri = withContext(Dispatchers.IO) {
         ComposeToImage.saveBitmapToCache(context, bitmap, "FridaMusic_Recap_${state.range.label}")
     }
+    MemoryDiagnostics.log("After recap share saved")
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
         putExtra(Intent.EXTRA_STREAM, uri)

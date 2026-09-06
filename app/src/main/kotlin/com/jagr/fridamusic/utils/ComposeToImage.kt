@@ -25,7 +25,7 @@ import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
-import coil3.ImageLoader
+import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
@@ -37,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.roundToInt
 
 object ComposeToImage {
 
@@ -56,6 +55,7 @@ object ComposeToImage {
         context: Context,
         data: RecapImageData,
     ): Bitmap = withContext(Dispatchers.Default) {
+        MemoryDiagnostics.log("Before recap bitmap")
         val width = 1080
         val height = 1920
         val bitmap = createBitmap(width, height)
@@ -77,10 +77,10 @@ object ComposeToImage {
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(url)
-                    .size(760, 760)
+                    .size(680, 680)
                     .allowHardware(false)
                     .build()
-                ImageLoader(context).execute(request).image?.toBitmap()
+                context.imageLoader.execute(request).image?.toBitmap()
             }.getOrNull()?.let { cover ->
                 val target = RectF(200f, 280f, 880f, 960f)
                 val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = 235 }
@@ -189,6 +189,7 @@ object ComposeToImage {
             y += 135f
         }
         canvas.drawText("FridaMusic · Frida Labs", 72f, 1870f, labelPaint)
+        MemoryDiagnostics.log("After recap bitmap")
         bitmap
     }
 
@@ -208,8 +209,9 @@ object ComposeToImage {
     ): Bitmap = withContext(Dispatchers.Default) {
         
         
-        val imageWidth = 2160
-        val imageHeight = 2160
+        MemoryDiagnostics.log("Before lyrics bitmap")
+        val imageWidth = LYRICS_IMAGE_SIZE
+        val imageHeight = LYRICS_IMAGE_SIZE
         
         val bitmap = createBitmap(imageWidth, imageHeight)
         val canvas = Canvas(bitmap)
@@ -226,13 +228,12 @@ object ComposeToImage {
         var coverArtBitmap: Bitmap? = null
         if (coverArtUrl != null) {
             try {
-                val imageLoader = ImageLoader(context)
                 val request = ImageRequest.Builder(context)
                     .data(coverArtUrl)
-                    .size(1024) 
+                    .size(LYRICS_ARTWORK_SIZE)
                     .allowHardware(false)
                     .build()
-                val result = imageLoader.execute(request)
+                val result = context.imageLoader.execute(request)
                 coverArtBitmap = result.image?.toBitmap()
             } catch (_: Exception) {}
         }
@@ -255,9 +256,12 @@ object ComposeToImage {
 
                 if (coverArtBitmap != null) {
                     try {
-                        
-                        val scaledBitmap = Bitmap.createScaledBitmap(coverArtBitmap, imageWidth / 10, imageHeight / 10, true)
-                        val blurredBitmap = fastBlur(scaledBitmap, 1f, 20) 
+                        val blurredBitmap = fastBlur(
+                            coverArtBitmap,
+                            imageWidth / 10,
+                            imageHeight / 10,
+                            20,
+                        )
                         
                         if (blurredBitmap != null) {
                             val blurRect = RectF(0f, 0f, imageWidth.toFloat(), imageHeight.toFloat())
@@ -488,6 +492,7 @@ object ComposeToImage {
         lyricsLayout.draw(canvas)
         canvas.restore()
 
+        MemoryDiagnostics.log("After lyrics bitmap")
         return@withContext bitmap
     }
 
@@ -499,10 +504,7 @@ object ComposeToImage {
     
     
     
-    private fun fastBlur(sentBitmap: Bitmap, scale: Float, radius: Int): Bitmap? {
-        val width = (sentBitmap.width * scale).roundToInt()
-        val height = (sentBitmap.height * scale).roundToInt()
-        
+    private fun fastBlur(sentBitmap: Bitmap, width: Int, height: Int, radius: Int): Bitmap? {
         if (width <= 0 || height <= 0) return null
         
         val bitmap = Bitmap.createScaledBitmap(sentBitmap, width, height, false)
@@ -703,6 +705,9 @@ object ComposeToImage {
         bitmap.setPixels(pix, 0, w, 0, 0, w, h)
         return bitmap
     }
+
+    private const val LYRICS_IMAGE_SIZE = 1440
+    private const val LYRICS_ARTWORK_SIZE = 512
 
     fun saveBitmapAsFile(context: Context, bitmap: Bitmap, fileName: String): Uri {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

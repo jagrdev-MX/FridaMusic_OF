@@ -9,6 +9,7 @@ import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.utils.MemoryDiagnostics
 import timber.log.Timber
 
 class InterstitialAdManager(activity: Activity?) {
@@ -63,26 +64,32 @@ class InterstitialAdManager(activity: Activity?) {
             }
 
             override fun onAdDismissedFullScreenContent() {
+                ad.fullScreenContentCallback = null
+                showWhenLoaded = false
                 Timber.tag(TAG).d("Interstitial dismissed")
-                load()
+                MemoryDiagnostics.log("After interstitial dismissed")
             }
 
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                ad.fullScreenContentCallback = null
+                showWhenLoaded = false
                 Timber.tag(TAG).w(
                     "Interstitial failed to show: code=%d domain=%s message=%s",
                     adError.code,
                     adError.domain,
                     adError.message,
                 )
-                load()
+                MemoryDiagnostics.log("After interstitial show failure")
             }
         }
 
         try {
             ad.show(currentActivity)
         } catch (error: Exception) {
+            ad.fullScreenContentCallback = null
+            showWhenLoaded = false
             Timber.tag(TAG).w(error, "Interstitial show failed")
-            load()
+            MemoryDiagnostics.log("After interstitial show exception")
         }
     }
 
@@ -120,6 +127,7 @@ class InterstitialAdManager(activity: Activity?) {
 
     private fun loadAd(currentActivity: Activity) {
         isLoading = true
+        MemoryDiagnostics.log("Before interstitial load")
         try {
             InterstitialAd.load(
                 currentActivity.applicationContext,
@@ -132,6 +140,7 @@ class InterstitialAdManager(activity: Activity?) {
 
                         interstitialAd = ad
                         Timber.tag(TAG).d("Interstitial loaded")
+                        MemoryDiagnostics.log("After interstitial load")
                         if (showWhenLoaded) show()
                     }
 
@@ -145,6 +154,7 @@ class InterstitialAdManager(activity: Activity?) {
                             adError.domain,
                             adError.message,
                         )
+                        MemoryDiagnostics.log("After interstitial load failure")
                     }
                 },
             )
@@ -152,6 +162,7 @@ class InterstitialAdManager(activity: Activity?) {
             isLoading = false
             showWhenLoaded = false
             Timber.tag(TAG).w(error, "Interstitial load failed")
+            MemoryDiagnostics.log("After interstitial load exception")
         }
     }
 
