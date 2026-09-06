@@ -1,0 +1,59 @@
+name: Update Contributor Stats
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - README.md
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-contributors-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate contributor stats
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_FORKS: 50
+        run: node .github/scripts/update-contributors.cjs
+
+      - name: Commit README update
+        shell: bash
+        run: |
+          if git diff --quiet README.md; then
+            echo "No README changes detected."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME:-master}"
+
+          if git diff --quiet README.md; then
+            echo "No README changes detected after syncing with origin."
+            exit 0
+          fi
+
+          git add README.md
+          git commit -m "docs: actualizar métricas automáticas de contribución"
+          git push origin "HEAD:${GITHUB_REF_NAME:-master}"
