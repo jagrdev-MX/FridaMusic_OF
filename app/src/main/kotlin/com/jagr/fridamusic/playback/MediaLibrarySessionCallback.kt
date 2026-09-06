@@ -12,6 +12,7 @@ import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.session.LibraryResult
@@ -70,6 +71,7 @@ constructor(
     var toggleLike: () -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
     var toggleLibrary: () -> Unit = {}
+    var onUserPauseOrStop: () -> Unit = {}
 
     override fun onConnect(
         session: MediaSession,
@@ -87,6 +89,20 @@ constructor(
                 .build(),
             connectionResult.availablePlayerCommands,
         )
+    }
+
+    override fun onPlayerInteractionFinished(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        playerCommands: Player.Commands,
+    ) {
+        val explicitlyStopped = playerCommands.contains(Player.COMMAND_STOP)
+        val explicitlyPaused =
+            playerCommands.contains(Player.COMMAND_PLAY_PAUSE) && !session.player.playWhenReady
+        if (explicitlyStopped || explicitlyPaused) {
+            onUserPauseOrStop()
+        }
+        super.onPlayerInteractionFinished(session, controllerInfo, playerCommands)
     }
 
     override fun onCustomCommand(

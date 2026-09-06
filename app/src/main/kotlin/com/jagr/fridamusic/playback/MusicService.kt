@@ -15,6 +15,7 @@ import android.content.Intent
 import android.database.SQLException
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.LoudnessEnhancer
 import android.net.ConnectivityManager
@@ -332,8 +333,13 @@ class MusicService :
     private var lastAudioFocusState = AudioManager.AUDIOFOCUS_NONE
     private var wasPlayingBeforeAudioFocusLoss = false
     private var hasAudioFocus = false
+    private var audioFocusRequestActive = false
     private var reentrantFocusGain = false
     private var audioFocusPausePending = false
+    private val audioFocusVolumeMultiplier = MutableStateFlow(1f)
+    private var audioFocusVolumeRampJob: Job? = null
+    private var audioFocusResumeJob: Job? = null
+    private var hasActiveVoicePlayback = false
     private var wasPlayingBeforeVolumeMute = false
     private var isPausedByVolumeMute = false
     var preferredDeviceId: Int? = null
@@ -394,14 +400,29 @@ class MusicService :
         val newMutedState = !isMuted.value
         isMuted.value = newMutedState
 
-        player.volume = if (newMutedState) 0f else playerVolume.value
+        applyEffectivePlayerVolumes()
     }
 
     fun setMuted(muted: Boolean) {
         isMuted.value = muted
 
+        applyEffectivePlayerVolumes()
+    }
 
-        player.volume = if (muted) 0f else playerVolume.value
+    private fun applyEffectivePlayerVolumes(
+        userVolume: Float = playerVolume.value,
+        muted: Boolean = isMuted.value,
+        focusMultiplier: Float = audioFocusVolumeMultiplier.value,
+    ) {
+        if (!::player.isInitialized || !::playerVolume.isInitialized) return
+
+        val effectiveVolume = if (muted) {
+            0f
+        } else {
+            userVolume.coerceIn(0f, 1f) * focusMultiplier.coerceIn(0f, 1f)
+        }
+        player.volume = (effectiveVolume * crossfadeInVolumeMultiplier).coerceIn(0f, 1f)
+        fadingPlayer?.volume = (effectiveVolume * crossfadeOutVolumeMultiplier).coerceIn(0f, 1f)
     }
 
     fun setPreferredAudioDevice(deviceId: Int?) {
@@ -458,6 +479,15 @@ class MusicService :
     private var fadingPlayer: ExoPlayer? = null
     val isCrossfading = MutableStateFlow(false)
     private var crossfadeJob: Job? = null
+    private var crossfadeInVolumeMultiplier = 1f
+    private var crossfadeOutVolumeMultiplier = 0f
+
+    private val audioPlaybackCallback = object : AudioManager.AudioPlaybackCallback() {
+        override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>) {
+            hasActiveVoicePlayback = configs.any(::isVoicePlayback)
+            applyActiveVoiceDuckDuringFocusLossIfNeeded()
+        }
+    }
 
     private lateinit var mediaSession: MediaLibrarySession
 
@@ -630,11 +660,13 @@ class MusicService :
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         abandonAudioFocus()
         setupAudioFocusRequest()
+        audioManager.registerAudioPlaybackCallback(audioPlaybackCallback, null)
 
         mediaLibrarySessionCallback.apply {
             toggleLike = ::toggleLike
             toggleStartRadio = ::toggleStartRadio
             toggleLibrary = ::toggleLibrary
+            onUserPauseOrStop = ::cancelAudioFocusAutoResumeForUserAction
         }
         mediaSession =
             MediaLibrarySession
@@ -782,10 +814,10 @@ class MusicService :
                 }
         }
 
-        combine(playerVolume, isMuted) { volume, muted ->
-            if (muted) 0f else volume
-        }.collectLatest(scope) {
-            player.volume = it
+        combine(playerVolume, isMuted, audioFocusVolumeMultiplier) { volume, muted, focusMultiplier ->
+            Triple(volume, muted, focusMultiplier)
+        }.collectLatest(scope) { (volume, muted, focusMultiplier) ->
+            applyEffectivePlayerVolumes(volume, muted, focusMultiplier)
         }
 
         playerVolume.debounce(1000).collect(scope) { volume ->
@@ -1064,49 +1096,151 @@ class MusicService :
 
     private fun handleAudioFocusChange(focusChange: Int) {
         when (focusChange) {
-
             AudioManager.AUDIOFOCUS_GAIN,
             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT,
             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE,
             AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK -> {
+                if (!audioFocusRequestActive) {
+                    lastAudioFocusState = focusChange
+                    Timber.tag(AUDIO_FOCUS_TAG).d("focus=GAIN action=ignore_stale")
+                    return
+                }
                 hasAudioFocus = true
+                lastAudioFocusState = focusChange
 
                 if (wasPlayingBeforeAudioFocusLoss && !player.playWhenReady && !reentrantFocusGain) {
+                    Timber.tag(AUDIO_FOCUS_TAG).d("focus=GAIN action=resume_and_restore")
+                    prepareSafeAudioFocusResumeVolume()
                     reentrantFocusGain = true
-                    scope.launch {
-                        delay(150)
-                        if (hasAudioFocus && wasPlayingBeforeAudioFocusLoss && !player.playWhenReady) {
-                            wasPlayingBeforeAudioFocusLoss = false
-                            if (castConnectionHandler?.isCasting?.value != true) {
-                                player.play()
+                    audioFocusResumeJob?.cancel()
+                    audioFocusResumeJob = scope.launch {
+                        try {
+                            delay(AUDIO_FOCUS_RESUME_DELAY_MS)
+                            if (hasAudioFocus && wasPlayingBeforeAudioFocusLoss && !player.playWhenReady) {
+                                wasPlayingBeforeAudioFocusLoss = false
+                                if (castConnectionHandler?.isCasting?.value != true) {
+                                    player.play()
+                                }
                             }
+                            if (hasAudioFocus) {
+                                rampAudioFocusVolumeTo(1f, AUDIO_FOCUS_FADE_UP_MS)
+                            }
+                        } finally {
+                            reentrantFocusGain = false
                         }
-                        reentrantFocusGain = false
                     }
+                } else if (!reentrantFocusGain) {
+                    wasPlayingBeforeAudioFocusLoss = false
+                    Timber.tag(AUDIO_FOCUS_TAG).d("focus=GAIN action=restore")
+                    rampAudioFocusVolumeTo(1f, AUDIO_FOCUS_FADE_UP_MS)
                 }
-
-                player.volume = if (isMuted.value) 0f else playerVolume.value
-                lastAudioFocusState = focusChange
             }
 
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasAudioFocus = false
+                cancelAudioFocusTransitions()
                 pauseForAudioFocusLoss(resumeOnGain = false)
+                setAudioFocusVolumeMultiplier(1f)
                 abandonAudioFocus()
                 lastAudioFocusState = focusChange
+                Timber.tag(AUDIO_FOCUS_TAG).d("focus=LOSS action=pause_no_resume")
             }
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 hasAudioFocus = false
+                cancelAudioFocusTransitions()
                 pauseForAudioFocusLoss(resumeOnGain = true)
+                prepareSafeAudioFocusResumeVolume()
                 lastAudioFocusState = focusChange
+                Timber.tag(AUDIO_FOCUS_TAG).d("focus=LOSS_TRANSIENT action=pause")
             }
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 hasAudioFocus = false
-                pauseForAudioFocusLoss(resumeOnGain = true)
+                audioFocusResumeJob?.cancel()
+                reentrantFocusGain = false
                 lastAudioFocusState = focusChange
+                if (hasActiveVoicePlayback) {
+                    applyActiveVoiceDuckDuringFocusLossIfNeeded()
+                } else {
+                    rampAudioFocusVolumeTo(AUDIO_FOCUS_DUCK_MULTIPLIER, AUDIO_FOCUS_FADE_DOWN_MS)
+                    Timber.tag(AUDIO_FOCUS_TAG).d("focus=LOSS_TRANSIENT_CAN_DUCK action=duck")
+                }
             }
+        }
+    }
+
+    private fun isVoicePlayback(config: AudioPlaybackConfiguration): Boolean {
+        val attributes = config.audioAttributes
+        return attributes.usage == android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION ||
+            attributes.contentType == android.media.AudioAttributes.CONTENT_TYPE_SPEECH &&
+            (attributes.usage == android.media.AudioAttributes.USAGE_MEDIA ||
+                attributes.usage == android.media.AudioAttributes.USAGE_UNKNOWN)
+    }
+
+    private fun applyActiveVoiceDuckDuringFocusLossIfNeeded() {
+        if (
+            lastAudioFocusState != AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK ||
+            !hasActiveVoicePlayback ||
+            !player.playWhenReady
+        ) {
+            return
+        }
+
+        audioFocusResumeJob?.cancel()
+        reentrantFocusGain = false
+        rampAudioFocusVolumeTo(AUDIO_FOCUS_VOICE_DUCK_MULTIPLIER, AUDIO_FOCUS_FADE_DOWN_MS)
+        Timber.tag(AUDIO_FOCUS_TAG).d("focus=LOSS_TRANSIENT_CAN_DUCK action=duck_voice")
+    }
+
+    private fun rampAudioFocusVolumeTo(targetMultiplier: Float, durationMs: Long) {
+        audioFocusVolumeRampJob?.cancel()
+        val startMultiplier = audioFocusVolumeMultiplier.value
+        val target = targetMultiplier.coerceIn(0f, 1f)
+        if (startMultiplier == target || durationMs <= 0L) {
+            setAudioFocusVolumeMultiplier(target)
+            return
+        }
+
+        audioFocusVolumeRampJob = scope.launch {
+            val steps = (durationMs / AUDIO_FOCUS_RAMP_FRAME_MS).toInt().coerceAtLeast(1)
+            for (step in 1..steps) {
+                if (!isActive) return@launch
+                val progress = step / steps.toFloat()
+                val easedProgress = progress * progress * (3f - 2f * progress)
+                setAudioFocusVolumeMultiplier(
+                    startMultiplier + (target - startMultiplier) * easedProgress,
+                )
+                if (step < steps) delay(AUDIO_FOCUS_RAMP_FRAME_MS)
+            }
+            setAudioFocusVolumeMultiplier(target)
+        }
+    }
+
+    private fun setAudioFocusVolumeMultiplier(multiplier: Float) {
+        audioFocusVolumeMultiplier.value = multiplier.coerceIn(0f, 1f)
+        applyEffectivePlayerVolumes()
+    }
+
+    private fun prepareSafeAudioFocusResumeVolume() {
+        audioFocusVolumeRampJob?.cancel()
+        setAudioFocusVolumeMultiplier(
+            minOf(audioFocusVolumeMultiplier.value, AUDIO_FOCUS_DUCK_MULTIPLIER),
+        )
+    }
+
+    private fun cancelAudioFocusTransitions() {
+        audioFocusVolumeRampJob?.cancel()
+        audioFocusResumeJob?.cancel()
+        reentrantFocusGain = false
+    }
+
+    private fun cancelAudioFocusAutoResumeForUserAction() {
+        wasPlayingBeforeAudioFocusLoss = false
+        cancelAudioFocusTransitions()
+        if (!player.playWhenReady) {
+            setAudioFocusVolumeMultiplier(1f)
+            abandonAudioFocus()
         }
     }
 
@@ -1131,16 +1265,24 @@ class MusicService :
             return when (result) {
                 AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> {
                     hasAudioFocus = true
+                    audioFocusRequestActive = true
+                    rampAudioFocusVolumeTo(1f, AUDIO_FOCUS_FADE_UP_MS)
                     true
                 }
                 AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
                     hasAudioFocus = false
+                    audioFocusRequestActive = true
+                    cancelAudioFocusTransitions()
                     pauseForAudioFocusLoss(resumeOnGain = true)
+                    prepareSafeAudioFocusResumeVolume()
                     false
                 }
                 else -> {
                     hasAudioFocus = false
+                    audioFocusRequestActive = false
+                    cancelAudioFocusTransitions()
                     pauseForAudioFocusLoss(resumeOnGain = false)
+                    setAudioFocusVolumeMultiplier(1f)
                     false
                 }
             }
@@ -1153,6 +1295,7 @@ class MusicService :
             audioManager.abandonAudioFocusRequest(request)
         }
         hasAudioFocus = false
+        audioFocusRequestActive = false
     }
 
     private fun clearPersistedQueueFiles() {
@@ -2074,8 +2217,7 @@ class MusicService :
             }
 
             if (!playWhenReady && !pausedForAudioFocus) {
-                wasPlayingBeforeAudioFocusLoss = false
-                abandonAudioFocus()
+                cancelAudioFocusAutoResumeForUserAction()
             }
         }
 
@@ -3213,6 +3355,8 @@ class MusicService :
     override fun onDestroy() {
         isRunning = false
 
+        cancelAudioFocusTransitions()
+        audioManager.unregisterAudioPlaybackCallback(audioPlaybackCallback)
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         castConnectionHandler?.release()
         if (dataStore.get(PersistentQueueKey, true)) {
@@ -3452,6 +3596,9 @@ class MusicService :
 
         fadingPlayer = currentPlayer
         player = nextPlayer
+        crossfadeInVolumeMultiplier = 0f
+        crossfadeOutVolumeMultiplier = 1f
+        applyEffectivePlayerVolumes()
         _playerFlow.value = player
         secondaryPlayer = null
 
@@ -3493,7 +3640,6 @@ class MusicService :
             val duration = crossfadeDuration.toLong()
             val steps = 20
             val stepTime = duration / steps
-            val startVolume = try { fadingPlayer?.volume ?: 1f } catch (e: Exception) { 1f }
 
             try {
                 for (i in 0..steps) {
@@ -3508,16 +3654,19 @@ class MusicService :
                     val fadeOut = (1.0f - progress) * (1.0f - progress)
 
                     try {
-                        player.volume = startVolume * fadeIn
-                        fadingPlayer?.volume = startVolume * fadeOut
+                        crossfadeInVolumeMultiplier = fadeIn
+                        crossfadeOutVolumeMultiplier = fadeOut
+                        applyEffectivePlayerVolumes()
                     } catch (e: Exception) { break }
 
                     delay(stepTime)
                 }
             } finally {
                 try {
+                    crossfadeInVolumeMultiplier = 1f
+                    crossfadeOutVolumeMultiplier = 0f
                     fadingPlayer?.volume = 0f
-                    player.volume = startVolume
+                    applyEffectivePlayerVolumes()
                 } catch (e: Exception) { }
                 cleanupCrossfade()
             }
@@ -3535,6 +3684,13 @@ class MusicService :
 
     companion object {
         private const val DEFAULT_PLAYER_VOLUME = 1f
+        private const val AUDIO_FOCUS_DUCK_MULTIPLIER = 0.25f
+        private const val AUDIO_FOCUS_VOICE_DUCK_MULTIPLIER = 0.0000000000001f
+        private const val AUDIO_FOCUS_FADE_DOWN_MS = 150L
+        private const val AUDIO_FOCUS_FADE_UP_MS = 350L
+        private const val AUDIO_FOCUS_RAMP_FRAME_MS = 16L
+        private const val AUDIO_FOCUS_RESUME_DELAY_MS = 150L
+        private const val AUDIO_FOCUS_TAG = "AudioFocus"
         const val ROOT = "root"
         const val SONG = "song"
         const val ARTIST = "artist"
