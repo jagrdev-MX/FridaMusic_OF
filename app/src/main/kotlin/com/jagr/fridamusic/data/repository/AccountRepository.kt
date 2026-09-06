@@ -22,6 +22,7 @@ class AccountRepository @Inject constructor(
     suspend fun logoutAndClearSyncedContent(onCookieChange: (String) -> Unit) {
         withContext(Dispatchers.IO) {
             syncUtils.clearAllSyncedContent()
+            clearFullSyncState()
             App.forgetAccount(context)
             withContext(Dispatchers.Main) {
                 onCookieChange("")
@@ -31,6 +32,7 @@ class AccountRepository @Inject constructor(
 
     suspend fun logoutKeepData(onCookieChange: (String) -> Unit) {
         withContext(Dispatchers.IO) {
+            clearFullSyncState()
             App.forgetAccount(context)
             withContext(Dispatchers.Main) {
                 onCookieChange("")
@@ -54,6 +56,8 @@ class AccountRepository @Inject constructor(
                 settings[AccountNameKey] = accountName
                 settings[AccountEmailKey] = accountEmail
                 settings[AccountChannelHandleKey] = accountChannelHandle
+                settings[LastFullSyncKey] = 0L
+                settings[InitialSyncPendingKey] = true
             }
             withContext(Dispatchers.Main) {
                 val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -61,6 +65,13 @@ class AccountRepository @Inject constructor(
                 context.startActivity(intent)
                 Runtime.getRuntime().exit(0)
             }
+        }
+    }
+
+    private suspend fun clearFullSyncState() {
+        context.dataStore.edit { settings ->
+            settings[LastFullSyncKey] = 0L
+            settings[InitialSyncPendingKey] = false
         }
     }
 }

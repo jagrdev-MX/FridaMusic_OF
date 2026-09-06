@@ -67,6 +67,12 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.Locale
 
+data class LikedSongSyncState(
+    val id: String,
+    val likedDate: LocalDateTime?,
+    val isLocal: Boolean,
+)
+
 @Dao
 interface DatabaseDao {
     @Transaction
@@ -177,6 +183,22 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT COUNT(1) FROM song WHERE liked")
     fun likedSongsCount(): Flow<Int>
+
+    @Query(
+        """
+        SELECT COUNT(1) FROM song
+        WHERE liked = 1
+          AND (:hideExplicit = 0 OR explicit = 0)
+          AND (:hideVideoSongs = 0 OR isVideo = 0)
+        """,
+    )
+    suspend fun visibleLikedSongsCount(hideExplicit: Boolean, hideVideoSongs: Boolean): Int
+
+    @Query("SELECT id, likedDate, isLocal FROM song WHERE liked")
+    suspend fun likedSongSyncStates(): List<LikedSongSyncState>
+
+    @Query("UPDATE song SET liked = 0, likedDate = NULL WHERE liked = 1 AND id IN (:songIds)")
+    fun clearLikedSongs(songIds: List<String>)
 
     @Transaction
     @Query("SELECT song.* FROM song JOIN song_album_map ON song.id = song_album_map.songId WHERE song_album_map.albumId = :albumId")
@@ -840,6 +862,9 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM song WHERE id IN (:songIds)")
     suspend fun getSongsByIds(songIds: List<String>): List<Song>
+
+    @Query("SELECT * FROM song WHERE id IN (:songIds)")
+    suspend fun getSongEntitiesByIds(songIds: List<String>): List<SongEntity>
 
     @Transaction
     @Query("SELECT * FROM song WHERE id IN (:songIds)")

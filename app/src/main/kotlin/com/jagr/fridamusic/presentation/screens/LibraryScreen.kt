@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
@@ -221,7 +222,7 @@ fun LibraryScreen(
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     val snackbarHostState = remember { SnackbarHostState() }
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val playlists by playlistsViewModel.allPlaylists.collectAsStateWithLifecycle()
     val playerConnection = LocalPlayerConnection.current
     val selectedPlaylists = playlists.filter { it.id in selectedPlaylistIds }
     val emptyPlaylistMessage = stringResource(R.string.playlist_is_empty)
@@ -598,12 +599,12 @@ private fun LibraryMixTab(
     localSongsViewModel: LocalSongsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
-    val artists by artistsViewModel.allArtists.collectAsState()
-    val favoriteSongs by songsViewModel.favoriteSongs.collectAsState()
-    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
-    val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
-    val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsState()
+    val playlists by playlistsViewModel.allPlaylists.collectAsStateWithLifecycle()
+    val artists by artistsViewModel.allArtists.collectAsStateWithLifecycle()
+    val likedSongsCount by songsViewModel.likedSongsCount.collectAsStateWithLifecycle()
+    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsStateWithLifecycle()
+    val cachedSongs by cacheViewModel.cachedSongs.collectAsStateWithLifecycle()
+    val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
     var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
@@ -636,7 +637,7 @@ private fun LibraryMixTab(
                 ) {
                     ShortcutCard(
                         title = "Canciones favoritas",
-                        countText = "${favoriteSongs.size} pistas",
+                        countText = "$likedSongsCount pistas",
                         icon = Icons.Rounded.Favorite,
                         containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
                         iconColor = MaterialTheme.colorScheme.error,
@@ -1024,8 +1025,8 @@ private fun PlaylistsTab(
     val resources = LocalResources.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val playlists by viewModel.allPlaylists.collectAsState()
-    val preferences by viewModel.preferences.collectAsState()
+    val playlists by viewModel.allPlaylists.collectAsStateWithLifecycle()
+    val preferences by viewModel.preferences.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
     val playerConnection = LocalPlayerConnection.current
@@ -1034,9 +1035,9 @@ private fun PlaylistsTab(
     val hasMiniPlayerFlow = remember(playerConnection) {
         playerConnection?.mediaMetadata?.map { it != null } ?: flowOf(false)
     }
-    val queueTitle by queueTitleFlow.collectAsState(initial = null)
-    val isPlaying by isPlayingFlow.collectAsState(initial = false)
-    val hasMiniPlayer by hasMiniPlayerFlow.collectAsState(initial = false)
+    val queueTitle by queueTitleFlow.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by isPlayingFlow.collectAsStateWithLifecycle(initialValue = false)
+    val hasMiniPlayer by hasMiniPlayerFlow.collectAsStateWithLifecycle(initialValue = false)
     val snackbarHostState = remember { SnackbarHostState() }
     var showSortSheet by rememberSaveable { mutableStateOf(false) }
     var showCreateDialog by rememberSaveable { mutableStateOf(false) }
@@ -1539,19 +1540,20 @@ private fun SongsTab(
 ) {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
-    val favoriteSongs by viewModel.favoriteSongs.collectAsState()
-    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsState()
-    val cachedSongs by cacheViewModel.cachedSongs.collectAsState()
-    val availabilityLoading by cacheViewModel.isLoading.collectAsState()
-    val availabilityError by cacheViewModel.hasError.collectAsState()
-    val pinnedSongIds by localSongsViewModel.pinnedSongIds.collectAsState()
-    val preferences by viewModel.preferences.collectAsState()
-    val playlists by playlistsViewModel.allPlaylists.collectAsState()
+    val favoriteSongs by viewModel.favoriteSongs.collectAsStateWithLifecycle()
+    val likedSongsCount by viewModel.likedSongsCount.collectAsStateWithLifecycle()
+    val downloadedSongs by cacheViewModel.downloadedSongs.collectAsStateWithLifecycle()
+    val cachedSongs by cacheViewModel.cachedSongs.collectAsStateWithLifecycle()
+    val availabilityLoading by cacheViewModel.isLoading.collectAsStateWithLifecycle()
+    val availabilityError by cacheViewModel.hasError.collectAsStateWithLifecycle()
+    val pinnedSongIds by localSongsViewModel.pinnedSongIds.collectAsStateWithLifecycle()
+    val preferences by viewModel.preferences.collectAsStateWithLifecycle()
+    val playlists by playlistsViewModel.allPlaylists.collectAsStateWithLifecycle()
     val playerConnection = LocalPlayerConnection.current
     val currentSongFlow = remember(playerConnection) { playerConnection?.currentSong ?: flowOf(null) }
     val isPlayingFlow = remember(playerConnection) { playerConnection?.isEffectivelyPlaying ?: flowOf(false) }
-    val currentSong by currentSongFlow.collectAsState(initial = null)
-    val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    val currentSong by currentSongFlow.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by isPlayingFlow.collectAsStateWithLifecycle(initialValue = false)
     val songs = when (mode) {
         LibrarySongMode.FAVORITES -> favoriteSongs
         LibrarySongMode.OFFLINE -> downloadedSongs
@@ -1628,7 +1630,7 @@ private fun SongsTab(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${songs.size} pistas",
+                        text = "${if (mode == LibrarySongMode.FAVORITES) likedSongsCount else songs.size} pistas",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1826,8 +1828,8 @@ private fun LocalSongsTab(
     val playerConnection = LocalPlayerConnection.current
     val currentSongFlow = remember(playerConnection) { playerConnection?.currentSong ?: flowOf(null) }
     val isPlayingFlow = remember(playerConnection) { playerConnection?.isEffectivelyPlaying ?: flowOf(false) }
-    val currentSong by currentSongFlow.collectAsState(initial = null)
-    val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    val currentSong by currentSongFlow.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by isPlayingFlow.collectAsStateWithLifecycle(initialValue = false)
     val requiredPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -1839,12 +1841,12 @@ private fun LocalSongsTab(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    val songs by viewModel.songs.collectAsState()
-    val blacklistedSongs by viewModel.blacklistedSongs.collectAsState()
-    val scanState by viewModel.scanState.collectAsState()
-    val sortMetadata by viewModel.sortMetadata.collectAsState()
-    val pinnedSongIds by viewModel.pinnedSongIds.collectAsState()
-    val sortPreference by viewModel.sortPreference.collectAsState()
+    val songs by viewModel.songs.collectAsStateWithLifecycle()
+    val blacklistedSongs by viewModel.blacklistedSongs.collectAsStateWithLifecycle()
+    val scanState by viewModel.scanState.collectAsStateWithLifecycle()
+    val sortMetadata by viewModel.sortMetadata.collectAsStateWithLifecycle()
+    val pinnedSongIds by viewModel.pinnedSongIds.collectAsStateWithLifecycle()
+    val sortPreference by viewModel.sortPreference.collectAsStateWithLifecycle()
     val sortType = remember(sortPreference.typeName) {
         runCatching { LocalSongSortType.valueOf(sortPreference.typeName) }
             .getOrDefault(LocalSongSortType.DATE_ADDED)
@@ -2623,7 +2625,7 @@ private fun ArtistsTab(
     isActive: Boolean,
     viewModel: LibraryArtistsViewModel = hiltViewModel(),
 ) {
-    val artists by viewModel.allArtists.collectAsState()
+    val artists by viewModel.allArtists.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     var gridView by rememberPreference(LibraryArtistsGridViewKey, false)
     val gridState = rememberLazyGridState()
@@ -2761,8 +2763,8 @@ private fun AlbumsTab(
     isActive: Boolean,
     viewModel: LibraryAlbumsViewModel = hiltViewModel(),
 ) {
-    val albums by viewModel.allAlbums.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val albums by viewModel.allAlbums.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     var gridView by rememberPreference(LibraryAlbumsGridViewKey, false)
     val gridState = rememberLazyGridState()
     var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }

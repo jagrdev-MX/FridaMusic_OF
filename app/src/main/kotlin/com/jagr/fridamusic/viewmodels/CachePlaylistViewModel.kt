@@ -24,7 +24,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
@@ -52,9 +56,11 @@ class CachePlaylistViewModel @Inject constructor(
     private val _hasError = MutableStateFlow(false)
     val hasError: StateFlow<Boolean> = _hasError
 
+    private val refreshRequests = Channel<Unit>(Channel.CONFLATED)
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
+            for (ignored in refreshRequests) {
                 try {
                     refreshAvailableSongs()
                     _hasError.value = false
@@ -64,7 +70,40 @@ class CachePlaylistViewModel @Inject constructor(
                 } finally {
                     _isLoading.value = false
                 }
-                delay(1000)
+            }
+        }
+
+        refreshRequests.trySend(Unit)
+
+        viewModelScope.launch {
+            downloadUtil.downloads
+                .map { downloads ->
+                    downloads.values.asSequence()
+                        .filter { it.state == Download.STATE_COMPLETED }
+                        .map { Triple(it.request.id, it.contentLength, it.bytesDownloaded) }
+                        .sortedBy { it.first }
+                        .toList()
+                }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { refreshRequests.trySend(Unit) }
+        }
+
+        viewModelScope.launch {
+            context.dataStore.data
+                .map { preferences ->
+                    (preferences[HideExplicitKey] ?: false) to
+                        (preferences[HideVideoSongsKey] ?: false)
+                }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { refreshRequests.trySend(Unit) }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(CACHE_FALLBACK_REFRESH_INTERVAL_MS)
+                refreshRequests.trySend(Unit)
             }
         }
     }
@@ -128,5 +167,10 @@ class CachePlaylistViewModel @Inject constructor(
 
     fun removeSongFromCache(songId: String) {
         playerCache.removeResource(songId)
+        refreshRequests.trySend(Unit)
+    }
+
+    private companion object {
+        const val CACHE_FALLBACK_REFRESH_INTERVAL_MS = 30_000L
     }
 }

@@ -146,7 +146,10 @@ fun LocalPlaylistScreen(
         shareLink = localShareLink,
         onBack = onBack,
         onPlay = { songs.firstOrNull()?.let { playFromPlaylist(it, songs) } },
-        onShuffle = { songs.shuffled().firstOrNull()?.let { playFromPlaylist(it, songs) } },
+        onShuffle = {
+            val shuffledSongs = songs.shuffled()
+            shuffledSongs.firstOrNull()?.let { playFromPlaylist(it, shuffledSongs) }
+        },
         isSaved = playlist?.playlist?.bookmarkedAt != null,
         isSaveEnabled = playlist != null,
         onSaveToggle = {
@@ -276,7 +279,8 @@ fun OnlinePlaylistScreen(
         },
         onShuffle = {
             playerConnection?.let { connection ->
-                val endpoint = playlist?.shuffleEndpoint ?: cachedPlaylist?.playlist?.shuffleEndpoint
+                val endpoint = (playlist?.shuffleEndpoint ?: cachedPlaylist?.playlist?.shuffleEndpoint)
+                    ?.takeIf { !it.params.isNullOrBlank() }
                 if (endpoint != null) {
                     connection.playQueue(YouTubeQueue(endpoint))
                 } else if (songs.isNotEmpty()) {
