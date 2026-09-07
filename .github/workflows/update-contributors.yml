@@ -26,12 +26,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -75,8 +75,11 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
+          if ! gh pr create \
             --base master \
             --head "$branch" \
             --title "docs: actualizar métricas automáticas de contribución" \
-            --body $'Actualización automática de las métricas de contribución del README.\n\n- Generado por GitHub Actions.\n- No modifica código de la aplicación.\n- Se integra únicamente mediante Pull Request.'
+            --body $'Actualización automática de las métricas de contribución del README.\n\n- Generado por GitHub Actions.\n- No modifica código de la aplicación.\n- Se integra únicamente mediante Pull Request.'; then
+            echo "::warning::La rama de métricas fue actualizada, pero GitHub Actions no tiene permiso para crear Pull Requests. Activa Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests."
+            exit 0
+          fi
