@@ -1,0 +1,354 @@
+name: Android Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Canal de la Release"
+        required: true
+        type: choice
+        default: OFICIAL
+        options:
+          - OFICIAL
+          - BETA-ABIERTA
+          - ALPHA
+      distribution:
+        description: "Distribución para GitHub Releases"
+        required: true
+        type: choice
+        default: gms
+        options:
+          - gms
+          - foss
+      publish_release:
+        description: "Publicar la Release al terminar (desactívalo para dejarla como draft)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build y Release Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    outputs:
+      published: ${{ steps.result.outputs.published }}
+      release_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Resolver metadata de la Release
+        id: meta
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          DISTRIBUTION: ${{ inputs.distribution }}
+        run: |
+          set -euo pipefail
+
+          python <<'PY' > "$RUNNER_TEMP/fridamusic-version.env"
+          import pathlib
+          import re
+
+          text = pathlib.Path("app/build.gradle.kts").read_text(encoding="utf-8")
+
+          version_name = re.search(r'versionName\s*=\s*"([^"]+)"', text)
+          version_code = re.search(r'versionCode\s*=\s*(\d+)', text)
+
+          if not version_name or not version_code:
+              raise SystemExit("No se pudo resolver versionName/versionCode desde app/build.gradle.kts")
+
+          version = version_name.group(1).strip()
+          code = version_code.group(1).strip()
+
+          if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version):
+              raise SystemExit(f"versionName no cumple el formato esperado U.X.Y.Z: {version}")
+
+          print(f"VERSION_NAME={version}")
+          print(f"VERSION_CODE={code}")
+          PY
+
+          source "$RUNNER_TEMP/fridamusic-version.env"
+
+          case "$CHANNEL" in
+            OFICIAL)
+              RELEASE_TITLE="FridaMusic v${VERSION_NAME} — Lanzamiento oficial"
+              PRERELEASE=false
+              ;;
+            BETA-ABIERTA)
+              RELEASE_TITLE="FridaMusic v${VERSION_NAME} — Beta abierta"
+              PRERELEASE=true
+              ;;
+            ALPHA)
+              RELEASE_TITLE="FridaMusic v${VERSION_NAME} — Alpha"
+              PRERELEASE=true
+              ;;
+            *)
+              echo "Canal no soportado: $CHANNEL" >&2
+              exit 1
+              ;;
+          esac
+
+          case "$DISTRIBUTION" in
+            gms)
+              GRADLE_TASK=":app:assembleUniversalGmsGithub"
+              DIST_LABEL="gms"
+              ;;
+            foss)
+              GRADLE_TASK=":app:assembleUniversalFossGithub"
+              DIST_LABEL="foss"
+              ;;
+            *)
+              echo "Distribución no soportada: $DISTRIBUTION" >&2
+              exit 1
+              ;;
+          esac
+
+          TAG="${CHANNEL}-v${VERSION_NAME}-release-apk"
+          ASSET_NAME="FridaMusic_Reborn_v${VERSION_NAME}-${DIST_LABEL}-github_by_FridaLabs.apk"
+
+          {
+            echo "version_name=$VERSION_NAME"
+            echo "version_code=$VERSION_CODE"
+            echo "tag=$TAG"
+            echo "title=$RELEASE_TITLE"
+            echo "prerelease=$PRERELEASE"
+            echo "gradle_task=$GRADLE_TASK"
+            echo "asset_name=$ASSET_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Versión:      $VERSION_NAME ($VERSION_CODE)"
+          echo "Canal:        $CHANNEL"
+          echo "Distribución: $DISTRIBUTION"
+          echo "Tag:          $TAG"
+          echo "Gradle task:  $GRADLE_TASK"
+
+      - name: Validar que la Release no exista
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$RELEASE_TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            echo "Ya existe una Release con el tag $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "Ya existe el tag Git $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Validar firma Android
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Falta ANDROID_KEYSTORE_BASE64" >&2; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "Falta STORE_PASSWORD" >&2; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Falta KEY_ALIAS" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Falta KEY_PASSWORD" >&2; exit 1; }
+
+          mkdir -p app/keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/keystore/release.keystore
+          test -s app/keystore/release.keystore || { echo "El keystore decodificado está vacío" >&2; exit 1; }
+
+          chmod 600 app/keystore/release.keystore
+          echo "Keystore temporal preparado correctamente."
+
+      - name: Ejecutar pruebas unitarias mínimas
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testUniversalFossDebugUnitTest --stacktrace
+
+      - name: Compilar APK GitHub
+        id: build
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          GRADLE_TASK: ${{ steps.meta.outputs.gradle_task }}
+          ASSET_NAME: ${{ steps.meta.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+
+          ./gradlew "$GRADLE_TASK" --stacktrace
+
+          mapfile -t APKS < <(find app/build/outputs/apk -type f -name '*.apk' -print | sort)
+
+          if [ "${#APKS[@]}" -ne 1 ]; then
+            echo "Se esperaba exactamente un APK y se encontraron ${#APKS[@]}:" >&2
+            printf ' - %s\n' "${APKS[@]:-<ninguno>}" >&2
+            exit 1
+          fi
+
+          SOURCE_APK="${APKS[0]}"
+          RELEASE_APK="$RUNNER_TEMP/$ASSET_NAME"
+          cp "$SOURCE_APK" "$RELEASE_APK"
+
+          echo "apk_path=$RELEASE_APK" >> "$GITHUB_OUTPUT"
+          echo "APK preparado: $ASSET_NAME"
+          sha256sum "$RELEASE_APK"
+
+      - name: Guardar APK como artifact del workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: FridaMusic-${{ steps.meta.outputs.version_name }}-${{ inputs.distribution }}-github
+          path: ${{ steps.build.outputs.apk_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Resolver Release Android anterior
+        id: previous
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          PREVIOUS_TAG="$(gh release list \
+            --repo "$REPOSITORY" \
+            --limit 100 \
+            --json tagName,isDraft \
+            --jq '[.[] | select(.isDraft == false) | .tagName | select(endswith("-release-apk"))][0] // ""')"
+
+          echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Release Android anterior: $PREVIOUS_TAG"
+          else
+            echo "No existe una Release Android anterior en este repositorio."
+          fi
+
+      - name: Crear Release draft y adjuntar APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.meta.outputs.title }}
+          APK_PATH: ${{ steps.build.outputs.apk_path }}
+          PREVIOUS_TAG: ${{ steps.previous.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          ARGS=(
+            "$RELEASE_TAG"
+            "$APK_PATH"
+            --repo "$REPOSITORY"
+            --target "$GITHUB_SHA"
+            --title "$RELEASE_TITLE"
+            --draft
+            --generate-notes
+          )
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            ARGS+=(--notes-start-tag "$PREVIOUS_TAG")
+          fi
+
+          gh release create "${ARGS[@]}"
+          echo "Release draft creada con el APK adjunto."
+
+      - name: Publicar Release
+        if: ${{ inputs.publish_release }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          if [ "$PRERELEASE" = "true" ]; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$REPOSITORY" \
+              --draft=false \
+              --prerelease=true
+          else
+            gh release edit "$RELEASE_TAG" \
+              --repo "$REPOSITORY" \
+              --draft=false \
+              --prerelease=false
+          fi
+
+          echo "Release publicada:"
+          gh release view "$RELEASE_TAG" --repo "$REPOSITORY" --json url --jq '.url'
+
+      - name: Resultado
+        id: result
+        if: always()
+        shell: bash
+        env:
+          SHOULD_PUBLISH: ${{ inputs.publish_release }}
+        run: |
+          if [ "$SHOULD_PUBLISH" = "true" ] && [ "${{ job.status }}" = "success" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Eliminar keystore temporal
+        if: always()
+        shell: bash
+        run: rm -f app/keystore/release.keystore
+
+  discord-release:
+    name: Discord APK Release
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/discord-release.yml
+    with:
+      release_tag: ${{ needs.release.outputs.release_tag }}
+    secrets: inherit
+
+  discord-changelog:
+    name: Discord Changelog
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/discord-changelog.yml
+    with:
+      release_tag: ${{ needs.release.outputs.release_tag }}
+    secrets: inherit
+
+  telegram-release:
+    name: Telegram APK Release
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/telegram-release.yml
+    with:
+      release_tag: ${{ needs.release.outputs.release_tag }}
+      product_name: "FridaMusic"
+      test_mode: false
+    secrets: inherit
