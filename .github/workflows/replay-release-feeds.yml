@@ -1,0 +1,64 @@
+name: Replay Latest Android Release Feeds
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/replay-release-feeds.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolver última Release Android
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - name: Buscar última Release con APK
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          TAG="$(gh api "repos/$REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(any(.assets[]?; (.name | ascii_downcase | endswith(".apk"))))][0].tag_name // ""')"
+
+          if [ -z "$TAG" ]; then
+            echo "ERROR: no se encontró ninguna Release con APK adjunto."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Release Android detectada: $TAG"
+
+  discord-release:
+    name: Discord APK Release
+    needs: resolve
+    uses: ./.github/workflows/discord-release.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.tag }}
+    secrets: inherit
+
+  discord-changelog:
+    name: Discord Changelog
+    needs: resolve
+    uses: ./.github/workflows/discord-changelog.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.tag }}
+    secrets: inherit
+
+  telegram-release:
+    name: Telegram APK Release
+    needs: resolve
+    uses: ./.github/workflows/telegram-release.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.tag }}
+      product_name: "FridaMusic"
+      test_mode: false
+    secrets: inherit
