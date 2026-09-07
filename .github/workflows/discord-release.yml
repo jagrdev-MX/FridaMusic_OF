@@ -1,0 +1,262 @@
+name: Discord Release Feed
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Tag Android que debe publicarse"
+        required: true
+        type: string
+
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag Android existente para probar"
+        required: true
+        type: string
+
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  notify-discord:
+    name: Publicar Release Android en Discord
+    runs-on: ubuntu-latest
+
+    # Universal: cualquier Release publicada puede entrar.
+    # La Release se considera Android únicamente si contiene un asset .apk.
+    if: |
+      github.event_name == 'workflow_call' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release'
+
+    steps:
+      - name: Resolver tag Android
+        id: tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            RELEASE_TAG="$INPUT_TAG"
+          else
+            RELEASE_TAG="$EVENT_TAG"
+          fi
+
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "ERROR: No se pudo resolver el tag."
+            exit 1
+          fi
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag Android: $RELEASE_TAG"
+
+      - name: Obtener Release Android
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+
+        run: |
+          echo "Buscando Release: $RELEASE_TAG"
+
+          RELEASE_JSON="$(gh api \
+            "repos/$REPOSITORY/releases/tags/$RELEASE_TAG")"
+
+          RELEASE_NAME="$(echo "$RELEASE_JSON" | jq -r '.name // .tag_name')"
+          RELEASE_URL="$(echo "$RELEASE_JSON" | jq -r '.html_url')"
+          IS_PRERELEASE="$(echo "$RELEASE_JSON" | jq -r '.prerelease')"
+
+          APK_URL="$(echo "$RELEASE_JSON" | jq -r \
+            '[.assets[] | select(.name | ascii_downcase | endswith(".apk"))][0].browser_download_url // ""')"
+
+          APK_NAME="$(echo "$RELEASE_JSON" | jq -r \
+            '[.assets[] | select(.name | ascii_downcase | endswith(".apk"))][0].name // ""')"
+
+          {
+            echo "release_name=$RELEASE_NAME"
+            echo "release_url=$RELEASE_URL"
+            echo "is_prerelease=$IS_PRERELEASE"
+            echo "apk_url=$APK_URL"
+            echo "apk_name=$APK_NAME"
+            if [ -n "$APK_URL" ]; then
+              echo "is_android=true"
+            else
+              echo "is_android=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Release encontrada: $RELEASE_NAME"
+
+          if [ -n "$APK_URL" ]; then
+            echo "APK encontrado: $APK_NAME"
+          else
+            echo "AVISO: esta Release no tiene APK adjunto."
+          fi
+
+      - name: Publicar en Discord
+        if: steps.release.outputs.is_android == 'true'
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_NAME: ${{ steps.release.outputs.release_name }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+
+          APK_URL: ${{ steps.release.outputs.apk_url }}
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          webhook = os.environ.get("WEBHOOK_URL", "").strip()
+
+          if not webhook:
+              raise RuntimeError(
+                  "Falta el secret DISCORD_RELEASE_WEBHOOK."
+              )
+
+          tag = os.environ["RELEASE_TAG"].strip()
+
+          name = (
+              os.environ.get("RELEASE_NAME", "").strip()
+              or f"FridaMusic {tag}"
+          )
+
+          release_url = os.environ["RELEASE_URL"].strip()
+
+          apk_url = os.environ.get("APK_URL", "").strip()
+          apk_name = os.environ.get("APK_NAME", "").strip()
+
+          prerelease = (
+              os.environ.get("IS_PRERELEASE", "false").lower()
+              == "true"
+          )
+
+          # ========================================================
+          # TIPO DE RELEASE SEGÚN TAG
+          # ========================================================
+
+          identity = f"{tag} {name}".lower()
+
+          if "alpha" in identity:
+              status = "🧰 ALPHA"
+              stage = "Pruebas internas"
+
+          elif "beta" in identity or "candidate" in identity:
+              status = "🧪 BETA ABIERTA"
+              stage = "Release Candidate"
+
+          elif "oficial" in identity or "official" in identity or "stable" in identity:
+              status = "✅ OFICIAL"
+              stage = "Producción"
+
+          elif prerelease:
+              status = "🧪 PRE-RELEASE"
+              stage = "Pruebas"
+
+          else:
+              status = "✅ ANDROID RELEASE"
+              stage = "Android"
+
+          description = f"""
+          {status}
+
+          🎧 **FridaMusic**
+          📱 **Android APK**
+          🏷️ **Versión:** `{tag}`
+          🚦 **Canal:** {stage}
+
+          🚀 Nueva versión de FridaMusic disponible.
+          """.strip()
+
+          if apk_url and apk_name:
+              description += (
+                  f"\n\n"
+                  f"📦 **[Descargar {apk_name}]({apk_url})**"
+              )
+          else:
+              description += (
+                  "\n\n"
+                  "⚠️ **No se encontró un APK adjunto a esta Release.**"
+              )
+
+          description += (
+              f"\n\n"
+              f"🔗 **[Ver Release en GitHub]({release_url})**"
+          )
+
+          payload = {
+              "username": "Frida Labs • Releases",
+
+              "content": "@everyone",
+
+              "allowed_mentions": {
+                  "parse": ["everyone"]
+              },
+
+              "embeds": [
+                  {
+                      "title": f"🚀 {name}",
+                      "description": description,
+                      "url": release_url,
+                      "color": 11829780,
+                      "footer": {
+                          "text": "FridaMusic • Android • Frida Labs"
+                      }
+                  }
+              ]
+          }
+
+          data = json.dumps(
+              payload,
+              ensure_ascii=False
+          ).encode("utf-8")
+
+          request = urllib.request.Request(
+              webhook,
+              data=data,
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "FridaMusic-Release-Bot"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(
+                  request,
+                  timeout=20
+              ) as response:
+
+                  print(
+                      f"Discord Release OK - HTTP {response.status}"
+                  )
+
+          except urllib.error.HTTPError as error:
+
+              message = error.read().decode(
+                  "utf-8",
+                  errors="replace"
+              )
+
+              print(
+                  f"Discord HTTP ERROR {error.code}: {message}"
+              )
+
+              raise
+
+          PY
