@@ -1,0 +1,10 @@
+# Propietario y mantenedor principal del repositorio.
+# Los cambios en cualquier ruta deben pasar por revisión de Frida Labs.
+* @jagrdev-MX
+
+# Gobierno, automatizaciones y documentación pública.
+/.github/ @jagrdev-MX
+/docs/ @jagrdev-MX
+
+# Aplicación Android y módulos principales.
+/app/ @jagrdev-MX
