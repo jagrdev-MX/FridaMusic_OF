@@ -20,6 +20,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
 
     steps:
@@ -33,7 +34,7 @@ jobs:
 
       - name: Generate contributor stats
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           MAX_FORKS: 50
         run: node .github/scripts/update-contributors.cjs
 
