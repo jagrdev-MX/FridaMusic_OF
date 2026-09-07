@@ -60,10 +60,10 @@ import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
-import com.jagr.fridamusic.presentation.components.LocalPlayingBars
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
+import com.jagr.fridamusic.presentation.components.UniversalSongRow
 import com.jagr.fridamusic.presentation.components.toSongActionContext
 import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.playYTItem
@@ -167,14 +167,22 @@ fun LocalPlaylistScreen(
     ) {
         itemsIndexed(playlistSongs, key = { _, it -> "playlist_song_${it.map.id}" }) { _, playlistSong ->
             val song = playlistSong.song
+            val isCurrent = currentSongId == song.song.id
             PlaylistSongRow(
                 title = song.song.title,
                 artist = song.artists.joinToString(", ") { it.name },
                 thumbnailUrl = song.song.thumbnailUrl,
                 duration = song.song.duration,
-                isCurrent = currentSongId == song.song.id,
+                isCurrent = isCurrent,
                 isPlaying = isPlaying,
                 onClick = { playFromPlaylist(song, songs) },
+                onPlay = {
+                    if (isCurrent && playerConnection != null) {
+                        playerConnection.togglePlayPause()
+                    } else {
+                        playFromPlaylist(song, songs)
+                    }
+                },
                 onMoreClick = {
                     menuContext = song.toSongActionContext(
                         playlistId = viewModel.playlistId,
@@ -329,14 +337,22 @@ fun OnlinePlaylistScreen(
         }
 
         itemsIndexed(songs, key = { index, it -> "${index}_${it.id}" }) { _, song ->
+            val isCurrent = currentSongId == song.id
             PlaylistSongRow(
                 title = song.title,
                 artist = song.artists.joinToString(", ") { it.name },
                 thumbnailUrl = song.thumbnail,
                 duration = song.duration,
-                isCurrent = currentSongId == song.id,
+                isCurrent = isCurrent,
                 isPlaying = isPlaying,
                 onClick = { playerConnection?.playYTItem(song) },
+                onPlay = {
+                    if (isCurrent && playerConnection != null) {
+                        playerConnection.togglePlayPause()
+                    } else {
+                        playerConnection?.playYTItem(song)
+                    }
+                },
                 onMoreClick = {
                     menuContext = song.toSongActionContext(
                         playlistId = cachedPlaylist
@@ -369,14 +385,22 @@ fun OnlinePlaylistScreen(
             }
             items(relatedItems, key = { "related_${it.id}" }) { item ->
                 val songItem = item as? SongItem ?: return@items
+                val isCurrent = currentSongId == songItem.id
                 PlaylistSongRow(
                     title = songItem.title,
                     artist = songItem.artists.joinToString(", ") { it.name },
                     thumbnailUrl = songItem.thumbnail,
                     duration = songItem.duration,
-                    isCurrent = currentSongId == songItem.id,
+                    isCurrent = isCurrent,
                     isPlaying = isPlaying,
                     onClick = { playerConnection?.playYTItem(songItem) },
+                    onPlay = {
+                        if (isCurrent && playerConnection != null) {
+                            playerConnection.togglePlayPause()
+                        } else {
+                            playerConnection?.playYTItem(songItem)
+                        }
+                    },
                     onMoreClick = { menuContext = songItem.toSongActionContext() },
                 )
             }
@@ -643,13 +667,13 @@ private fun PlaylistSongRow(
     isCurrent: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
         color = if (isCurrent) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
@@ -657,67 +681,44 @@ private fun PlaylistSongRow(
             MaterialTheme.colorScheme.surfaceContainerLow
         },
     ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (thumbnailUrl != null) {
-                    AsyncImage(
-                        model = thumbnailUrl.resize(width = 112),
-                        contentDescription = title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        UniversalSongRow(
+            title = title,
+            subtitle = artist,
+            duration = duration
+                ?.takeIf { it >= 0 }
+                ?.let { "%d:%02d".format(it / 60, it % 60) },
+            isCurrent = isCurrent,
+            isPlaying = isPlaying,
+            onClick = onClick,
+            onPlay = onPlay,
+            onMoreClick = onMoreClick,
+            contentPadding = PaddingValues(10.dp),
+            titleFontWeight = FontWeight.SemiBold,
+            leadingContent = {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (thumbnailUrl != null) {
+                        AsyncImage(
+                            model = thumbnailUrl.resize(width = 112),
+                            contentDescription = title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (artist.isNotEmpty()) {
-                    Text(
-                        text = artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (isCurrent) {
-                LocalPlayingBars(
-                    active = isPlaying,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(25.dp),
-                )
-            } else if (duration != null && duration >= 0) {
-                Text(
-                    text = "%d:%02d".format(duration / 60, duration % 60),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            SongOptionsButton(onClick = onMoreClick)
-        }
+            },
+        )
     }
 }
 

@@ -64,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -96,6 +97,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.recognition.MusicRecognitionService
 import com.music.shazamkit.models.RecognitionResult
 import com.music.shazamkit.models.RecognitionStatus
@@ -119,6 +123,9 @@ fun MusicRecognitionScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val playerConnection = LocalPlayerConnection.current
+    val currentMediaId = playerConnection?.mediaMetadata?.collectAsState()?.value?.id
+    val isPlaying = playerConnection?.isEffectivelyPlaying?.collectAsState()?.value == true
 
     var state by remember { mutableStateOf<RecognitionUiState>(RecognitionUiState.Ready) }
     var recognitionJob by remember { mutableStateOf<Job?>(null) }
@@ -254,6 +261,10 @@ fun MusicRecognitionScreen(
                 when (current) {
                     is RecognitionUiState.Success -> RecognitionResultCard(
                         result = current.result,
+                        isCurrent = !current.result.youtubeVideoId.isNullOrBlank() &&
+                            current.result.youtubeVideoId == currentMediaId,
+                        isPlaying = isPlaying,
+                        onTogglePlayPause = { playerConnection?.togglePlayPause() },
                         onListenAgain = ::startOrRequestPermission,
                         onSearch = {
                             onSearchResult("${current.result.title} ${current.result.artist}".trim())
@@ -435,6 +446,9 @@ private fun ListeningOrb(
 @Composable
 private fun RecognitionResultCard(
     result: RecognitionResult,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
     onListenAgain: () -> Unit,
     onSearch: () -> Unit,
     onPlay: () -> Unit,
@@ -476,19 +490,18 @@ private fun RecognitionResultCard(
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(
+                        MarqueeText(
                             text = result.title,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
                             text = result.artist,
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -543,26 +556,38 @@ private fun RecognitionResultCard(
                 Spacer(Modifier.size(8.dp))
                 Text(stringResource(R.string.music_recognition_listen_again))
             }
-            Button(
-                onClick = if (result.youtubeVideoId.isNullOrBlank()) onSearch else onPlay,
-                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-            ) {
-                Icon(
-                    imageVector = if (result.youtubeVideoId.isNullOrBlank()) {
-                        Icons.Rounded.Search
-                    } else {
-                        Icons.Rounded.PlayArrow
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.size(8.dp))
-                Text(
-                    text = stringResource(
-                        if (result.youtubeVideoId.isNullOrBlank()) R.string.search
-                        else R.string.music_recognition_play,
-                    ),
-                )
+            if (isCurrent) {
+                Box(
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MediaPlaybackIndicator(
+                        isPlaying = isPlaying,
+                        onClick = onTogglePlayPause,
+                    )
+                }
+            } else {
+                Button(
+                    onClick = if (result.youtubeVideoId.isNullOrBlank()) onSearch else onPlay,
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                ) {
+                    Icon(
+                        imageVector = if (result.youtubeVideoId.isNullOrBlank()) {
+                            Icons.Rounded.Search
+                        } else {
+                            Icons.Rounded.PlayArrow
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        text = stringResource(
+                            if (result.youtubeVideoId.isNullOrBlank()) R.string.search
+                            else R.string.music_recognition_play,
+                        ),
+                    )
+                }
             }
         }
     }

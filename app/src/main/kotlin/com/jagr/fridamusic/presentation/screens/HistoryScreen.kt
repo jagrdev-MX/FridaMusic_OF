@@ -53,6 +53,8 @@ import com.jagr.fridamusic.constants.HistorySource
 import com.jagr.fridamusic.db.entities.EventWithSong
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.MediaArtworkActionButton
 import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
@@ -63,6 +65,7 @@ import com.jagr.fridamusic.viewmodels.DateAgo
 import com.jagr.fridamusic.viewmodels.HistoryViewModel
 import com.music.innertube.models.SongItem
 import com.music.innertube.pages.HistoryPage
+import androidx.compose.material.icons.rounded.PlayArrow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
@@ -81,7 +84,7 @@ fun HistoryScreen(
     val remotePage by viewModel.historyPage.collectAsState()
     val playerConnection = LocalPlayerConnection.current
     val currentMediaId = playerConnection?.mediaMetadata?.collectAsState()?.value?.id
-    val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
+    val isPlaying = playerConnection?.isEffectivelyPlaying?.collectAsState()?.value == true
     val displayedLocalEvents = remember(localEvents, currentMediaId) {
         localEvents.withCurrentSongFirst(currentMediaId)
     }
@@ -283,13 +286,21 @@ private fun HistorySongRow(
                         buttonSize = 40.dp,
                         indicatorSize = 23.dp,
                     )
+                } else {
+                    MediaArtworkActionButton(
+                        icon = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.play),
+                        onClick = onClick,
+                        modifier = Modifier.align(Alignment.Center),
+                        buttonSize = 40.dp,
+                        iconSize = 23.dp,
+                    )
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                MarqueeText(
                     text = title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )

@@ -354,13 +354,11 @@ fun HomeMediaCard(
         }
 
         Spacer(modifier = Modifier.height(7.dp))
-        Text(
+        MarqueeText(
             text = title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             textAlign = if (type == HomeContentType.ARTIST) TextAlign.Center else TextAlign.Start,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -369,10 +367,10 @@ fun HomeMediaCard(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 textAlign = if (type == HomeContentType.ARTIST) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

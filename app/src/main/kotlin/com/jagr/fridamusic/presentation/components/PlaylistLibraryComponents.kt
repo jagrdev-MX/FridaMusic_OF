@@ -232,12 +232,10 @@ fun PlaylistLibraryListItem(
                 modifier = Modifier.size(62.dp),
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                MarqueeText(
                     text = playlist.playlist.name,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
                 playlist.songCountText(LocalContext.current.resources)?.let { countText ->
@@ -359,12 +357,10 @@ fun PlaylistLibraryGridItem(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
+            MarqueeText(
                 text = playlist.playlist.name,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             playlist.songCountText(LocalContext.current.resources)?.let { countText ->

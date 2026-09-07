@@ -49,6 +49,7 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.SearchInput
@@ -103,6 +104,9 @@ fun SearchResultScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val quickReturnState = rememberQuickReturnTopAppBarState()
+    val playerConnection = LocalPlayerConnection.current
+    val currentMediaId = playerConnection?.mediaMetadata?.collectAsState()?.value?.id
+    val isPlaying = playerConnection?.isEffectivelyPlaying?.collectAsState()?.value == true
     var searchHeaderHeightPx by remember { mutableIntStateOf(0) }
     var categoryHeaderHeightPx by remember { mutableIntStateOf(0) }
     val searchHeaderHeight = with(density) { searchHeaderHeightPx.toDp() }
@@ -160,6 +164,9 @@ fun SearchResultScreen(
                 searchHeaderHeight = searchHeaderHeight,
                 contentTopPadding = quickReturnHeaderHeight,
                 onCategoryHeaderHeightChanged = { categoryHeaderHeightPx = it },
+                currentMediaId = currentMediaId,
+                isPlaying = isPlaying,
+                onTogglePlayPause = { playerConnection?.togglePlayPause() },
             )
         }
 
@@ -185,6 +192,9 @@ fun SearchResultScreen(
                     },
                     onDeleteHistory = suggestionViewModel::deleteSearch,
                     onClearHistory = suggestionViewModel::clearSearchHistory,
+                    currentMediaId = currentMediaId,
+                    isPlaying = isPlaying,
+                    onTogglePlayPause = { playerConnection?.togglePlayPause() },
                     topPadding = searchHeaderHeight,
                 )
             }
@@ -247,6 +257,9 @@ private fun SearchCategoryPager(
     searchHeaderHeight: Dp,
     contentTopPadding: Dp,
     onCategoryHeaderHeightChanged: (Int) -> Unit,
+    currentMediaId: String?,
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
 ) {
     val initialPage = tabs.indexOfFirst { it.filter == viewModel.filter.value }.coerceAtLeast(0)
     val pagerState = rememberPagerState(initialPage = initialPage) { tabs.size }
@@ -307,6 +320,9 @@ private fun SearchCategoryPager(
                     listState = listState,
                     onItemClick = onItemClick,
                     topPadding = contentTopPadding,
+                    currentMediaId = currentMediaId,
+                    isPlaying = isPlaying,
+                    onTogglePlayPause = onTogglePlayPause,
                 )
             } else {
                 SearchFilteredContent(
@@ -315,6 +331,9 @@ private fun SearchCategoryPager(
                     listState = listState,
                     onItemClick = onItemClick,
                     topPadding = contentTopPadding,
+                    currentMediaId = currentMediaId,
+                    isPlaying = isPlaying,
+                    onTogglePlayPause = onTogglePlayPause,
                 )
             }
         }
@@ -436,6 +455,9 @@ private fun SearchSummaryContent(
     listState: LazyListState,
     onItemClick: (YTItem) -> Unit,
     topPadding: Dp,
+    currentMediaId: String?,
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
 ) {
     val summaryPage = viewModel.summaryPage
 
@@ -473,7 +495,13 @@ private fun SearchSummaryContent(
                 )
             }
             items(summary.items, key = { "${summary.title}-${it.id}" }) { item ->
-                YTItemRow(item = item, onClick = { onItemClick(item) })
+                YTItemRow(
+                    item = item,
+                    currentMediaId = currentMediaId,
+                    isPlaying = isPlaying,
+                    onClick = { onItemClick(item) },
+                    onTogglePlayPause = onTogglePlayPause,
+                )
             }
         }
     }
@@ -486,6 +514,9 @@ private fun SearchFilteredContent(
     listState: LazyListState,
     onItemClick: (YTItem) -> Unit,
     topPadding: Dp,
+    currentMediaId: String?,
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
 ) {
     val viewState = viewModel.viewStateMap[filterValue]
 
@@ -513,7 +544,13 @@ private fun SearchFilteredContent(
         modifier = Modifier.fillMaxSize()
     ) {
         items(viewState.items, key = { it.id }) { item ->
-            YTItemRow(item = item, onClick = { onItemClick(item) })
+            YTItemRow(
+                item = item,
+                currentMediaId = currentMediaId,
+                isPlaying = isPlaying,
+                onClick = { onItemClick(item) },
+                onTogglePlayPause = onTogglePlayPause,
+            )
         }
 
 

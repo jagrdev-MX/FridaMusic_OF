@@ -99,6 +99,7 @@ import com.jagr.fridamusic.presentation.components.SongPlaylistPickerDialog
 import com.jagr.fridamusic.presentation.components.LocalSongGridItem
 import com.jagr.fridamusic.presentation.components.LocalSongListItem
 import com.jagr.fridamusic.presentation.components.LocalCollectionActionContext
+import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalLocalCollectionActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
@@ -920,9 +921,8 @@ private fun PlaylistCompactCard(
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = playlist.playlist.name,
+        MarqueeText(text = playlist.playlist.name,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
             color = MaterialTheme.colorScheme.onBackground)
         playlist.songCountText(context.resources)?.let { countText ->
             Text(text = countText,
@@ -983,9 +983,8 @@ private fun ArtistCircleCard(
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = artist.artist.name,
+        MarqueeText(text = artist.artist.name,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onBackground)
     }
@@ -2691,13 +2690,13 @@ private fun ArtistsTab(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
+                    MarqueeText(
                         text = artist.title,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     artist.songCountText(resources)?.let { countText ->
                         Text(
@@ -2733,12 +2732,11 @@ private fun ArtistsTab(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
+                        MarqueeText(
                             text = artist.title,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         artist.songCountText(resources)?.let { countText ->
                             Text(
@@ -2841,20 +2839,19 @@ private fun AlbumsTab(
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
+                    MarqueeText(
                         text = album.title,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     if (subtitle.isNotBlank()) {
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -2882,20 +2879,19 @@ private fun AlbumsTab(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                     )
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
+                        MarqueeText(
                             text = album.title,
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         if (subtitle.isNotBlank()) {
                             Text(
                                 text = subtitle,
                                 style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

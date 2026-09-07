@@ -109,12 +109,10 @@ fun LocalSongListItem(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                MarqueeText(
                     text = song.song.title,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     color = titleColor,
                 )
                 Text(
@@ -126,9 +124,9 @@ fun LocalSongListItem(
                         }
                     },
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (isCurrent) {
@@ -216,13 +214,11 @@ fun LocalSongGridItem(
                     )
                 }
             }
-            Text(
+            MarqueeText(
                 text = song.song.title,
                 modifier = Modifier.padding(top = 8.dp),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             Text(

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +73,10 @@ import com.jagr.fridamusic.constants.OptionStats
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.SongWithStats
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.MediaArtworkActionButton
+import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
@@ -105,6 +110,9 @@ fun StatsScreen(
     val topArtists by viewModel.mostPlayedArtists.collectAsState()
     val topAlbums by viewModel.mostPlayedAlbums.collectAsState()
     val firstEvent by viewModel.firstEvent.collectAsState()
+    val playerConnection = LocalPlayerConnection.current
+    val currentMediaId = playerConnection?.mediaMetadata?.collectAsState()?.value?.id
+    val isPlaying = playerConnection?.isEffectivelyPlaying?.collectAsState()?.value == true
 
     var contentTab by remember { mutableIntStateOf(0) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
@@ -192,6 +200,9 @@ fun StatsScreen(
                 topSongItems(
                     songs = topSongsStats,
                     onSongClick = onSongClick,
+                    currentMediaId = currentMediaId,
+                    isPlaying = isPlaying,
+                    onTogglePlayPause = { playerConnection?.togglePlayPause() },
                     onMoreClick = { menuContext = it.toSongActionContext() },
                 )
             } else {
@@ -437,6 +448,9 @@ private fun StatCard(
 private fun LazyListScope.topSongItems(
     songs: List<SongWithStats>,
     onSongClick: (SongWithStats) -> Unit,
+    currentMediaId: String?,
+    isPlaying: Boolean,
+    onTogglePlayPause: () -> Unit,
     onMoreClick: (SongWithStats) -> Unit,
 ) {
     val visibleSongs = songs.take(50)
@@ -452,6 +466,7 @@ private fun LazyListScope.topSongItems(
         key = { _, song -> song.id },
         contentType = { _, _ -> "top_song" },
     ) { index, song ->
+        val isCurrent = currentMediaId == song.id
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -464,7 +479,12 @@ private fun LazyListScope.topSongItems(
             RankedSongRow(
                 rank = index + 1,
                 song = song,
+                isCurrent = isCurrent,
+                isPlaying = isPlaying,
                 onClick = { onSongClick(song) },
+                onPlay = {
+                    if (isCurrent) onTogglePlayPause() else onSongClick(song)
+                },
                 onMoreClick = { onMoreClick(song) },
             )
             if (index < visibleSongs.lastIndex) {
@@ -481,7 +501,10 @@ private fun LazyListScope.topSongItems(
 private fun RankedSongRow(
     rank: Int,
     song: SongWithStats,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
     Row(
@@ -512,14 +535,31 @@ private fun RankedSongRow(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+            if (isCurrent) {
+                MediaPlaybackIndicator(
+                    isPlaying = isPlaying,
+                    onClick = onPlay,
+                    modifier = Modifier.align(Alignment.Center),
+                    buttonSize = 38.dp,
+                    indicatorSize = 22.dp,
+                )
+            } else {
+                MediaArtworkActionButton(
+                    icon = Icons.Rounded.PlayArrow,
+                    contentDescription = stringResource(R.string.play),
+                    onClick = onPlay,
+                    modifier = Modifier.align(Alignment.Center),
+                    buttonSize = 38.dp,
+                    iconSize = 22.dp,
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            MarqueeText(
                 text = song.title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (rank <= 3) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
             song.artistName?.let {
                 Text(
@@ -599,13 +639,12 @@ private fun TopArtistsSection(
                         Icon(Icons.Rounded.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Text(
+                MarqueeText(
                     text = artist.artist.name,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (index < 3) FontWeight.SemiBold else FontWeight.Normal,
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Column(horizontalAlignment = Alignment.End) {
                     artist.timeListened?.let { ms ->
@@ -676,12 +715,11 @@ private fun TopAlbumsSection(
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
+                    MarqueeText(
                         text = album.album.title,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (index < 3) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     val artistNames = album.artists.joinToString(", ") { it.name }
                     if (artistNames.isNotBlank()) {
