@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "🔐 Reportar una vulnerabilidad"
+    url: "https://github.com/jagrdev-MX/FridaMusic_OF/security/advisories/new"
+    about: "Usa un reporte privado para vulnerabilidades. No publiques exploits ni secretos en Issues."
+  - name: "💬 Discord"
+    url: "https://discord.gg/Gyh7nfWK9k"
+    about: "Soporte comunitario y conversación general."
+  - name: "📢 Telegram"
+    url: "https://t.me/FridaLabs"
+    about: "Canal oficial de Frida Labs."

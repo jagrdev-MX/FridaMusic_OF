@@ -1,0 +1,100 @@
+name: "🐛 Reportar un bug"
+description: "Reporta un fallo reproducible de FridaMusic."
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por reportar el problema. No publiques tokens, credenciales, cookies, correos privados ni otros datos sensibles.
+
+  - type: input
+    id: version
+    attributes:
+      label: "Versión de FridaMusic"
+      description: "Ejemplo: 1.5.18.254"
+      placeholder: "1.x.x.xxx"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: distribution
+    attributes:
+      label: "Distribución"
+      options:
+        - Google Play / GMS
+        - GitHub GMS
+        - FOSS
+        - Debug / desarrollo
+        - No estoy seguro
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: "Dispositivo"
+      description: "Fabricante y modelo."
+      placeholder: "Samsung SM-A566E"
+    validations:
+      required: true
+
+  - type: input
+    id: android
+    attributes:
+      label: "Versión de Android"
+      placeholder: "Android 16"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Pasos para reproducir"
+      description: "Enumera los pasos mínimos necesarios para provocar el fallo."
+      placeholder: |
+        1. Abrir...
+        2. Tocar...
+        3. Ocurre...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Comportamiento esperado"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Comportamiento actual"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs o crash report"
+      description: "Pega únicamente información relevante y elimina cualquier dato sensible antes de publicarla."
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "Información adicional"
+      description: "Capturas, video, frecuencia del fallo, Bluetooth, red, pasos adicionales, etc."
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "Confirmaciones"
+      options:
+        - label: "Busqué issues existentes y no encontré el mismo problema."
+          required: true
+        - label: "Revisé el contenido y no estoy publicando secretos ni información sensible."
+          required: true
+        - label: "Puedo reproducir el fallo o indiqué claramente que ocurre de forma intermitente."
+          required: true

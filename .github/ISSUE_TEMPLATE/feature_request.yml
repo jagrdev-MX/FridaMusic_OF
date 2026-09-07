@@ -1,0 +1,67 @@
+name: "✨ Proponer una mejora"
+description: "Propón una función, mejora de UX o cambio técnico para FridaMusic."
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Las propuestas son bienvenidas. Explica primero el problema o necesidad; evita plantear únicamente una implementación cerrada.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problema o necesidad"
+      description: "¿Qué experiencia actual quieres mejorar y para quién?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "Propuesta"
+      description: "Describe el comportamiento deseado."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternativas consideradas"
+      description: "Opcional. Explica otras soluciones o comportamientos que evaluaste."
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Área principal"
+      options:
+        - Reproducción / audio
+        - Biblioteca
+        - Búsqueda / contenido remoto
+        - Letras
+        - UI / UX
+        - Rendimiento / memoria
+        - Notificaciones
+        - Android Auto / MediaSession
+        - Web / documentación
+        - Build / CI
+        - Otro
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Alcance y posibles riesgos"
+      description: "Indica compatibilidad, variantes afectadas o cambios sensibles si los conoces."
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "Confirmaciones"
+      options:
+        - label: "Busqué propuestas existentes antes de abrir esta solicitud."
+          required: true
+        - label: "La propuesta no depende de incluir secretos, contenido propietario no redistribuible o mecanismos que violen licencias de terceros."
+          required: true
