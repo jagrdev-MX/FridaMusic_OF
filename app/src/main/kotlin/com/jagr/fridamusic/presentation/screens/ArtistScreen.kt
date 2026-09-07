@@ -48,8 +48,10 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
+import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
+import com.jagr.fridamusic.presentation.components.UniversalSongRow
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
@@ -66,6 +68,8 @@ import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun ArtistScreen(
@@ -78,6 +82,14 @@ fun ArtistScreen(
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
+    val currentSongIdFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
+    }
+    val isPlayingFlow = remember(playerConnection) {
+        playerConnection?.isEffectivelyPlaying ?: flowOf(false)
+    }
+    val currentSongId by currentSongIdFlow.collectAsState(initial = null)
+    val isPlaying by isPlayingFlow.collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
@@ -426,9 +438,19 @@ fun ArtistScreen(
                             "remote_song_${sectionIndex}_${section.title}_${song.id}_$songIndex"
                         },
                     ) { _, song ->
+                        val isCurrent = currentSongId == song.id
                         RemoteSongRow(
                             song = song,
                             onClick = { playerConnection?.playYTItem(song) },
+                            isCurrent = isCurrent,
+                            isPlaying = isPlaying,
+                            onPlay = {
+                                if (isCurrent && playerConnection != null) {
+                                    playerConnection.togglePlayPause()
+                                } else {
+                                    playerConnection?.playYTItem(song)
+                                }
+                            },
                             onMoreClick = { menuContext = song.toSongActionContext() },
                         )
                     }
@@ -508,13 +530,11 @@ fun ArtistScreen(
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(MaterialTheme.colorScheme.surfaceVariant),
                                 )
-                                Text(
+                                MarqueeText(
                                     text = album.album.title,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onBackground,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
@@ -534,38 +554,38 @@ fun ArtistScreen(
                     )
                 }
                 items(librarySongs, key = { "local_${it.song.id}" }) { song ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .universalMediaClickable(
-                                onClick = { onSongClick(song, librarySongs) },
-                                onLongClick = { menuContext = song.toSongActionContext() },
+                    val isCurrent = currentSongId == song.song.id
+                    UniversalSongRow(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString(", ") { it.name },
+                        duration = song.song.duration
+                            .takeIf { it >= 0 }
+                            ?.let(::formatArtistSongDuration),
+                        isCurrent = isCurrent,
+                        isPlaying = isPlaying,
+                        onClick = { onSongClick(song, librarySongs) },
+                        onPlay = {
+                            if (isCurrent && playerConnection != null) {
+                                playerConnection.togglePlayPause()
+                            } else {
+                                onSongClick(song, librarySongs)
+                            }
+                        },
+                        onMoreClick = { menuContext = song.toSongActionContext() },
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                        horizontalSpacing = 14.dp,
+                        leadingContent = {
+                            AsyncImage(
+                                model = song.song.thumbnailUrl?.resize(width = 96),
+                                contentDescription = song.song.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
                             )
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        AsyncImage(
-                            model = song.song.thumbnailUrl?.resize(width = 96),
-                            contentDescription = song.song.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        )
-                        Text(
-                            text = song.song.title,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SongOptionsButton(
-                            onClick = { menuContext = song.toSongActionContext() },
-                        )
-                    }
+                        },
+                    )
                 }
             }
         }
@@ -599,44 +619,35 @@ private fun resolveArtistShareLink(
 @Composable
 private fun RemoteSongRow(
     song: SongItem,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        AsyncImage(
-            model = song.thumbnail.resize(width = 96),
-            contentDescription = song.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    UniversalSongRow(
+        title = song.title,
+        subtitle = song.artists.joinToString(", ") { it.name },
+        duration = song.duration?.takeIf { it >= 0 }?.let(::formatArtistSongDuration),
+        isCurrent = isCurrent,
+        isPlaying = isPlaying,
+        onClick = onClick,
+        onPlay = onPlay,
+        onMoreClick = onMoreClick,
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        horizontalSpacing = 14.dp,
+        leadingContent = {
+            AsyncImage(
+                model = song.thumbnail.resize(width = 96),
+                contentDescription = song.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
             )
-            Text(
-                text = song.artists.joinToString(", ") { it.name },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        SongOptionsButton(onClick = onMoreClick)
-    }
+        },
+    )
 }
 
 @Composable
@@ -677,13 +688,11 @@ private fun RemoteItemCard(
                 )
             }
         }
-        Text(
+        MarqueeText(
             text = item.title,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         if (subtitle.isNotEmpty()) {
             Text(
@@ -696,3 +705,6 @@ private fun RemoteItemCard(
         }
     }
 }
+
+private fun formatArtistSongDuration(seconds: Int): String =
+    "%d:%02d".format(seconds / 60, seconds % 60)

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.NorthWest
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +35,10 @@ import coil3.compose.AsyncImage
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.SearchHistory
+import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.presentation.components.MarqueeText
+import com.jagr.fridamusic.presentation.components.MediaArtworkActionButton
+import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.SearchInput
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
@@ -60,6 +65,9 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
+    val playerConnection = LocalPlayerConnection.current
+    val currentMediaId = playerConnection?.mediaMetadata?.collectAsState()?.value?.id
+    val isPlaying = playerConnection?.isEffectivelyPlaying?.collectAsState()?.value == true
     var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
 
     LaunchedEffect(Unit) {
@@ -142,6 +150,9 @@ fun SearchScreen(
             },
             onDeleteHistory = viewModel::deleteSearch,
             onClearHistory = viewModel::clearSearchHistory,
+            currentMediaId = currentMediaId,
+            isPlaying = isPlaying,
+            onTogglePlayPause = { playerConnection?.togglePlayPause() },
             listState = listState,
         )
     }
@@ -156,6 +167,9 @@ internal fun SearchSuggestionContent(
     onItemClick: (YTItem) -> Unit,
     onDeleteHistory: (SearchHistory) -> Unit,
     onClearHistory: () -> Unit,
+    currentMediaId: String? = null,
+    isPlaying: Boolean = false,
+    onTogglePlayPause: () -> Unit = {},
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     topPadding: Dp = 0.dp,
@@ -225,7 +239,13 @@ internal fun SearchSuggestionContent(
                     )
                 }
                 items(viewState.items, key = { it.id }) { item ->
-                    YTItemRow(item = item, onClick = { onItemClick(item) })
+                    YTItemRow(
+                        item = item,
+                        currentMediaId = currentMediaId,
+                        isPlaying = isPlaying,
+                        onClick = { onItemClick(item) },
+                        onTogglePlayPause = onTogglePlayPause,
+                    )
                 }
             }
         }
@@ -295,7 +315,10 @@ private fun SuggestionRow(
 @Composable
 fun YTItemRow(
     item: YTItem,
+    currentMediaId: String? = null,
+    isPlaying: Boolean = false,
     onClick: () -> Unit,
+    onTogglePlayPause: () -> Unit = {},
 ) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString(", ") { it.name }
@@ -305,6 +328,7 @@ fun YTItemRow(
         else -> null
     }
     val isRound = item is ArtistItem
+    val isCurrent = item is SongItem && item.id == currentMediaId
     var menuItem by remember(item.id) { mutableStateOf<YTItem?>(null) }
 
     Row(
@@ -318,23 +342,45 @@ fun YTItemRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        AsyncImage(
-            model = item.thumbnail?.resize(width = 96),
-            contentDescription = item.title,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .size(48.dp)
                 .clip(if (isRound) CircleShape else RoundedCornerShape(8.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+        ) {
+            AsyncImage(
+                model = item.thumbnail?.resize(width = 96),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (item is SongItem) {
+                if (isCurrent) {
+                    MediaPlaybackIndicator(
+                        isPlaying = isPlaying,
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier.align(Alignment.Center),
+                        buttonSize = 38.dp,
+                        indicatorSize = 22.dp,
+                    )
+                } else {
+                    MediaArtworkActionButton(
+                        icon = Icons.Rounded.PlayArrow,
+                        contentDescription = stringResource(R.string.play),
+                        onClick = onClick,
+                        modifier = Modifier.align(Alignment.Center),
+                        buttonSize = 38.dp,
+                        iconSize = 22.dp,
+                    )
+                }
+            }
+        }
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            MarqueeText(
                 text = item.title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(

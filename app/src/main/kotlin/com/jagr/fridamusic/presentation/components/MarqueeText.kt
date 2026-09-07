@@ -10,7 +10,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -21,6 +23,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -31,6 +34,7 @@ internal fun MarqueeText(
     style: TextStyle,
     color: Color,
     fontWeight: FontWeight? = null,
+    textAlign: TextAlign = TextAlign.Start,
     modifier: Modifier = Modifier,
 ) {
     var containerWidth by remember(text) { mutableIntStateOf(0) }
@@ -40,8 +44,14 @@ internal fun MarqueeText(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .clipToBounds()
             .onSizeChanged { containerWidth = it.width }
             .then(if (shouldMarquee) Modifier.marqueeEdgeFade() else Modifier),
+        contentAlignment = when (textAlign) {
+            TextAlign.Center -> Alignment.Center
+            TextAlign.End, TextAlign.Right -> Alignment.CenterEnd
+            else -> Alignment.CenterStart
+        },
     ) {
         Text(
             text = text,
@@ -51,6 +61,7 @@ internal fun MarqueeText(
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Clip,
+            textAlign = textAlign,
             modifier = Modifier.basicMarquee(
                 iterations = Int.MAX_VALUE,
                 initialDelayMillis = 1_800,

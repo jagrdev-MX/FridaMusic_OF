@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.SongWithStats
@@ -451,15 +452,15 @@ private fun RecapMetric(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
-            value,
+        MarqueeText(
+            text = value,
             modifier = Modifier.weight(1f, fill = false),
             color = Color.White,
-            fontSize = if (compact) 20.sp else 24.sp,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = if (compact) 20.sp else 24.sp,
+            ),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.End,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -497,9 +498,20 @@ private fun RecapRanking(title: String, rows: List<Triple<String, String, String
                     modifier = Modifier.size(if (compact) 40.dp else 48.dp).clip(RoundedCornerShape(12.dp)),
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(name, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    MarqueeText(
+                        text = name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     if (subtitle.isNotBlank()) {
-                        Text(subtitle, color = Color.White.copy(alpha = 0.72f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        Text(
+                            text = subtitle,
+                            color = Color.White.copy(alpha = 0.72f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
@@ -535,21 +547,24 @@ private fun RecapSpotlight(
                 .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         )
         Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
-        Text(
-            title,
+        MarqueeText(
+            text = title,
             color = Color.White,
-            fontSize = if (compact) 30.sp else 34.sp,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = if (compact) 30.sp else 34.sp,
+            ),
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            subtitle,
+            text = subtitle,
             color = Color.White.copy(alpha = 0.78f),
+            style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
-            maxLines = 2,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }

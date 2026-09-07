@@ -1542,20 +1542,16 @@ private fun AppleMusicQueueView(
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
+                    MarqueeText(
                         text = currentSong?.title ?: stringResource(R.string.unknown),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
                     )
-                    Text(
+                    MarqueeText(
                         text = currentSong?.artists?.joinToString(", ") { it.name } ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.7f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 SongOptionsButton(
@@ -1618,8 +1614,17 @@ private fun AppleMusicQueueView(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = metadata?.title ?: "—", style = MaterialTheme.typography.bodyLarge, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(text = metadata?.artists?.joinToString(", ") { it.name } ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            MarqueeText(
+                                text = metadata?.title ?: "—",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            MarqueeText(
+                                text = metadata?.artists?.joinToString(", ") { it.name } ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.7f),
+                            )
                         }
                         SongOptionsButton(
                             onClick = { onMoreClick(window.mediaItem, window.firstPeriodIndex, false) },

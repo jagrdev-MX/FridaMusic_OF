@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.spotifyimport.SpotifyImportProgressUi
 import com.jagr.fridamusic.spotifyimport.SpotifyImportSourceType
 import com.jagr.fridamusic.spotifyimport.SpotifyImportSourceUi
@@ -344,12 +345,11 @@ private fun ImportingView(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
+                    MarqueeText(
                         text = progress.sourceTitle,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
                         text = stringResource(
@@ -659,12 +659,11 @@ private fun SourceRow(
             }
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                MarqueeText(
                     text = source.title,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 if (source.subtitle.isNotBlank()) {
                     Text(
