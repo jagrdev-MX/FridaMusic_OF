@@ -1,0 +1,256 @@
+name: Discord Changelog Feed
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Tag Android del changelog"
+        required: true
+        type: string
+
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag Android existente para probar"
+        required: true
+        type: string
+
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  publish-changelog:
+    name: Publicar Changelog Android en Discord
+    runs-on: ubuntu-latest
+
+    # Universal: acepta cualquier Release publicada.
+    # Solo publica el changelog si la Release contiene un asset .apk.
+    if: |
+      github.event_name == 'workflow_call' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release'
+
+    steps:
+      - name: Resolver tag Android
+        id: tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            RELEASE_TAG="$INPUT_TAG"
+          else
+            RELEASE_TAG="$EVENT_TAG"
+          fi
+
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "ERROR: No se pudo resolver el tag."
+            exit 1
+          fi
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag Android: $RELEASE_TAG"
+
+      - name: Obtener datos de la Release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+
+        run: |
+          echo "Buscando Release: $RELEASE_TAG"
+
+          RELEASE_JSON="$(gh api \
+            "repos/$REPOSITORY/releases/tags/$RELEASE_TAG")"
+
+          RELEASE_NAME="$(echo "$RELEASE_JSON" | jq -r '.name // .tag_name')"
+          RELEASE_URL="$(echo "$RELEASE_JSON" | jq -r '.html_url')"
+          RELEASE_BODY="$(echo "$RELEASE_JSON" | jq -r '.body // ""')"
+          IS_PRERELEASE="$(echo "$RELEASE_JSON" | jq -r '.prerelease')"
+          APK_URL="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | ascii_downcase | endswith(".apk"))][0].browser_download_url // ""')"
+
+          {
+            echo "release_name=$RELEASE_NAME"
+            echo "release_url=$RELEASE_URL"
+            echo "is_prerelease=$IS_PRERELEASE"
+            if [ -n "$APK_URL" ]; then
+              echo "is_android=true"
+            else
+              echo "is_android=false"
+            fi
+
+            echo "release_body<<EOF"
+            echo "$RELEASE_BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publicar Changelog en Discord
+        if: steps.release.outputs.is_android == 'true'
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_NAME: ${{ steps.release.outputs.release_name }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          RELEASE_BODY: ${{ steps.release.outputs.release_body }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+
+        run: |
+          python <<'PY'
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          webhook = os.environ.get("WEBHOOK_URL", "").strip()
+
+          if not webhook:
+              raise RuntimeError(
+                  "Falta el secret DISCORD_CHANGELOG_WEBHOOK."
+              )
+
+          tag = os.environ["RELEASE_TAG"].strip()
+
+          name = (
+              os.environ.get("RELEASE_NAME", "").strip()
+              or f"FridaMusic {tag}"
+          )
+
+          release_url = os.environ["RELEASE_URL"].strip()
+          body = os.environ.get("RELEASE_BODY", "").strip()
+
+          prerelease = (
+              os.environ.get("IS_PRERELEASE", "false").lower()
+              == "true"
+          )
+
+          identity = f"{tag} {name}".lower()
+
+          if "alpha" in identity:
+              status = "🧰 ALPHA"
+              stage = "Pruebas internas"
+
+          elif "beta" in identity or "candidate" in identity:
+              status = "🧪 BETA ABIERTA"
+              stage = "Release Candidate"
+
+          elif "oficial" in identity or "official" in identity or "stable" in identity:
+              status = "✅ OFICIAL"
+              stage = "Producción"
+
+          elif prerelease:
+              status = "🧪 PRE-RELEASE"
+              stage = "Pruebas"
+
+          else:
+              status = "✅ ANDROID RELEASE"
+              stage = "Android"
+
+          if not body:
+              body = "No se especificaron cambios para esta versión."
+
+          # Eliminar metadata HTML oculta.
+          body = re.sub(
+              r"<!--.*?-->",
+              "",
+              body,
+              flags=re.DOTALL
+          ).strip()
+
+          # Eliminar imágenes HTML de GitHub.
+          body = re.sub(
+              r"<img[^>]*>",
+              "",
+              body,
+              flags=re.IGNORECASE
+          ).strip()
+
+          # Limpiar saltos excesivos.
+          body = re.sub(
+              r"\n{3,}",
+              "\n\n",
+              body
+          )
+
+          if len(body) > 3400:
+              body = body[:3397] + "..."
+
+          description = f"""
+          {status}
+
+          🎧 **FridaMusic**
+          📱 **Android**
+          🏷️ **Versión:** `{tag}`
+          🚦 **Canal:** {stage}
+
+          ## 📜 Changelog
+
+          {body}
+
+          🔗 **[Ver Release completa en GitHub]({release_url})**
+          """.strip()
+
+          payload = {
+              "username": "Frida Labs • Changelog",
+
+              "embeds": [
+                  {
+                      "title": f"📜 {name}",
+                      "description": description,
+                      "url": release_url,
+                      "color": 11829780,
+                      "footer": {
+                          "text": "FridaMusic • Changelog • Frida Labs"
+                      }
+                  }
+              ]
+          }
+
+          data = json.dumps(
+              payload,
+              ensure_ascii=False
+          ).encode("utf-8")
+
+          request = urllib.request.Request(
+              webhook,
+              data=data,
+              headers={
+                  "Content-Type": "application/json",
+                  "User-Agent": "FridaMusic-Changelog-Bot"
+              },
+              method="POST"
+          )
+
+          try:
+              with urllib.request.urlopen(
+                  request,
+                  timeout=20
+              ) as response:
+
+                  print(
+                      f"Discord Changelog OK - HTTP {response.status}"
+                  )
+
+          except urllib.error.HTTPError as error:
+
+              message = error.read().decode(
+                  "utf-8",
+                  errors="replace"
+              )
+
+              print(
+                  f"Discord HTTP ERROR {error.code}: {message}"
+              )
+
+              raise
+
+          PY
