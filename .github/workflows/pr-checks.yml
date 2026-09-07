@@ -30,21 +30,51 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check whitespace errors
+        shell: bash
+        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+
+      - name: Detect Android-relevant changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          needs_android=false
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            case "$file" in
+              *.md|docs/*|.github/*)
+                ;;
+              *)
+                needs_android=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+
+          echo "android=$needs_android" >> "$GITHUB_OUTPUT"
+          echo "Android compile required: $needs_android"
+
       - name: Setup JDK 21
+        if: steps.changes.outputs.android == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
 
-      - name: Check whitespace errors
-        shell: bash
-        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
-
       - name: Make Gradle wrapper executable
+        if: steps.changes.outputs.android == 'true'
         shell: bash
         run: chmod +x gradlew
 
       - name: Compile universal FOSS debug Kotlin
+        if: steps.changes.outputs.android == 'true'
         shell: bash
         run: ./gradlew :app:compileUniversalFossDebugKotlin --no-daemon
+
+      - name: Documentation-only pull request
+        if: steps.changes.outputs.android != 'true'
+        shell: bash
+        run: echo "No Android-relevant files changed; Gradle compilation skipped."

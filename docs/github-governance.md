@@ -43,12 +43,12 @@ Reglas:
 - Require approval of the most recent reviewable push: activado cuando GitHub lo permita para la configuración elegida.
 - Require conversation resolution before merging: activado.
 - Require review from Code Owners: activado.
-- Require status checks to pass before merging: activar después de que el workflow `PR Checks` se haya ejecutado al menos una vez.
+- Require status checks to pass before merging: activado.
 
-Status check esperado:
+Status check requerido, tal como lo registra GitHub Actions:
 
 ```text
-PR Checks / Compile FOSS Debug
+Compile FOSS Debug
 ```
 
 No se recomienda exigir commits firmados mientras el historial y flujo actuales continúen generando commits no firmados.
@@ -89,14 +89,25 @@ automation/update-contributor-stats
 
 y abrir un Pull Request.
 
+Mientras el permiso anterior no esté habilitado, el workflow actualiza únicamente esa rama y deja una advertencia sin marcar la ejecución como fallida.
+
 ## Pull Request CI
 
-`.github/workflows/pr-checks.yml` valida Pull Requests no draft contra `master` con:
+`.github/workflows/pr-checks.yml` valida Pull Requests no draft contra `master`.
+
+Siempre ejecuta:
 
 ```bash
 git diff --check "origin/<base>...HEAD"
+```
+
+Si el PR toca código, configuración de build u otros archivos relevantes para Android, también ejecuta:
+
+```bash
 ./gradlew :app:compileUniversalFossDebugKotlin --no-daemon
 ```
+
+Los PRs que sólo cambian Markdown, `docs/` o archivos de gobierno bajo `.github/` omiten la compilación Gradle para ahorrar tiempo de CI, pero conservan el mismo status check obligatorio.
 
 Se usa FOSS Debug para no depender de secretos, Firebase o configuraciones privadas que los forks externos no poseen.
 
