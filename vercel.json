@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "ignoreCommand": "node web/scripts/vercel-ignore-build.cjs",
+  "buildCommand": "node web/scripts/build-vercel.cjs",
+  "outputDirectory": ".vercel-static"
+}

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="meta.title">Acceso a la beta cerrada de FridaMusic | Frida Labs</title>
+  <meta name="description"
+    content="Solicita acceso a la beta cerrada de FridaMusic y completa el formulario oficial del programa de pruebas."
+    data-i18n-content="meta.description">
+  <link rel="canonical" href="https://frida-music-of.vercel.app/beta">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FridaMusic">
+  <meta property="og:title" content="Acceso a la beta cerrada de FridaMusic" data-i18n-content="meta.ogTitle">
+  <meta property="og:description"
+    content="Solicita acceso anticipado y ayuda a probar las próximas versiones de FridaMusic."
+    data-i18n-content="meta.ogDescription">
+  <meta property="og:url" content="https://frida-music-of.vercel.app/beta">
+  <meta property="og:image" content="https://frida-music-of.vercel.app/assets/beta-cerrada-banner.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/png" href="/logo1.png?v=2">
+</head>
+
+<body class="beta-page">
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="bg-overlay" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <nav class="nav-shell" aria-label="Navegación principal" data-i18n-aria-label="nav.label">
+      <a class="nav-brand" href="/" aria-label="FridaMusic">
+        <img class="nav-brand-mark" src="/logo1.png?v=2" alt="">
+        <span class="nav-brand-text">FridaMusic TM</span>
+      </a>
+
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav"
+        aria-label="Abrir navegación" data-i18n-aria-label="nav.menu">
+        <span></span>
+      </button>
+
+      <div class="nav-links" id="site-nav">
+        <a class="nav-link" href="/#inicio" data-i18n="nav.home">Inicio</a>
+        <a class="nav-link" href="/#caracteristicas" data-i18n="nav.features">Características</a>
+        <a class="nav-link" href="/#descargas" data-i18n="nav.downloads">Descargas</a>
+        <a class="nav-link is-active" href="/beta" aria-current="page" data-i18n="nav.closedBeta">Acceso beta cerrada</a>
+        <a class="nav-link" href="/#soporte" data-i18n="nav.support">Soporte</a>
+        <a class="nav-link" href="/privacy" data-i18n="nav.privacy">Privacidad</a>
+      </div>
+
+      <div class="nav-meta" aria-label="Selector de idioma" data-i18n-aria-label="language.label">
+        <div class="language-switcher" role="group" aria-label="Idioma" data-i18n-aria-label="language.label">
+          <button class="language-option" type="button" data-lang="es" aria-pressed="true">ES</button>
+          <button class="language-option" type="button" data-lang="en" aria-pressed="false">EN</button>
+          <button class="language-option" type="button" data-lang="pt" aria-pressed="false">PT</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrapper beta-wrapper" id="contenido">
+    <section class="glass-card beta-access-card" aria-labelledby="beta-title">
+      <div class="beta-kicker" data-i18n="beta.kicker">Programa de pruebas</div>
+      <h1 class="section-title" id="beta-title" data-i18n="beta.title">Acceso beta cerrada</h1>
+      <p class="beta-copy" data-i18n="beta.copy">Solicita acceso anticipado a FridaMusic y ayuda a probar las próximas
+        versiones antes de su lanzamiento público.</p>
+      <a class="btn privacy-back beta-back" href="/" data-i18n="beta.back">Volver al sitio principal</a>
+
+      <div class="beta-overview">
+        <figure class="beta-banner-frame">
+          <img src="/assets/beta-cerrada-banner.png"
+            alt="FridaMusic, programa de beta cerrada"
+            data-i18n-alt="beta.bannerAlt"
+            width="1672"
+            height="941"
+            decoding="async">
+        </figure>
+
+        <article class="beta-info-panel">
+          <span class="beta-status" data-i18n="beta.status">Inscripción mediante solicitud</span>
+          <h2 class="beta-info-title" data-i18n="beta.infoTitle">Cómo solicitar acceso</h2>
+          <p class="beta-info-copy" data-i18n="beta.infoCopy">El acceso se gestiona con el formulario oficial que aparece
+            en esta misma página.</p>
+
+          <ol class="beta-steps">
+            <li>
+              <span class="beta-step-number" aria-hidden="true">1</span>
+              <div>
+                <strong data-i18n="beta.step1Title">Completa tus datos</strong>
+                <p data-i18n="beta.step1Copy">Usa el correo de la cuenta de Google Play con la que participarás.</p>
+              </div>
+            </li>
+            <li>
+              <span class="beta-step-number" aria-hidden="true">2</span>
+              <div>
+                <strong data-i18n="beta.step2Title">Envía la solicitud</strong>
+                <p data-i18n="beta.step2Copy">Revisa que la información sea correcta antes de enviarla.</p>
+              </div>
+            </li>
+            <li>
+              <span class="beta-step-number" aria-hidden="true">3</span>
+              <div>
+                <strong data-i18n="beta.step3Title">Espera la confirmación</strong>
+                <p data-i18n="beta.step3Copy">El equipo revisará la solicitud y te indicará los siguientes pasos si se
+                  habilita tu acceso.</p>
+              </div>
+            </li>
+          </ol>
+
+          <a class="btn beta-start" href="#formulario-beta" data-i18n="beta.action">Llenar formulario</a>
+          <p class="beta-note" data-i18n="beta.note">Enviar el formulario no activa el acceso de forma inmediata ni
+            garantiza un lugar.</p>
+        </article>
+      </div>
+
+      <div class="beta-form-anchor" id="formulario-beta" aria-hidden="true"></div>
+      <div class="beta-form-shell">
+        <div class="beta-form-heading">
+          <div>
+            <span class="beta-form-kicker" data-i18n="beta.formKicker">Solicitud de acceso</span>
+            <h2 class="beta-form-title" data-i18n="beta.formTitle">Formulario de beta cerrada</h2>
+          </div>
+          <span class="beta-embed-badge">Microsoft Forms</span>
+        </div>
+        <p class="beta-form-copy" data-i18n="beta.formCopy">Completa la solicitud aquí para terminar el proceso sin salir
+          de FridaMusic.</p>
+        <div class="beta-form-frame">
+          <iframe
+            src="https://forms.cloud.microsoft/r/GPLN6tWizy?embed=true"
+            title="Formulario de acceso a la beta cerrada de FridaMusic"
+            data-i18n-title="beta.formFrameTitle"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer data-i18n="footer.copy">© 2026 Frida Labs MX. Hecho con pasión por el diseño.</footer>
+  <script src="/beta.js"></script>
+</body>
+
+</html>

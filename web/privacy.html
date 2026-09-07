@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="meta.title">Política de privacidad de FridaMusic | Frida Labs</title>
+  <meta name="description"
+    content="Política de privacidad oficial de FridaMusic: datos locales, permisos, servicios externos, publicidad y opciones del usuario."
+    data-i18n-content="meta.description">
+  <link rel="canonical" href="https://frida-music-of.vercel.app/privacy">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FridaMusic">
+  <meta property="og:title" content="Política de privacidad de FridaMusic" data-i18n-content="meta.ogTitle">
+  <meta property="og:description"
+    content="Información verificable sobre el acceso, almacenamiento y transmisión de datos en FridaMusic."
+    data-i18n-content="meta.ogDescription">
+  <meta property="og:url" content="https://frida-music-of.vercel.app/privacy">
+  <meta property="og:image" content="https://frida-music-of.vercel.app/logo1.png?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/png" href="/logo1.png?v=2">
+
+  <!-- TODO(owner): Confirm that "Frida Labs" exactly matches the public developer identity in Google Play. -->
+  <!-- TODO(owner): Confirm the target audience and Families declaration in Play Console before publishing this policy. -->
+  <!-- TODO(owner): Validate Google Mobile Ads 25.4.0 disclosures and consent requirements against the shipped GMS artifact. -->
+</head>
+
+<body class="privacy-page">
+  <canvas id="bg-canvas" aria-hidden="true"></canvas>
+  <div class="bg-overlay" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <nav class="nav-shell" aria-label="Navegación principal" data-i18n-aria-label="nav.label">
+      <a class="nav-brand" href="/" aria-label="FridaMusic">
+        <img class="nav-brand-mark" src="/logo1.png?v=2" alt="">
+        <span class="nav-brand-text">FridaMusic TM</span>
+      </a>
+
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav"
+        aria-label="Abrir navegación"
+        data-i18n-aria-label="nav.menu">
+        <span></span>
+      </button>
+
+      <div class="nav-links" id="site-nav">
+        <a class="nav-link" href="/#inicio" data-i18n="nav.home">Inicio</a>
+        <a class="nav-link" href="/#caracteristicas" data-i18n="nav.features">Características</a>
+        <a class="nav-link" href="/#descargas" data-i18n="nav.downloads">Descargas</a>
+        <a class="nav-link" href="/beta" data-i18n="nav.closedBeta">Acceso beta cerrada</a>
+        <a class="nav-link" href="/#soporte" data-i18n="nav.support">Soporte</a>
+        <a class="nav-link is-active" href="/privacy" aria-current="page" data-i18n="nav.privacy">Privacidad</a>
+      </div>
+
+      <div class="nav-meta" aria-label="Selector de idioma" data-i18n-aria-label="language.label">
+        <div class="language-switcher" role="group" aria-label="Idioma" data-i18n-aria-label="language.label">
+          <button class="language-option" type="button" data-lang="es" aria-pressed="true">ES</button>
+          <button class="language-option" type="button" data-lang="en" aria-pressed="false">EN</button>
+          <button class="language-option" type="button" data-lang="pt" aria-pressed="false">PT</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrapper privacy-wrapper" id="contenido">
+    <article class="glass-card privacy-hero" aria-labelledby="privacy-title">
+      <div class="privacy-kicker" data-i18n="hero.kicker">Documento público</div>
+      <h1 id="privacy-title" data-i18n="hero.title">Política de privacidad</h1>
+      <p class="privacy-lead" data-i18n="hero.lead">Información sobre FridaMusic para Android y los servicios web oficiales,
+        redactada a partir del comportamiento verificable en el repositorio.</p>
+      <dl class="privacy-dates">
+        <div>
+          <dt data-i18n="hero.effectiveLabel">Entrada en vigor</dt>
+          <dd data-i18n="hero.effectiveDate">21 de julio de 2026</dd>
+        </div>
+        <div>
+          <dt data-i18n="hero.updatedLabel">Última actualización</dt>
+          <dd data-i18n="hero.updatedDate">22 de agosto de 2026</dd>
+        </div>
+      </dl>
+      <a class="btn privacy-back" href="/#soporte" data-i18n="hero.back">Volver a Soporte</a>
+    </article>
+
+    <div class="privacy-layout">
+      <aside class="glass-card privacy-toc" aria-labelledby="privacy-index-title">
+        <h2 id="privacy-index-title" data-i18n="toc.title">Índice</h2>
+        <nav aria-label="Índice de la política" data-i18n-aria-label="toc.label">
+          <ol>
+            <li><a href="#responsable" data-i18n="toc.controller">Responsable y alcance</a></li>
+            <li><a href="#resumen" data-i18n="toc.summary">Resumen de datos</a></li>
+            <li><a href="#biblioteca" data-i18n="toc.library">Biblioteca local</a></li>
+            <li><a href="#almacenamiento" data-i18n="toc.storage">Almacenamiento local</a></li>
+            <li><a href="#transmisiones" data-i18n="toc.network">Transmisiones externas</a></li>
+            <li><a href="#publicidad" data-i18n="toc.ads">Publicidad</a></li>
+            <li><a href="#permisos" data-i18n="toc.permissions">Permisos</a></li>
+            <li><a href="#web" data-i18n="toc.web">Sitio oficial</a></li>
+            <li><a href="#seguridad" data-i18n="toc.security">Seguridad y conservación</a></li>
+            <li><a href="#opciones" data-i18n="toc.choices">Opciones del usuario</a></li>
+            <li><a href="#menores" data-i18n="toc.children">Menores</a></li>
+            <li><a href="#contacto" data-i18n="toc.contact">Contacto y cambios</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <article class="glass-card privacy-content">
+        <section id="responsable">
+          <h2 data-i18n="controller.title">1. Responsable y alcance</h2>
+          <p data-i18n="controller.p1">FridaMusic es una aplicación de música para Android publicada dentro de la
+            identidad pública de Frida Labs. El repositorio identifica a jagrdev-MX como owner técnico.</p>
+          <p data-i18n="controller.p2">Esta política cubre la aplicación con identificador
+            com.jagr.fridamusic y el sitio oficial frida-music-of.vercel.app. No cubre forks ni aplicaciones de terceros.</p>
+          <p data-i18n="controller.p3">El repositorio auditado no contiene creación de cuentas, autenticación,
+            Google Sign-In, Firebase ni un sistema propio de perfiles de usuario.</p>
+        </section>
+
+        <section id="resumen">
+          <h2 data-i18n="summary.title">2. Resumen de datos comprobados</h2>
+          <div class="privacy-table-wrap" tabindex="0" role="region" aria-label="Resumen de tratamientos"
+            data-i18n-aria-label="summary.tableLabel">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col" data-i18n="summary.data">Datos</th>
+                  <th scope="col" data-i18n="summary.source">Origen</th>
+                  <th scope="col" data-i18n="summary.destination">Destino comprobado</th>
+                  <th scope="col" data-i18n="summary.purpose">Finalidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-i18n="summary.localData">Metadatos de audio, playlists, historial, cola, ajustes y letras locales</td>
+                  <td data-i18n="summary.localSource">Dispositivo y acciones del usuario</td>
+                  <td data-i18n="summary.localDestination">Almacenamiento privado de la app; parte puede entrar en Auto Backup de Android</td>
+                  <td data-i18n="summary.localPurpose">Biblioteca, reproducción y personalización local</td>
+                </tr>
+                <tr>
+                  <td data-i18n="summary.queryData">Búsquedas y metadatos de canciones</td>
+                  <td data-i18n="summary.querySource">Texto introducido y biblioteca local</td>
+                  <td data-i18n="summary.queryDestination">Google/YouTube, Apple iTunes Search, LRCLIB y lyrics.ovh</td>
+                  <td data-i18n="summary.queryPurpose">Buscar contenido, sugerencias, carátulas y letras</td>
+                </tr>
+                <tr>
+                  <td data-i18n="summary.adsData">Datos que el SDK publicitario puede tratar automáticamente</td>
+                  <td data-i18n="summary.adsSource">Dispositivo e interacción con la app</td>
+                  <td data-i18n="summary.adsDestination">Google Mobile Ads</td>
+                  <td data-i18n="summary.adsPurpose">Publicidad, analítica del SDK y prevención de fraude</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="biblioteca">
+          <h2 data-i18n="library.title">3. Biblioteca musical local</h2>
+          <p data-i18n="library.p1">Con permiso del usuario, FridaMusic consulta MediaStore para leer identificador,
+            título, artista, duración, ruta, nombre de archivo, álbum, identificador de álbum y fecha de incorporación de
+            los archivos de audio. También usa las URI de contenido y carátula para reproducir y mostrar la biblioteca.</p>
+          <p data-i18n="library.p2">El código auditado reproduce los archivos desde el dispositivo y no carga los bytes
+            del archivo de audio local a un servidor propio. Sin embargo, el título, artista, álbum o duración pueden
+            enviarse a proveedores externos cuando se buscan carátulas o letras.</p>
+          <p data-i18n="library.p3">La aplicación también puede leer letras incrustadas o archivos de letras ubicados
+            junto al audio. Las ediciones manuales de letras se guardan en preferencias privadas de la app.</p>
+        </section>
+
+        <section id="almacenamiento">
+          <h2 data-i18n="storage.title">4. Datos almacenados en el dispositivo</h2>
+          <p data-i18n="storage.p1">Room guarda playlists y el historial de reproducción. SharedPreferences guarda
+            ajustes visuales y de reproducción, historial de búsqueda, artistas seguidos, canciones excluidas, carpetas
+            excluidas, última reproducción, cola, letras locales o en caché y URI de carátulas personalizadas.</p>
+          <p data-i18n="storage.p2">La app mantiene cachés locales: hasta 1 GB para audio remoto con expulsión por uso
+            reciente y hasta 100 MB para carátulas. También existen cachés temporales en memoria para búsquedas,
+            sugerencias, recomendaciones, streams y resultados de letras.</p>
+          <p data-i18n="storage.p3">El manifiesto habilita Android Auto Backup y las reglas del proyecto no excluyen
+            categorías concretas. Por ello, Android puede respaldar datos elegibles de la app en la cuenta de copia de
+            seguridad del usuario o transferirlos entre dispositivos, según la versión y configuración de Android. Las
+            carpetas de caché quedan fuera del Auto Backup estándar.</p>
+        </section>
+
+        <section id="transmisiones">
+          <h2 data-i18n="network.title">5. Datos transmitidos fuera del dispositivo</h2>
+          <ul>
+            <li data-i18n="network.search">Las búsquedas y solicitudes de sugerencias se envían a Google Suggest,
+              YouTube y YouTube Music/InnerTube.</li>
+            <li data-i18n="network.streams">Los identificadores o URL de videos se usan con YouTube y NewPipe Extractor
+              para obtener metadatos, streams de audio y subtítulos.</li>
+            <li data-i18n="network.artwork">El título y el artista se convierten en una consulta a Apple iTunes Search
+              cuando hace falta una carátula remota.</li>
+            <li data-i18n="network.lyrics">El título, artista, álbum y, cuando existe, duración se envían a LRCLIB; el
+              título y artista también pueden enviarse a lyrics.ovh. Para contenido de YouTube se puede solicitar su
+              pista de subtítulos.</li>
+          </ul>
+          <p data-i18n="network.p2">Estas solicitudes se producen para ejecutar funciones solicitadas por el usuario o
+            completar la experiencia de reproducción. Los proveedores reciben además los datos técnicos inherentes a
+            una conexión de red. Sus prácticas de conservación están regidas por sus propias políticas y no aparecen en
+            este repositorio.</p>
+        </section>
+
+        <section id="publicidad">
+          <h2 data-i18n="ads.title">6. Publicidad y consentimiento</h2>
+          <p data-i18n="ads.p1">La variante GMS integra Google Mobile Ads 25.4.0 y el código auditado lo inicializa desde
+            el gestor de anuncios interstitials. Este checkout no contiene una dependencia ni una llamada verificable de
+            Google User Messaging Platform (UMP). El manifiesto fusionado incorpora permisos de ID de publicidad y
+            Android AdServices aportados por el SDK.</p>
+          <p data-i18n="ads.p2">La documentación de Google para la familia Mobile Ads indica que el SDK puede tratar
+            automáticamente dirección IP, interacciones con el producto, diagnósticos e identificadores del dispositivo
+            o de cuenta para publicidad, analítica y prevención de fraude. El owner debe validar esas declaraciones contra
+            el artefacto GMS distribuido antes de completar Seguridad de los datos.</p>
+          <div class="privacy-notice privacy-notice-warning" role="note">
+            <strong data-i18n="ads.todoTitle">TODO del owner</strong>
+            <p data-i18n="ads.todo">Validar los requisitos de consentimiento y las declaraciones de Seguridad de los datos
+              contra el artefacto GMS distribuido antes de publicarlo. No se encontró una dependencia UMP ni una entrada
+              permanente de opciones de privacidad en este checkout.</p>
+          </div>
+        </section>
+
+        <section id="permisos">
+          <h2 data-i18n="permissions.title">7. Permisos de Android</h2>
+          <div class="privacy-table-wrap" tabindex="0" role="region" aria-label="Permisos de Android"
+            data-i18n-aria-label="permissions.tableLabel">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col" data-i18n="permissions.permission">Permiso</th>
+                  <th scope="col" data-i18n="permissions.use">Uso comprobado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>READ_MEDIA_AUDIO</code> / <code>READ_EXTERNAL_STORAGE</code></td>
+                  <td data-i18n="permissions.audio">Leer y organizar audio de MediaStore; el permiso antiguo solo se declara hasta Android 12L.</td>
+                </tr>
+                <tr>
+                  <td><code>POST_NOTIFICATIONS</code></td>
+                  <td data-i18n="permissions.notifications">Mostrar notificaciones y controles asociados a la reproducción.</td>
+                </tr>
+                <tr>
+                  <td><code>FOREGROUND_SERVICE</code> / <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code></td>
+                  <td data-i18n="permissions.foreground">Mantener la reproducción de audio perceptible en segundo plano mediante MediaSessionService.</td>
+                </tr>
+                <tr>
+                  <td><code>INTERNET</code></td>
+                  <td data-i18n="permissions.internet">Acceder a búsquedas, streams, letras, carátulas y anuncios.</td>
+                </tr>
+                <tr>
+                  <td><code>ACCESS_NETWORK_STATE</code> / <code>WAKE_LOCK</code></td>
+                  <td data-i18n="permissions.media3">Los añade Media3 para conocer el estado de red y sostener la reproducción cuando corresponde.</td>
+                </tr>
+                <tr>
+                  <td><code>AD_ID</code> / <code>ACCESS_ADSERVICES_AD_ID</code> / <code>ACCESS_ADSERVICES_ATTRIBUTION</code> / <code>ACCESS_ADSERVICES_TOPICS</code></td>
+                  <td data-i18n="permissions.ads">Los añade Google Mobile Ads 25.4.0 para sus funciones publicitarias, de atribución y temas de anuncios.</td>
+                </tr>
+                <tr>
+                  <td><code>VIBRATE</code></td>
+                  <td data-i18n="permissions.vibrate">Está declarado en el manifiesto, pero no se encontró una llamada de vibración en el código Kotlin auditado.</td>
+                </tr>
+                <tr>
+                  <td><code>REORDER_TASKS</code></td>
+                  <td data-i18n="permissions.reorder">Lo añade androidx.test:core porque una dependencia de pruebas está declarada como implementación; no se encontró un uso funcional en la app.</td>
+                </tr>
+                <tr>
+                  <td><code>DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION</code></td>
+                  <td data-i18n="permissions.receiver">Permiso interno con protección de firma añadido por AndroidX Core para receptores dinámicos no exportados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="web">
+          <h2 data-i18n="web.title">8. Sitio oficial</h2>
+          <p data-i18n="web.p1">El sitio principal carga Google Fonts y módulos de Vercel Web Analytics y Speed
+            Insights. También guarda la preferencia ES, EN o PT en localStorage. Esta página de privacidad no carga los
+            módulos de analítica de Vercel y puede leerse sin iniciar sesión ni aceptar cookies.</p>
+        </section>
+
+        <section id="seguridad">
+          <h2 data-i18n="security.title">9. Seguridad, conservación y eliminación</h2>
+          <p data-i18n="security.p1">Los endpoints escritos en el código Android usan HTTPS y los datos locales se
+            guardan en las áreas privadas estándar de Android, salvo archivos de audio y carátulas elegidos desde el
+            almacenamiento compartido. El repositorio no implementa cifrado adicional para Room o SharedPreferences, por
+            lo que no se afirma cifrado propio en reposo.</p>
+          <p data-i18n="security.p2">Las cachés tienen límites técnicos, pero no existe un plazo general de conservación
+            para playlists, historial, preferencias o letras guardadas. El usuario puede borrar búsquedas, playlists o
+            letras desde las funciones disponibles, desactivar el guardado de la última reproducción, o eliminar todos
+            los datos mediante los ajustes de Android o desinstalando la app. Aunque el DAO permite vaciar el historial de
+            reproducción, no se comprobó un control visible que invoque esa operación.</p>
+          <p data-i18n="security.p3">No existe una cuenta FridaMusic en el código auditado; por ello no hay un proceso de
+            eliminación de cuenta. Para datos tratados por proveedores externos o por el backend web se aplican los
+            controles y políticas de esos operadores.</p>
+        </section>
+
+        <section id="opciones">
+          <h2 data-i18n="choices.title">10. Opciones y derechos del usuario</h2>
+          <ul>
+            <li data-i18n="choices.permissions">Conceder o revocar acceso al audio y notificaciones desde los ajustes de Android.</li>
+            <li data-i18n="choices.local">Borrar el historial de búsqueda, playlists y letras editadas mediante las opciones disponibles.</li>
+            <li data-i18n="choices.playback">Desactivar el guardado de la última reproducción.</li>
+            <li data-i18n="choices.ads">Usar los controles de ID de publicidad de Android.</li>
+            <li data-i18n="choices.device">Borrar el almacenamiento de la app o desinstalarla para retirar los datos locales.</li>
+            <li data-i18n="choices.contact">Contactar a Frida Labs para consultas sobre esta política o sobre datos bajo su control comprobado.</li>
+          </ul>
+        </section>
+
+        <section id="menores">
+          <h2 data-i18n="children.title">11. Privacidad de menores</h2>
+          <p data-i18n="children.p1">El repositorio no contiene la declaración de audiencia objetivo configurada en
+            Google Play Console. Por esa razón, esta política no afirma que FridaMusic esté dirigida o no a menores.</p>
+          <div class="privacy-notice privacy-notice-warning" role="note">
+            <strong data-i18n="children.todoTitle">TODO del owner</strong>
+            <p data-i18n="children.todo">Confirmar la audiencia real declarada, la clasificación de contenido y la
+              aplicación o no de la Política de Familias antes de usar esta URL en producción.</p>
+          </div>
+        </section>
+
+        <section id="contacto">
+          <h2 data-i18n="contact.title">12. Contacto y cambios</h2>
+          <p><span data-i18n="contact.p1">Para preguntas sobre privacidad o solicitudes relacionadas con datos bajo el
+              control de FridaMusic, escribe al correo oficial:</span>
+            <a href="mailto:fridalabs.soporte@gmail.com">fridalabs.soporte@gmail.com</a>.</p>
+          <p data-i18n="contact.p2">La política se actualizará cuando cambien las funciones, permisos, SDK o prácticas
+            comprobadas del producto. La fecha de última actualización se mostrará al inicio de esta página.</p>
+          <p data-i18n="contact.p3">Antes de publicarla en Google Play, Frida Labs debe resolver los TODO indicados y
+            verificar que el texto coincida con el APK/AAB distribuido, la ficha del desarrollador y la sección Seguridad
+            de los datos de Play Console.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <footer data-i18n="footer.copy">© 2026 Frida Labs MX. Hecho con pasión por el diseño.</footer>
+  <script src="/privacy.js"></script>
+</body>
+
+</html>
