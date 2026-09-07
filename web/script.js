@@ -1,6 +1,6 @@
-const RELEASE_ENDPOINT = 'https://api.github.com/repos/jagrdev-MX/FridaMusicOF/releases?per_page=30';
-const RELEASES_URL = 'https://github.com/jagrdev-MX/FridaMusicOF/releases';
-const CHANGELOG_URL = 'https://github.com/jagrdev-MX/FridaMusicOF/blob/master/web/release/CHANGELOG.md';
+const RELEASE_ENDPOINT = 'https://api.github.com/repos/jagrdev-MX/FridaMusic_OF/releases?per_page=30';
+const RELEASES_URL = 'https://github.com/jagrdev-MX/FridaMusic_OF/releases';
+const CHANGELOG_URL = 'https://github.com/jagrdev-MX/FridaMusic_OF/blob/master/web/release/CHANGELOG.md';
 
 const translations = {
   es: {
