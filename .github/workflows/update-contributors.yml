@@ -12,9 +12,10 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
-  group: update-contributors-${{ github.ref }}
+  group: update-contributors
   cancel-in-progress: false
 
 jobs:
@@ -26,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -38,9 +41,14 @@ jobs:
           MAX_FORKS: 50
         run: node .github/scripts/update-contributors.cjs
 
-      - name: Commit README update
+      - name: Open or update contributor stats pull request
+        if: ${{ !cancelled() }}
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
           if git diff --quiet README.md; then
             echo "No README changes detected."
             exit 0
@@ -48,13 +56,27 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash origin "${GITHUB_REF_NAME:-master}"
 
-          if git diff --quiet README.md; then
-            echo "No README changes detected after syncing with origin."
+          branch="automation/update-contributor-stats"
+          git switch -C "$branch"
+          git add README.md
+          git commit -m "docs: actualizar métricas automáticas de contribución"
+          git push --force origin "HEAD:$branch"
+
+          existing_pr="$(gh pr list \
+            --head "$branch" \
+            --base master \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+
+          if [[ -n "$existing_pr" ]]; then
+            echo "Updated existing PR #$existing_pr."
             exit 0
           fi
 
-          git add README.md
-          git commit -m "docs: actualizar métricas automáticas de contribución"
-          git push origin "HEAD:${GITHUB_REF_NAME:-master}"
+          gh pr create \
+            --base master \
+            --head "$branch" \
+            --title "docs: actualizar métricas automáticas de contribución" \
+            --body $'Actualización automática de las métricas de contribución del README.\n\n- Generado por GitHub Actions.\n- No modifica código de la aplicación.\n- Se integra únicamente mediante Pull Request.'
