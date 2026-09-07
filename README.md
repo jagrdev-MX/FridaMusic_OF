@@ -299,7 +299,28 @@ Las contribuciones aceptadas deberán ser compatibles con la licencia **GPL-3.0*
 ## 📈 Contribuciones automáticas
 
 <!-- CONTRIBUTOR-STATS:START -->
-_Esta sección puede actualizarse automáticamente mediante GitHub Actions._
+_Esta sección se actualiza automáticamente con GitHub Actions._
+
+### Repositorio oficial
+
+**Commits humanos visibles:** 92 · **Commits de automatización externos:** 0
+
+| Colaborador | Commits | % de contribución humana |
+| --- | ---: | ---: |
+| [@jagrdev-MX](https://github.com/jagrdev-MX) | 72 | 78.3% |
+| [@juliocps25](https://github.com/juliocps25) | 20 | 21.7% |
+
+### Forks con trabajo independiente
+
+**Forks inspeccionados:** 0 · **Forks activos:** 0
+
+| Fork | Rama | Commits por delante | % de actividad independiente | Último push |
+| --- | --- | ---: | ---: | --- |
+| Sin forks activos detectados | — | 0 | 0.0% | — |
+
+> Los porcentajes del repositorio oficial se calculan con commits humanos visibles. Los bots se separan para no distorsionar la métrica. Los forks muestran trabajo independiente que aún no necesariamente fue integrado al proyecto principal.
+
+Última actualización automática (UTC): `2026-09-07`
 <!-- CONTRIBUTOR-STATS:END -->
 
 ---
