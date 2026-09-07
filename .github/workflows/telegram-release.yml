@@ -1,0 +1,250 @@
+name: Telegram Release Feed
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Tag de la Release que debe publicarse"
+        required: true
+        type: string
+      product_name:
+        description: "Nombre visible del producto"
+        required: false
+        type: string
+        default: "FridaMusic"
+      test_mode:
+        description: "Marca el mensaje como prueba"
+        required: false
+        type: boolean
+        default: false
+
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag de una Release existente para probar"
+        required: true
+        type: string
+      product_name:
+        description: "Nombre visible del producto"
+        required: false
+        default: "FridaMusic"
+        type: string
+      test_mode:
+        description: "Enviar como mensaje de prueba"
+        required: false
+        default: true
+        type: boolean
+
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  notify-telegram:
+    name: Publicar Release en Telegram
+    runs-on: ubuntu-latest
+
+    # Universal: acepta cualquier Release publicada.
+    # Solo publica en Telegram cuando la Release contiene un asset .apk.
+    if: |
+      github.event_name == 'workflow_call' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release'
+
+    steps:
+      - name: Resolver configuración
+        id: config
+        shell: bash
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PRODUCT_NAME: ${{ inputs.product_name }}
+        run: |
+          RELEASE_TAG="$INPUT_RELEASE_TAG"
+          if [ -z "$RELEASE_TAG" ]; then
+            RELEASE_TAG="$EVENT_RELEASE_TAG"
+          fi
+          test -n "$RELEASE_TAG" || { echo "ERROR: No se recibió release_tag."; exit 1; }
+          if [ -z "$PRODUCT_NAME" ]; then
+            PRODUCT_NAME="${GITHUB_REPOSITORY#*/}"
+          fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "product_name=$PRODUCT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Obtener Release y assets
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.config.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          RELEASE_JSON="$(gh api "repos/$REPOSITORY/releases/tags/$RELEASE_TAG")"
+
+          RELEASE_NAME="$(echo "$RELEASE_JSON" | jq -r '.name // .tag_name')"
+          RELEASE_URL="$(echo "$RELEASE_JSON" | jq -r '.html_url')"
+          IS_PRERELEASE="$(echo "$RELEASE_JSON" | jq -r '.prerelease')"
+          RELEASE_BODY="$(echo "$RELEASE_JSON" | jq -r '.body // ""')"
+
+          APK_URL="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | ascii_downcase | endswith(".apk"))][0].browser_download_url // ""')"
+          APK_NAME="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | ascii_downcase | endswith(".apk"))][0].name // ""')"
+
+          # 1) Preferir una imagen adjunta como asset real de la Release.
+          IMAGE_URL="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | ascii_downcase | test("\\.(png|jpg|jpeg|webp)$"))][0].browser_download_url // ""')"
+
+          # 2) Si la imagen está pegada como URL dentro del body, tomar la primera
+          #    URL de GitHub user-attachments o una URL directa de imagen.
+          if [ -z "$IMAGE_URL" ]; then
+            IMAGE_URL="$(printf '%s\n' "$RELEASE_BODY" \
+              | grep -Eo 'https?://[^[:space:])>]+' \
+              | sed 's/[\"'"'"']$//' \
+              | grep -Ei 'user-attachments/assets|private-user-images\.githubusercontent\.com|\.(png|jpg|jpeg|webp)(\?|$)' \
+              | head -n 1 || true)"
+          fi
+
+          {
+            echo "release_name=$RELEASE_NAME"
+            echo "release_url=$RELEASE_URL"
+            echo "is_prerelease=$IS_PRERELEASE"
+            echo "apk_url=$APK_URL"
+            echo "apk_name=$APK_NAME"
+            echo "image_url=$IMAGE_URL"
+            if [ -n "$APK_URL" ]; then
+              echo "is_android=true"
+            else
+              echo "is_android=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Release encontrada: $RELEASE_NAME"
+          [ -n "$APK_URL" ] && echo "APK encontrado: $APK_NAME" || echo "AVISO: no hay APK adjunto."
+          [ -n "$IMAGE_URL" ] && echo "Artwork encontrado: $IMAGE_URL" || echo "INFO: no se encontró artwork; se usará mensaje de texto."
+
+      - name: Validar secrets de Telegram
+        if: steps.release.outputs.is_android == 'true'
+        shell: bash
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          THREAD_ID: ${{ secrets.TELEGRAM_APK_THREAD_ID }}
+        run: |
+          test -n "$BOT_TOKEN" || { echo "ERROR: falta TELEGRAM_BOT_TOKEN"; exit 1; }
+          test -n "$CHAT_ID" || { echo "ERROR: falta TELEGRAM_CHAT_ID"; exit 1; }
+          test -n "$THREAD_ID" || { echo "ERROR: falta TELEGRAM_APK_THREAD_ID"; exit 1; }
+
+      - name: Publicar en Telegram
+        if: steps.release.outputs.is_android == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          THREAD_ID: ${{ secrets.TELEGRAM_APK_THREAD_ID }}
+          RELEASE_TAG: ${{ steps.config.outputs.tag }}
+          PRODUCT_NAME: ${{ steps.config.outputs.product_name }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+          APK_URL: ${{ steps.release.outputs.apk_url }}
+          APK_NAME: ${{ steps.release.outputs.apk_name }}
+          IMAGE_URL: ${{ steps.release.outputs.image_url }}
+          TEST_MODE: ${{ inputs.test_mode }}
+        run: |
+          python <<'PY'
+          import html
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          token = os.environ["BOT_TOKEN"].strip()
+          chat_id = os.environ["CHAT_ID"].strip()
+          thread_id = int(os.environ["THREAD_ID"].strip())
+          tag = os.environ["RELEASE_TAG"].strip()
+          product = os.environ.get("PRODUCT_NAME", "").strip() or "Release"
+          release_url = os.environ["RELEASE_URL"].strip()
+          apk_url = os.environ.get("APK_URL", "").strip()
+          image_url = os.environ.get("IMAGE_URL", "").strip()
+          prerelease = os.environ.get("IS_PRERELEASE", "false").lower() == "true"
+          test_mode = os.environ.get("TEST_MODE", "false").lower() == "true"
+          api_base = f"https://api.telegram.org/bot{token}"
+
+          def call(method, payload, tolerate=()):
+              data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+              req = urllib.request.Request(
+                  f"{api_base}/{method}",
+                  data=data,
+                  headers={"Content-Type": "application/json", "User-Agent": f"{product}-Telegram-Release-Bot"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      body = response.read().decode("utf-8", errors="replace")
+                      result = json.loads(body)
+                      if not result.get("ok"):
+                          raise RuntimeError(body)
+                      return result
+              except urllib.error.HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  if any(x.lower() in body.lower() for x in tolerate):
+                      print(f"Telegram {method}: estado compatible -> {body}")
+                      return None
+                  print(f"Telegram HTTP ERROR {error.code} en {method}: {body}")
+                  raise
+
+          identity = f"{tag} {product}".lower()
+          if "alpha" in identity:
+              status, stage = "🧰 ALPHA", "Pruebas internas"
+          elif "beta" in identity or "candidate" in identity:
+              status, stage = "🧪 BETA ABIERTA", "Release Candidate"
+          elif "oficial" in identity or "official" in identity or "stable" in identity:
+              status, stage = "✅ OFICIAL", "Producción"
+          elif prerelease:
+              status, stage = "🧪 PRE-RELEASE", "Pruebas"
+          else:
+              status, stage = "✅ ANDROID RELEASE", "Android"
+
+          prefix = "🧪 <b>PRUEBA DE INTEGRACIÓN</b>\n\n" if test_mode else ""
+          text = (
+              prefix
+              + f"🚀 <b>{html.escape(product)}</b>\n\n"
+              + f"{status}\n"
+              + "📱 <b>Android APK</b>\n"
+              + f"🏷️ <b>Versión:</b> <code>{html.escape(tag)}</code>\n"
+              + f"🚦 <b>Canal:</b> {html.escape(stage)}\n\n"
+              + f"🚀 Nueva versión de {html.escape(product)} disponible."
+          )
+
+          rows = []
+          if apk_url:
+              rows.append([{"text": "📥 Descargar APK", "url": apk_url}])
+          rows.append([{"text": "🔗 Ver Release en GitHub", "url": release_url}])
+
+          topic = {"chat_id": chat_id, "message_thread_id": thread_id}
+          common = {
+              **topic,
+              "parse_mode": "HTML",
+              "reply_markup": {"inline_keyboard": rows},
+          }
+
+          try:
+              call("reopenForumTopic", topic, tolerate=("not modified", "topic_not_modified"))
+              print("Topic listo para publicación.")
+
+              if image_url:
+                  try:
+                      call("sendPhoto", {**common, "photo": image_url, "caption": text})
+                      print("Telegram Release OK - sendPhoto")
+                  except Exception as photo_error:
+                      print(f"AVISO: sendPhoto falló ({photo_error}); usando sendMessage.")
+                      call("sendMessage", {**common, "text": text, "link_preview_options": {"is_disabled": True}})
+              else:
+                  call("sendMessage", {**common, "text": text, "link_preview_options": {"is_disabled": True}})
+                  print("Telegram Release OK - sendMessage (sin artwork detectable)")
+          finally:
+              try:
+                  call("closeForumTopic", topic, tolerate=("not modified", "topic_not_modified"))
+                  print("Topic cerrado nuevamente.")
+              except Exception as close_error:
+                  print(f"ADVERTENCIA: no se pudo cerrar el topic: {close_error}")
+          PY
