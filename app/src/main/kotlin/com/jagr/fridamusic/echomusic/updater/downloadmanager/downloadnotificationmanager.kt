@@ -86,6 +86,22 @@ object DownloadNotificationManager {
     }
 
     
+    fun showForegroundUnavailable(version: String) {
+        val retryIntent = Intent(Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://github.com/jagrdev-MX/FridaMusic_OF/releases"))
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(appContext.getString(R.string.update_failed))
+            .setContentText(appContext.getString(R.string.update_fgs_retry))
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText(appContext.getString(R.string.update_fgs_retry)))
+            .setContentIntent(PendingIntent.getActivity(appContext, 5679, retryIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+    }
+
     fun cancelNotification() {
         notificationManager.cancel(NOTIFICATION_ID)
     }

@@ -11,8 +11,10 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import timber.log.Timber
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.jagr.fridamusic.MainActivity
 import com.jagr.fridamusic.R
 import com.music.shazamkit.models.RecognitionResult
@@ -46,7 +48,17 @@ class RecognitionForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.tag(TAG).d("onStartCommand: flags=%d, startId=%d", flags, startId)
-        if (!startInForeground()) return START_NOT_STICKY
+        val request = intent ?: return START_NOT_STICKY.also { stopSelf() }
+        if (!startInForeground()) {
+            RecognitionServiceRequest.reply(request, RecognitionServiceRequest.REJECTED)
+            return START_NOT_STICKY
+        }
+        val fresh = RecognitionServiceRequest.consume(this, request)
+        RecognitionServiceRequest.reply(request, RecognitionServiceRequest.ACCEPTED)
+        if (!fresh) {
+            if (recognitionJob?.isActive != true) stopSelf()
+            return START_NOT_STICKY
+        }
         startRecognitionIfNeeded()
         return START_NOT_STICKY
     }
@@ -74,35 +86,19 @@ class RecognitionForegroundService : Service() {
                 actionTitle = null,
             )
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-                )
+        val started = ForegroundServiceLaunch.run("recognition_service") {
+            if (!MusicRecognitionService.hasRecordPermission(this)) {
+                throw SecurityException("Microphone permission unavailable")
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-            return true
-        } catch (foregroundTypeException: SecurityException) {
-            Timber.w(foregroundTypeException, "Unable to start microphone foreground service")
-            stopSelf()
-            return false
-        } catch (runtimeException: RuntimeException) {
-            if (
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    runtimeException::class.java.name ==
-                    "android.app.ForegroundServiceStartNotAllowedException"
-            ) {
-                Timber.w(runtimeException, "Unable to start microphone foreground service")
-                stopSelf()
-                return false
-            }
-            throw runtimeException
         }
+        if (!started) stopSelf()
+        return started
     }
-
     private fun startRecognitionIfNeeded() {
         if (recognitionJob?.isActive == true) return
         Timber.tag(TAG).d("Starting recognition flow")
@@ -212,6 +208,13 @@ class RecognitionForegroundService : Service() {
         actionIntent: PendingIntent?,
         actionTitle: String?,
     ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            Timber.tag(TAG).w("Notification update skipped: POST_NOTIFICATIONS not granted")
+            return
+        }
         NotificationManagerCompat.from(this).notify(
             NOTIFICATION_ID,
             buildNotification(

@@ -199,6 +199,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import timber.log.Timber
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.time.LocalDateTime
@@ -572,6 +573,20 @@ class MusicService :
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun hasForegroundPlaybackService(): Boolean =
+        getSystemService(android.app.ActivityManager::class.java)
+            .getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == MusicService::class.java.name && it.foreground }
+
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (!ForegroundServiceLaunch.run("media_session_notification") {
+                super.onUpdateNotification(session, startInForegroundRequired)
+            } && !hasForegroundPlaybackService() && playerInitialized.value) {
+            session.player.pause()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
@@ -580,8 +595,8 @@ class MusicService :
         // Workaround for ForegroundServiceStartNotAllowedException
         setListener(object : Listener {
             override fun onForegroundServiceStartNotAllowedException() {
-                Timber.tag(TAG).e("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener")
-                reportException(Exception("ForegroundServiceStartNotAllowedException caught by MediaSessionService listener"))
+                ForegroundServiceLaunch.log("media_session", "rejected")
+                // Android restrictions are expected; retain the session for user re-entry.
             }
         })
 
@@ -633,14 +648,16 @@ class MusicService :
                 .setContentIntent(pending)
                 .setOngoing(true)
                 .build()
-            startForeground(NOTIFICATION_ID, notification)
+            ForegroundServiceLaunch.run("music_service_initial") {
+                startForeground(NOTIFICATION_ID, notification)
+            }
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Failed to create foreground notification")
             reportException(e)
         }
 
         setMediaNotificationProvider(
-            DefaultMediaNotificationProvider(
+            GuardedMediaNotificationProvider(DefaultMediaNotificationProvider(
                 this,
                 { NOTIFICATION_ID },
                 CHANNEL_ID,
@@ -648,6 +665,12 @@ class MusicService :
             )
                 .apply {
                     setSmallIcon(R.drawable.ic_stat_name)
+                }) { session, notification ->
+                    // Updating an existing notification does not require another FGS start.
+                    // Keep the artwork, controls, session and queue available for user re-entry.
+                    getSystemService(NotificationManager::class.java)
+                        .notify(notification.notificationId, notification.notification)
+                    if (!hasForegroundPlaybackService() && playerInitialized.value) session.player.pause()
                 },
         )
         player = createExoPlayer()

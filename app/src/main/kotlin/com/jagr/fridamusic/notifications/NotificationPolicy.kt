@@ -208,7 +208,7 @@ internal object NotificationPolicy {
         if (!bypassTimingRules) {
             val usedRecently = lastOpenAt > 0L && lastOpenAt <= now &&
                 now - lastOpenAt < RECENT_USE_GRACE_PERIOD_MILLIS
-            if (usedRecently && candidate.type != NotificationCandidateType.NEW_RELEASE) {
+            if (usedRecently) {
                 return "recent_use_grace_period"
             }
             if (
@@ -229,7 +229,8 @@ internal object NotificationPolicy {
             }
 
             val legacyAlbumId = preferences[LastRecommendationNotificationAlbumIdKey]
-            if (candidate.contentType == NotificationContentType.ALBUM && candidate.contentId == legacyAlbumId) {
+            if (candidate.contentType == NotificationContentType.ALBUM && candidate.contentId == legacyAlbumId &&
+                (preferences[LastRecommendationNotificationAtKey] ?: 0L) > now - contentCooldown) {
                 return "legacy_album_dedup"
             }
         }

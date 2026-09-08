@@ -29,6 +29,8 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.DatabaseDao
 import com.jagr.fridamusic.db.entities.RecognitionHistory
 import com.jagr.fridamusic.recognition.MusicRecognitionService
+import com.jagr.fridamusic.recognition.RecognitionServiceRequest
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
 import com.music.shazamkit.models.RecognitionStatus
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -78,7 +80,27 @@ class MusicRecognizerWidgetService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_RECOGNITION -> {
-                startForegroundNotification()
+                if (!ForegroundServiceLaunch.run("recognition_widget_service") {
+                        if (!MusicRecognitionService.hasRecordPermission(this)) {
+                            throw SecurityException("Microphone permission unavailable")
+                        }
+                        startForegroundNotification()
+                    }) {
+                    MusicRecognizerWidgetReceiver.showRecognitionFallback(this, intent)
+                    if (!RecognitionServiceRequest.reply(intent, RecognitionServiceRequest.REJECTED)) {
+                        RecognitionServiceRequest.openActivity(this, intent)
+                    }
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                val fresh = RecognitionServiceRequest.consume(this, intent)
+                RecognitionServiceRequest.reply(intent, RecognitionServiceRequest.ACCEPTED)
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .remove(RecognitionServiceRequest.PENDING_WIDGET_REQUEST).apply()
+                if (!fresh || recognitionJob?.isActive == true) {
+                    if (recognitionJob?.isActive != true) stopSelf()
+                    return START_NOT_STICKY
+                }
                 startRecognition()
             }
             ACTION_STOP_RECOGNITION -> stopRecognitionAndService()
@@ -116,7 +138,7 @@ class MusicRecognizerWidgetService : Service() {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             startForeground(
                 NOTIFICATION_ID, notification,
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE

@@ -336,7 +336,6 @@ interface DatabaseDao {
         WHERE NOT EXISTS (SELECT 1 FROM event WHERE event.songId = song.id)
           AND song.totalPlayTime = 0
           AND song.isLocal = 0
-          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
           AND map.relatedSongId IN (
               SELECT relatedSongId
               FROM related_song_map
@@ -358,12 +357,22 @@ interface DatabaseDao {
         WHERE song.isLocal = 0
           AND song.totalPlayTime = 0
           AND NOT EXISTS (SELECT 1 FROM event WHERE event.songId = song.id)
-          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
         ORDER BY song.rowId DESC
         LIMIT :limit
         """,
     )
     fun notificationUnplayedCachedSongs(limit: Int = 80): Flow<List<Song>>
+
+    @Transaction
+    @Query("SELECT album.*, 0 AS songCountListened, 0 AS timeListened FROM album WHERE bookmarkedAt IS NOT NULL AND isLocal = 0 ORDER BY bookmarkedAt DESC LIMIT :limit")
+    fun notificationFavoriteAlbums(limit: Int = 10): Flow<List<Album>>
+
+    @Transaction
+    @Query("SELECT artist.*, 0 AS songCount, 0 AS timeListened FROM artist WHERE bookmarkedAt IS NOT NULL AND isLocal = 0 ORDER BY bookmarkedAt DESC LIMIT :limit")
+    fun notificationFavoriteArtists(limit: Int = 10): Flow<List<Artist>>
+
+    @Query("SELECT * FROM artist WHERE isLocal = 0 AND bookmarkedAt IS NOT NULL ORDER BY bookmarkedAt DESC LIMIT :limit")
+    fun notificationFollowedArtists(limit: Int = 10): Flow<List<ArtistEntity>>
 
     @Transaction
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
@@ -374,16 +383,6 @@ interface DatabaseDao {
         WHERE album.isLocal = 0
           AND album.year >= :minimumYear
           AND album.lastUpdateTime >= :cachedAfter
-          AND EXISTS (
-              SELECT 1
-              FROM song_album_map release_song_map
-              JOIN song release_song ON release_song.id = release_song_map.songId
-              WHERE release_song_map.albumId = album.id
-                AND release_song.isLocal = 0
-                AND NOT EXISTS (
-                    SELECT 1 FROM event WHERE event.songId = release_song.id
-                )
-          )
           AND NOT EXISTS (
               SELECT 1
               FROM song_album_map listened_song_map
@@ -762,9 +761,7 @@ interface DatabaseDao {
         """
         SELECT song.*
         FROM song
-        WHERE song.isLocal = 0
-          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
-          AND EXISTS (
+        WHERE EXISTS (
               SELECT 1 FROM event old_event
               WHERE old_event.songId = song.id
                 AND old_event.timestamp < :recentCutoff
@@ -794,9 +791,7 @@ interface DatabaseDao {
         """
         SELECT song.*
         FROM song
-        WHERE song.isLocal = 0
-          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
-          AND (song.liked = 1 OR (SELECT COUNT(1) FROM event WHERE event.songId = song.id) >= 2)
+        WHERE (song.liked = 1 OR (SELECT COUNT(1) FROM event WHERE event.songId = song.id) >= 2)
           AND (SELECT MAX(timestamp) FROM event WHERE event.songId = song.id) < :staleBefore
         ORDER BY (SELECT MAX(timestamp) FROM event WHERE event.songId = song.id) ASC,
                  (SELECT COALESCE(SUM(playTime), 0) FROM event WHERE event.songId = song.id) DESC
@@ -818,8 +813,6 @@ interface DatabaseDao {
             FROM event
             GROUP BY songId
         ) notification_history ON notification_history.songId = song.id
-        WHERE song.isLocal = 0
-          AND EXISTS (SELECT 1 FROM song_album_map WHERE song_album_map.songId = song.id)
         ORDER BY notification_history.lastEventRowId DESC
         LIMIT :limit
         """,

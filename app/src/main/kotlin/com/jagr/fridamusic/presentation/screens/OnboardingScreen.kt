@@ -315,6 +315,8 @@ private fun WelcomeStep() {
             granted = hasNotif.value,
             onRequest = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    context.getSharedPreferences("notification_permission", android.content.Context.MODE_PRIVATE)
+                        .edit().putBoolean("requested", true).apply()
                     notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             },
         )

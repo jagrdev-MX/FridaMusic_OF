@@ -1,58 +1,125 @@
 package com.jagr.fridamusic.recognition
 
-import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
+import android.net.Uri
+import android.provider.Settings
 import android.os.Bundle
-import androidx.core.content.ContextCompat
-import com.jagr.fridamusic.MainActivity
+import android.os.Handler
+import android.os.Looper
+import android.os.ResultReceiver
+import com.jagr.fridamusic.R
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
 
 class RecognitionLaunchActivity : Activity() {
+    private var resumed = false
+    private var requested = false
+    private var awaitingRetry = false
+    private var retryDialog: AlertDialog? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleRecognitionLaunch()
+        savedInstanceState?.getString(RecognitionServiceRequest.TOKEN)?.let {
+            intent.putExtra(RecognitionServiceRequest.TOKEN, it)
+        }
+        RecognitionServiceRequest.token(this, intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(RecognitionServiceRequest.TOKEN, RecognitionServiceRequest.token(this, intent))
+        super.onSaveInstanceState(outState)
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        handleRecognitionLaunch()
-    }
-
-    private fun handleRecognitionLaunch() {
-        if (hasRecordPermission()) {
-            startRecognitionService()
-        } else {
-            openRecognitionPermissionFlow()
+        if (intent != null) {
+            setIntent(intent)
+            RecognitionServiceRequest.token(this, intent)
+            requested = false
+            if (resumed && hasWindowFocus()) launchRecognition()
         }
-        finish()
     }
 
-    private fun hasRecordPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        if (awaitingRetry) showRetry()
+        if (hasWindowFocus()) launchRecognition()
     }
 
-    private fun openRecognitionPermissionFlow() {
-        val intent =
-            Intent(this, MainActivity::class.java).apply {
-                action = MainActivity.ACTION_RECOGNITION
-                putExtra(MainActivity.EXTRA_AUTO_START_RECOGNITION, true)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && resumed) launchRecognition()
+    }
+
+    override fun onPause() {
+        resumed = false
+        super.onPause()
+    }
+
+    private fun launchRecognition() {
+        if (requested || !resumed || isFinishing) return
+        requested = true
+        if (!MusicRecognitionService.hasRecordPermission(this)) {
+            // This Activity is opened by an explicit recognition gesture, never at app startup.
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            return
+        }
+        val serviceIntent = RecognitionServiceRequest.serviceIntent(this, intent).apply {
+            putExtra(RecognitionServiceRequest.REPLY, object : ResultReceiver(Handler(Looper.getMainLooper())) {
+                override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                    if (isFinishing || isDestroyed) return
+                    if (resultCode == RecognitionServiceRequest.ACCEPTED) finish() else showRetry()
+                }
+            })
+        }
+        if (!ForegroundServiceLaunch.start(this, serviceIntent, "recognition_activity")) showRetry()
+        // Stay visible until promotion is acknowledged, not merely enqueued.
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 1 || isFinishing || isDestroyed) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            requested = false
+            if (resumed && hasWindowFocus()) launchRecognition()
+        } else {
+            retryDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.music_recognition_permission_title)
+                .setMessage(R.string.music_recognition_permission_permanent)
+                .setPositiveButton(R.string.music_recognition_permission_action) { _, _ ->
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:$packageName")))
+                    requested = false
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
+                .setOnCancelListener { finish() }
+                .show()
+        }
+    }
+
+    private fun showRetry() {
+        awaitingRetry = true
+        if (!resumed || isFinishing || isDestroyed) return
+        if (retryDialog?.isShowing == true) return
+        retryDialog = AlertDialog.Builder(this)
+            .setTitle(R.string.recognize_music)
+            .setMessage(R.string.recognition_fgs_retry)
+            .setPositiveButton(R.string.retry) { _, _ ->
+                awaitingRetry = false
+                requested = false
+                // Focus callback retries after dismissal, only while resumed.
             }
-        startActivity(intent)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show()
     }
 
-    private fun startRecognitionService() {
-        if (!hasRecordPermission()) return
-
-        val serviceIntent = Intent(this, RecognitionForegroundService::class.java)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
+    override fun onDestroy() {
+        retryDialog?.dismiss()
+        super.onDestroy()
     }
 }

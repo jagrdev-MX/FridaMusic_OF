@@ -121,7 +121,11 @@ internal object RecommendationNotificationManager {
         ) return false
 
         val notificationId = NOTIFICATION_ID_BASE + Math.floorMod(candidate.id.hashCode(), 10_000)
-        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+        try {
+            NotificationManagerCompat.from(context).notify("frida:${candidate.id}", notificationId, builder.build())
+        } catch (_: SecurityException) {
+            return false
+        }
         return true
     }
 

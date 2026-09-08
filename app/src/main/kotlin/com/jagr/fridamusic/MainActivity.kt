@@ -490,6 +490,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        lifecycleScope.launch {
+            com.jagr.fridamusic.notifications.RecommendationNotificationScheduler(this@MainActivity).reconcile()
+        }
         appUpdateController.onResume()
     }
 
