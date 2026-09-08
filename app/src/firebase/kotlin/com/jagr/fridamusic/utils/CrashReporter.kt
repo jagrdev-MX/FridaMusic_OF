@@ -17,8 +17,8 @@ object CrashReporter {
                 return
             }
             crashlytics.log(message)
-        } catch (_: IllegalStateException) {
-            Log.w(TAG, "FGS breadcrumb unavailable: Firebase not initialized")
+        } catch (_: RuntimeException) {
+            // Crashlytics breadcrumbs are best-effort and must not escape into MusicService.
         }
     }
     fun logDiagnostics(context: Context) {
