@@ -3,6 +3,7 @@
 package com.jagr.fridamusic.playback
 
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -177,6 +178,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -492,6 +494,11 @@ class MusicService :
 
     private lateinit var mediaSession: MediaLibrarySession
 
+    @Volatile
+    private var serviceDestroyed = false
+
+    private var guardedMediaNotificationProvider: GuardedMediaNotificationProvider? = null
+
 
     private val playerInitialized = MutableStateFlow(false)
     val isPlayerReady: kotlinx.coroutines.flow.StateFlow<Boolean> = playerInitialized.asStateFlow()
@@ -574,21 +581,58 @@ class MusicService :
     }
 
     @Suppress("DEPRECATION")
-    private fun hasForegroundPlaybackService(): Boolean =
-        getSystemService(android.app.ActivityManager::class.java)
-            .getRunningServices(Int.MAX_VALUE)
+    private fun hasForegroundPlaybackService(
+        activityManager: ActivityManager? = getSystemService(ActivityManager::class.java),
+    ): Boolean {
+        val manager = activityManager ?: run {
+            Timber.tag(TAG).w("ActivityManager unavailable while checking playback foreground state")
+            return false
+        }
+        return manager.getRunningServices(Int.MAX_VALUE)
             .any { it.service.className == MusicService::class.java.name && it.foreground }
+    }
+
+    private fun isActiveMediaSession(session: MediaSession): Boolean =
+        !serviceDestroyed &&
+            ::mediaSession.isInitialized &&
+            mediaSession === session
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        if (!ForegroundServiceLaunch.run("media_session_notification") {
-                super.onUpdateNotification(session, startInForegroundRequired)
-            } && !hasForegroundPlaybackService() && playerInitialized.value) {
-            session.player.pause()
+        if (!isActiveMediaSession(session)) {
+            Timber.tag(TAG).d("Ignoring notification update for inactive media session")
+            return
         }
+
+        val updateAccepted = ForegroundServiceLaunch.run("media_session_notification") {
+            super.onUpdateNotification(session, startInForegroundRequired)
+        }
+        if (updateAccepted ||
+            !startInForegroundRequired ||
+            !isActiveMediaSession(session) ||
+            !playerInitialized.value ||
+            !::player.isInitialized
+        ) {
+            return
+        }
+
+        val activityManager = getSystemService(ActivityManager::class.java)
+        if (activityManager == null) {
+            Timber.tag(TAG).w("ActivityManager unavailable after foreground start rejection; keeping playback")
+            return
+        }
+        if (hasForegroundPlaybackService(activityManager)) return
+
+        val sessionPlayer = session.player
+        if (sessionPlayer !== player) {
+            Timber.tag(TAG).w("Foreground start rejected for stale player; keeping current playback")
+            return
+        }
+        sessionPlayer.pause()
     }
 
     override fun onCreate() {
         super.onCreate()
+        serviceDestroyed = false
         isRunning = true
 
 
@@ -656,8 +700,8 @@ class MusicService :
             reportException(e)
         }
 
-        setMediaNotificationProvider(
-            GuardedMediaNotificationProvider(DefaultMediaNotificationProvider(
+        val notificationProvider = GuardedMediaNotificationProvider(
+            DefaultMediaNotificationProvider(
                 this,
                 { NOTIFICATION_ID },
                 CHANNEL_ID,
@@ -665,14 +709,24 @@ class MusicService :
             )
                 .apply {
                     setSmallIcon(R.drawable.ic_stat_name)
-                }) { session, notification ->
-                    // Updating an existing notification does not require another FGS start.
-                    // Keep the artwork, controls, session and queue available for user re-entry.
-                    getSystemService(NotificationManager::class.java)
-                        .notify(notification.notificationId, notification.notification)
-                    if (!hasForegroundPlaybackService() && playerInitialized.value) session.player.pause()
                 },
-        )
+            isSessionActive = ::isActiveMediaSession,
+        ) { session, notification ->
+            if (!isActiveMediaSession(session)) {
+                Timber.tag(TAG).d("Ignoring rejected notification callback for inactive media session")
+            } else {
+                // Updating an existing notification does not require another FGS start. A late
+                // artwork callback must never pause an otherwise valid player.
+                val notificationManager = getSystemService(NotificationManager::class.java)
+                if (notificationManager == null) {
+                    Timber.tag(TAG).w("NotificationManager unavailable; skipping media notification fallback")
+                } else {
+                    notificationManager.notify(notification.notificationId, notification.notification)
+                }
+            }
+        }
+        guardedMediaNotificationProvider = notificationProvider
+        setMediaNotificationProvider(notificationProvider)
         player = createExoPlayer()
         player.addListener(this@MusicService)
         sleepTimer = SleepTimer(scope, player)
@@ -3376,7 +3430,12 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        serviceDestroyed = true
         isRunning = false
+        playerInitialized.value = false
+        guardedMediaNotificationProvider?.release()
+        guardedMediaNotificationProvider = null
+        scope.cancel()
 
         cancelAudioFocusTransitions()
         audioManager.unregisterAudioPlaybackCallback(audioPlaybackCallback)
@@ -3409,7 +3468,8 @@ class MusicService :
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
+        if (::mediaSession.isInitialized && isActiveMediaSession(mediaSession)) mediaSession else null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {

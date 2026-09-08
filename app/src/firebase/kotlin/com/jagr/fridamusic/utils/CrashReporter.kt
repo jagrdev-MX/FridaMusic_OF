@@ -11,7 +11,12 @@ object CrashReporter {
 
     fun logForegroundService(message: String) {
         try {
-            FirebaseCrashlytics.getInstance().log(message)
+            val crashlytics: FirebaseCrashlytics? = FirebaseCrashlytics.getInstance()
+            if (crashlytics == null) {
+                Log.w(TAG, "FGS breadcrumb unavailable: Crashlytics instance unavailable")
+                return
+            }
+            crashlytics.log(message)
         } catch (_: IllegalStateException) {
             Log.w(TAG, "FGS breadcrumb unavailable: Firebase not initialized")
         }
