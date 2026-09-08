@@ -4,14 +4,24 @@ import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import timber.log.Timber
 
 /** Keep restriction handling at the actual start boundary, including library callbacks. */
 object ForegroundServiceLaunch {
+    private fun processLifecycleState(): String {
+        // Treat lifecycle APIs as nullable Java boundaries during process/service transitions.
+        val owner: LifecycleOwner? = ProcessLifecycleOwner.get()
+        val lifecycle: Lifecycle? = owner?.lifecycle
+        val state: Lifecycle.State? = lifecycle?.currentState
+        return state?.name ?: "unavailable"
+    }
+
     fun log(source: String, event: String, error: Throwable? = null) {
         val message = "FGS source=$source event=$event sdk=${Build.VERSION.SDK_INT} " +
-            "lifecycle=${ProcessLifecycleOwner.get().lifecycle.currentState} " +
+            "lifecycle=${processLifecycleState()} " +
             "exception=${error?.javaClass?.simpleName ?: "none"}"
         // Only fixed labels/class names: never Intent extras or exception messages (may contain URLs).
         if (error == null) Timber.i(message) else Timber.w(message)

@@ -1548,10 +1548,12 @@ private fun AppleMusicQueueView(
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                     )
-                    MarqueeText(
+                    Text(
                         text = currentSong?.artists?.joinToString(", ") { it.name } ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 SongOptionsButton(
@@ -1620,10 +1622,12 @@ private fun AppleMusicQueueView(
                                 color = Color.White,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            MarqueeText(
+                            Text(
                                 text = metadata?.artists?.joinToString(", ") { it.name } ?: "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         SongOptionsButton(
