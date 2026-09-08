@@ -12,7 +12,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
-import android.os.Build
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
+import com.jagr.fridamusic.recognition.RecognitionServiceRequest
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
@@ -97,11 +98,16 @@ class MusicRecognizerWidgetReceiver : AppWidgetProvider() {
 
         // If active → stop
         if (currentState == STATE_LISTENING || currentState == STATE_PROCESSING) {
-            context.startService(
-                Intent(context, MusicRecognizerWidgetService::class.java).apply {
-                    action = MusicRecognizerWidgetService.ACTION_STOP_RECOGNITION
-                }
-            )
+            val stopIntent = Intent(context, MusicRecognizerWidgetService::class.java).apply {
+                action = MusicRecognizerWidgetService.ACTION_STOP_RECOGNITION
+            }
+            if (!ForegroundServiceLaunch.run("recognition_widget_stop", allowBackgroundIllegalState = true) {
+                    context.startService(stopIntent)
+                }) {
+                context.stopService(stopIntent)
+                prefs.edit().putInt(PREF_STATE, STATE_IDLE).putInt(PREF_PULSE_FRAME, 0).apply()
+                updateAllWidgets(context, AppWidgetManager.getInstance(context))
+            }
             return
         }
 
@@ -110,28 +116,20 @@ class MusicRecognizerWidgetReceiver : AppWidgetProvider() {
             prefs.edit().putInt(PREF_STATE, STATE_IDLE).apply()
         }
 
-        // No mic permission → open the app so the user can grant it
+        // Keep the widget destination and request through the visible permission flow.
         if (!MusicRecognitionService.hasRecordPermission(context)) {
-            context.startActivity(
-                Intent(context, MainActivity::class.java).apply {
-                    action = "com.jagr.fridamusic.action.RECOGNITION"
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                }
-            )
+            val request = Intent().putExtra(RecognitionServiceRequest.WIDGET, true)
+            showRecognitionFallback(context, request)
+            RecognitionServiceRequest.openActivity(context, request)
             return
         }
-
-        // Start recognition foreground service
-        val serviceIntent = Intent(context, MusicRecognizerWidgetService::class.java).apply {
-            action = MusicRecognizerWidgetService.ACTION_START_RECOGNITION
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent)
-        } else {
-            context.startService(serviceIntent)
+        val request = Intent().putExtra(RecognitionServiceRequest.WIDGET, true)
+        val serviceIntent = RecognitionServiceRequest.serviceIntent(context, request)
+        if (!ForegroundServiceLaunch.start(context, serviceIntent, "recognition_widget")) {
+            showRecognitionFallback(context, serviceIntent)
+            RecognitionServiceRequest.openActivity(context, serviceIntent)
         }
     }
-
     // ─── Widget update ────────────────────────────────────────────────────────
 
     private fun updateAllWidgets(context: Context, appWidgetManager: AppWidgetManager) {
@@ -308,7 +306,18 @@ class MusicRecognizerWidgetReceiver : AppWidgetProvider() {
     // ─── PendingIntents ───────────────────────────────────────────────────────
 
     /** Tap on mic button → start or stop recognition */
-    private fun getMicIntent(context: Context): PendingIntent =
+    private fun getMicIntent(context: Context): PendingIntent {
+        val pending = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(RecognitionServiceRequest.PENDING_WIDGET_REQUEST, null)
+        if (pending != null) {
+            return RecognitionServiceRequest.pendingActivity(context, Intent()
+                .putExtra(RecognitionServiceRequest.TOKEN, pending)
+                .putExtra(RecognitionServiceRequest.WIDGET, true))
+        }
+        return micBroadcastIntent(context)
+    }
+
+    private fun micBroadcastIntent(context: Context): PendingIntent =
         PendingIntent.getBroadcast(
             context, 20,
             Intent(context, MusicRecognizerWidgetReceiver::class.java).apply {
@@ -333,6 +342,15 @@ class MusicRecognizerWidgetReceiver : AppWidgetProvider() {
         )
 
     companion object {
+        fun showRecognitionFallback(context: Context, request: Intent) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putString(RecognitionServiceRequest.PENDING_WIDGET_REQUEST, RecognitionServiceRequest.token(context, request))
+                .putInt(PREF_STATE, STATE_ERROR)
+                .putString(PREF_ERROR_MESSAGE, context.getString(R.string.recognition_fgs_retry))
+                .apply()
+            MusicRecognizerWidgetReceiver().updateAllWidgets(context, AppWidgetManager.getInstance(context))
+        }
+
         const val ACTION_START_RECOGNITION = "com.jagr.fridamusic.widget.recognizer.TAP_MIC"
         const val ACTION_UPDATE_WIDGET = "com.jagr.fridamusic.widget.recognizer.UPDATE"
         const val ACTION_RESET_STATE = "com.jagr.fridamusic.widget.recognizer.RESET"

@@ -1,8 +1,6 @@
 package com.jagr.fridamusic.notifications
 
 import android.net.Uri
-import com.jagr.fridamusic.constants.AlbumSortType
-import com.jagr.fridamusic.constants.ArtistSortType
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.recap.RecapPeriodResolver
@@ -62,7 +60,7 @@ internal class NotificationCandidateProvider(
         ).first()
         val recentlyPlayedIds = recentlyPlayedSongs.mapTo(hashSetOf()) { song -> song.id }
         val favoriteAlbums = database
-            .albumsLiked(AlbumSortType.CREATE_DATE, descending = true)
+            .notificationFavoriteAlbums(TYPE_LIMIT)
             .first()
             .filterNot { album -> album.album.isLocal }
             .take(TYPE_LIMIT)
@@ -75,7 +73,7 @@ internal class NotificationCandidateProvider(
             .distinctBy { album -> album.id }
             .take(TYPE_LIMIT)
         val followedArtists = database
-            .artistsBookmarked(ArtistSortType.CREATE_DATE, descending = true)
+            .notificationFavoriteArtists(TYPE_LIMIT)
             .first()
             .filterNot { artist -> artist.artist.isLocal }
             .take(TYPE_LIMIT)
@@ -267,7 +265,7 @@ internal class NotificationCandidateProvider(
         timestamp: Long,
     ): NotificationCandidate? {
         val albumId = album?.id
-        if (song.isLocal || id.isBlank() || title.isBlank() || albumId.isNullOrBlank()) return null
+        if (id.isBlank() || title.isBlank()) return null
         return NotificationCandidate(
             id = "${type.name.lowercase()}:$id",
             type = type,
@@ -277,7 +275,9 @@ internal class NotificationCandidateProvider(
             contentType = NotificationContentType.SONG,
             artistName = artists.joinToString(", ") { it.name },
             artworkUrl = thumbnailUrl,
-            deepLink = deepLink("album", albumId),
+            deepLink = if (!song.isLocal && !albumId.isNullOrBlank()) deepLink("album", albumId)
+                else if (song.isLocal) "fridamusic://history"
+                else deepLink("search", listOf(title, artists.joinToString(" ") { it.name }).joinToString(" ").trim()),
             source = source,
             reason = reason,
             timestamp = timestamp,

@@ -1679,7 +1679,7 @@
     <string name="music_recommendation_notifications">Music recommendations</string>
     <string name="music_recommendation_notifications_desc">Up to three useful daily opportunities, scheduled for morning, afternoon and evening.</string>
     <string name="new_release_notifications">New releases</string>
-    <string name="new_release_notifications_desc">Notify when a reliable new release is already present in local data.</string>
+    <string name="new_release_notifications_desc">New releases from a small selection of followed artists, refreshed daily when connected, with local data as fallback.</string>
     <string name="frida_reminder_notifications">Reminders from Frida</string>
     <string name="frida_reminder_notifications_desc">Friendly, occasional reminders when no better music suggestion is available.</string>
     <string name="internal_notification_test_title">Force notification now</string>
@@ -2031,4 +2031,6 @@
     </string-array>
     <string name="library_artist_song_count">%1$d songs in library</string>
     <string name="internal_crashlytics_unavailable">Crashlytics unavailable or collection disabled</string>
+    <string name="recognition_fgs_retry">Keep this screen open and tap Retry to recognize music.</string>
+    <string name="update_fgs_retry">Android could not start the update download. Tap to open releases and retry the download.</string>
 </resources>

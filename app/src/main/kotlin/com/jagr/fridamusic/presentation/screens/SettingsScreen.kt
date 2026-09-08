@@ -712,27 +712,7 @@ private fun CacheSection() {
 private fun androidx.compose.foundation.lazy.LazyListScope.servicesItems() {
     item {
         SettingGroup(stringResource(R.string.notifications)) {
-            PrefSwitch(
-                Icons.Rounded.Notifications,
-                stringResource(R.string.music_recommendation_notifications),
-                stringResource(R.string.music_recommendation_notifications_desc),
-                MusicRecommendationNotificationsKey,
-                false,
-            )
-            PrefSwitch(
-                Icons.Rounded.MusicNote,
-                stringResource(R.string.new_release_notifications),
-                stringResource(R.string.new_release_notifications_desc),
-                NewReleaseNotificationsKey,
-                true,
-            )
-            PrefSwitch(
-                Icons.Rounded.Favorite,
-                stringResource(R.string.frida_reminder_notifications),
-                stringResource(R.string.frida_reminder_notifications_desc),
-                FridaReminderNotificationsKey,
-                true,
-            )
+            NotificationPreferences()
             if (
                 BuildConfig.DEBUG &&
                 BuildConfig.FLAVOR_abi == "universal" &&
@@ -816,6 +796,7 @@ private fun InternalNotificationTestAction() {
 private fun InternalCrashlyticsTestAction() {
     val context = LocalContext.current
     val nonFatalSentMessage = stringResource(R.string.internal_crashlytics_nonfatal_sent)
+    val crashlyticsUnavailableMessage = stringResource(R.string.internal_crashlytics_unavailable)
     var showFatalConfirmation by remember { mutableStateOf(false) }
 
     Column(
@@ -834,7 +815,7 @@ private fun InternalCrashlyticsTestAction() {
                 val dispatched = CrashReporter.recordNonFatal(
                     RuntimeException("FridaMusic Crashlytics non-fatal test"),
                 )
-                Toast.makeText(context, if (dispatched) nonFatalSentMessage else context.getString(R.string.internal_crashlytics_unavailable), Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, if (dispatched) nonFatalSentMessage else crashlyticsUnavailableMessage, Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -1173,5 +1154,65 @@ private fun SettingTextField(
         singleLine = true,
         visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun NotificationPreferences() {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
+    var master by rememberPreference(MusicRecommendationNotificationsKey, false)
+    var releases by rememberPreference(NewReleaseNotificationsKey, true)
+    var reminders by rememberPreference(FridaReminderNotificationsKey, true)
+    val permissionState = remember { context.getSharedPreferences("notification_permission", android.content.Context.MODE_PRIVATE) }
+    var available by remember { mutableStateOf(com.jagr.fridamusic.notifications.RecommendationNotificationManager.canPost(context, NotificationCandidateType.RECOMMENDED_SONG)) }
+    var showSettings by remember { mutableStateOf(false) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                available = com.jagr.fridamusic.notifications.RecommendationNotificationManager.canPost(context, NotificationCandidateType.RECOMMENDED_SONG)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        available = granted && com.jagr.fridamusic.notifications.RecommendationNotificationManager.canPost(context, NotificationCandidateType.RECOMMENDED_SONG)
+        master = available
+        if (granted && !available) showSettings = true
+    }
+    SettingSwitch(Icons.Rounded.Notifications, stringResource(R.string.music_recommendation_notifications),
+        stringResource(if (available) R.string.music_recommendation_notifications_desc else R.string.notifications_disabled_desc),
+        master && available,
+    ) { enable ->
+        if (!enable) master = false
+        else if (available) master = true
+        else if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            (!permissionState.getBoolean("requested", false) || activity?.shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS) == true)
+        ) {
+            permissionState.edit().putBoolean("requested", true).apply()
+            launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else showSettings = true
+    }
+    if (master && available) {
+        SettingSwitch(Icons.Rounded.MusicNote, stringResource(R.string.new_release_notifications),
+            stringResource(R.string.new_release_notifications_desc), releases) { releases = it }
+        SettingSwitch(Icons.Rounded.Favorite, stringResource(R.string.frida_reminder_notifications),
+            stringResource(R.string.frida_reminder_notifications_desc), reminders) { reminders = it }
+    }
+    if (showSettings) AlertDialog(
+        onDismissRequest = { showSettings = false },
+        text = { Text(stringResource(R.string.notifications_disabled_desc)) },
+        confirmButton = {
+            TextButton(onClick = {
+                showSettings = false
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName))
+            }) { Text(stringResource(R.string.settings)) }
+        },
     )
 }

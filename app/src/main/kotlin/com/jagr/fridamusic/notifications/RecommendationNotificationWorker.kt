@@ -23,6 +23,12 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import java.time.ZonedDateTime
+import java.time.Instant
+import com.jagr.fridamusic.constants.LastAppOpenAtKey
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -38,13 +44,18 @@ class RecommendationNotificationWorker(
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParameters) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = deliveryMutex.withLock { evaluate() }
+
+    private suspend fun evaluate(): Result {
         val isForcedInternalTest = inputData.getBoolean(FORCE_TEST_INPUT_KEY, false) &&
             BuildConfig.DEBUG &&
             BuildConfig.FLAVOR_abi == "universal" &&
             BuildConfig.FLAVOR_variant == "gms"
         val scheduledSlot = NotificationSlot.fromInput(inputData.getString(SLOT_INPUT_KEY))
+        var reevaluate = true
+        var cancelled = false
         return try {
+            Timber.tag(TAG).d("evaluating slot=%s", scheduledSlot)
             val now = System.currentTimeMillis()
             val preferences = applicationContext.dataStore.data.first()
             val deliverySlot = scheduledSlot ?: NotificationSlot.forTime(now) ?: NotificationSlot.MORNING
@@ -54,7 +65,8 @@ class RecommendationNotificationWorker(
                     return Result.success()
                 }
                 NotificationPolicy.preflightSkipReason(preferences, now, deliverySlot)?.let { reason ->
-                    Timber.tag(TAG).d("Skipped: %s", reason)
+                    reevaluate = reason.startsWith("outside_slot") || reason == "quiet_hours"
+                    Timber.tag(TAG).d("permanent_skip: %s", reason)
                     return Result.success()
                 }
             } else {
@@ -71,6 +83,7 @@ class RecommendationNotificationWorker(
                 RecommendationNotificationWorkerEntryPoint::class.java,
             ).musicDatabase()
             val candidates = NotificationCandidateProvider(database).getCandidates(now)
+                .filter { RecommendationNotificationManager.canPost(applicationContext, it.type) }
             Timber.tag(TAG).d("Candidate count=%d", candidates.size)
 
             val selection = if (isForcedInternalTest) {
@@ -104,7 +117,7 @@ class RecommendationNotificationWorker(
             }
             val candidate = selection.candidate
             if (candidate == null) {
-                Timber.tag(TAG).d("Skipped: %s", selection.skipReason ?: "policy")
+                Timber.tag(TAG).d("temporary_skip: %s", selection.skipReason ?: "policy")
                 return Result.success()
             }
             Timber.tag(TAG).d(
@@ -129,65 +142,84 @@ class RecommendationNotificationWorker(
             )
             val artwork = candidate.artworkUrl?.let { url -> loadArtwork(url) }
 
-            if (!RecommendationNotificationManager.show(applicationContext, candidate, message, artwork)) {
-                Timber.tag(TAG).d("Skipped: notification_not_posted")
-                return Result.success()
+            val deliveredAt = System.currentTimeMillis()
+            if (!isForcedInternalTest) {
+                val fresh = applicationContext.dataStore.data.first()
+                if (NotificationPolicy.preflightSkipReason(fresh, deliveredAt, deliverySlot) != null ||
+                    NotificationPolicy.select(listOf(candidate), fresh, deliveredAt, deliverySlot).candidate == null
+                ) return Result.success()
             }
-
-            database.insertNotificationHistory(
-                NotificationHistoryEntity(
-                    id = "${candidate.id}:$now",
-                    candidateId = candidate.id,
-                    type = candidate.type.name,
-                    contentType = candidate.contentType.name,
-                    contentId = candidate.contentId,
-                    title = message.title,
-                    body = message.body,
-                    artworkUrl = candidate.artworkUrl,
-                    deepLink = candidate.deepLink,
-                    source = candidate.source,
-                    reason = candidate.reason,
-                    deliveredAt = now,
-                ),
-            )
-            database.trimNotificationHistory(MAX_HISTORY_ENTRIES)
-
-            if (isForcedInternalTest) {
-                applicationContext.dataStore.edit { settings ->
-                    settings[InternalNotificationTestCursorKey] = advanceInternalTestCursor(
-                        value = settings[InternalNotificationTestCursorKey],
-                        type = candidate.type,
-                    )
-                    settings[InternalNotificationTestContentHistoryKey] = recordInternalTestContent(
-                        value = settings[InternalNotificationTestContentHistoryKey],
-                        type = candidate.type,
-                        contentKey = candidate.internalTestContentKey(),
-                    )
+            withContext(NonCancellable) {
+                if (!RecommendationNotificationManager.show(applicationContext, candidate, message, artwork)) {
+                    Timber.tag(TAG).d("Skipped: notification_not_posted")
+                    return@withContext false
                 }
-            } else {
-                applicationContext.dataStore.edit { settings ->
-                    NotificationPolicy.recordDelivery(
-                        settings = settings,
-                        candidate = candidate,
-                        templateId = message.templateId,
-                        now = now,
-                        slot = deliverySlot,
-                    )
+
+                if (isForcedInternalTest) {
+                    applicationContext.dataStore.edit { settings ->
+                        settings[InternalNotificationTestCursorKey] = advanceInternalTestCursor(
+                            value = settings[InternalNotificationTestCursorKey],
+                            type = candidate.type,
+                        )
+                        settings[InternalNotificationTestContentHistoryKey] = recordInternalTestContent(
+                            value = settings[InternalNotificationTestContentHistoryKey],
+                            type = candidate.type,
+                            contentKey = candidate.internalTestContentKey(),
+                        )
+                    }
+                } else {
+                    applicationContext.dataStore.edit { settings ->
+                        NotificationPolicy.recordDelivery(
+                            settings = settings,
+                            candidate = candidate,
+                            templateId = message.templateId,
+                            now = deliveredAt,
+                            slot = deliverySlot,
+                        )
+                    }
                 }
-            }
+                reevaluate = false
+                if (!isForcedInternalTest) {
+                    database.insertNotificationHistory(
+                        NotificationHistoryEntity(
+                            id = "${candidate.id}:$now",
+                            candidateId = candidate.id,
+                            type = candidate.type.name,
+                            contentType = candidate.contentType.name,
+                            contentId = candidate.contentId,
+                            title = message.title,
+                            body = message.body,
+                            artworkUrl = candidate.artworkUrl,
+                            deepLink = candidate.deepLink,
+                            source = candidate.source,
+                            reason = candidate.reason,
+                            deliveredAt = deliveredAt,
+                        ),
+                    )
+                    database.trimNotificationHistory(MAX_HISTORY_ENTRIES)
+
+                }
+                true
+            }.also { posted -> if (!posted) return Result.success() }
             Timber.tag(TAG).d("Notification posted type=%s", candidate.type.name)
             Result.success()
         } catch (error: CancellationException) {
+            cancelled = true
             throw error
         } catch (error: Exception) {
             Timber.tag(TAG).w(error, "Recommendation notification work skipped after failure")
             Result.success()
         } finally {
-            if (!isForcedInternalTest && scheduledSlot != null) {
+            if (!cancelled && !isForcedInternalTest && scheduledSlot != null) {
                 withContext(NonCancellable) {
                     val stillEnabled = applicationContext.dataStore.data.first()[MusicRecommendationNotificationsKey] == true
                     if (stillEnabled) {
-                        RecommendationNotificationScheduler(applicationContext).scheduleNext(scheduledSlot)
+                        val now = ZonedDateTime.now()
+                        val lastOpen = applicationContext.dataStore.data.first()[LastAppOpenAtKey] ?: 0L
+                        val grace = Instant.ofEpochMilli(lastOpen.coerceAtMost(System.currentTimeMillis()) + NotificationPolicy.RECENT_USE_GRACE_PERIOD_MILLIS).atZone(now.zone)
+                        RecommendationNotificationScheduler(applicationContext).scheduleNext(
+                            scheduledSlot, if (reevaluate) NotificationTiming.retry(scheduledSlot, now, grace) else null,
+                        )
                     }
                 }
             }
@@ -195,7 +227,7 @@ class RecommendationNotificationWorker(
     }
 
     private suspend fun loadArtwork(url: String): Bitmap? =
-        executeArtworkRequest(url, cacheOnly = true) ?: executeArtworkRequest(url, cacheOnly = false)
+        withTimeoutOrNull(8_000) { executeArtworkRequest(url, cacheOnly = true) ?: executeArtworkRequest(url, cacheOnly = false) }
 
     private fun internalTestCandidate(
         candidates: List<NotificationCandidate>,
@@ -285,6 +317,7 @@ class RecommendationNotificationWorker(
     }
 
     companion object {
+        private val deliveryMutex = Mutex()
         internal const val FORCE_TEST_INPUT_KEY = "force_internal_notification_test"
         internal const val FORCE_TEST_TYPE_INPUT_KEY = "force_internal_notification_test_type"
         internal const val SLOT_INPUT_KEY = "notification_slot"

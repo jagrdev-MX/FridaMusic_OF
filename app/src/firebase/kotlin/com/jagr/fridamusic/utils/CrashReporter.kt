@@ -9,6 +9,13 @@ import com.jagr.fridamusic.BuildConfig
 object CrashReporter {
     private const val TAG = "CrashlyticsInit"
 
+    fun logForegroundService(message: String) {
+        try {
+            FirebaseCrashlytics.getInstance().log(message)
+        } catch (_: IllegalStateException) {
+            Log.w(TAG, "FGS breadcrumb unavailable: Firebase not initialized")
+        }
+    }
     fun logDiagnostics(context: Context) {
         val app = FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }
         // SDK 19.0.1 has no public Crashlytics collection getter. Its own debug

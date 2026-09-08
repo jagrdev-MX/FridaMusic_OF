@@ -250,6 +250,7 @@ fun MainScreen(
             composable(
                 route = "search_result/{query}",
                 arguments = listOf(navArgument("query") { type = NavType.StringType }),
+                deepLinks = listOf(navDeepLink { uriPattern = "fridamusic://search/{query}" }),
             ) {
                 SearchResultScreen(
                     onItemClick = { item ->
@@ -717,6 +718,7 @@ private fun NavHostController.navigateFromNotificationCenter(uri: Uri) {
     val route = when (uri.host) {
         "home" -> "home"
         "history" -> "history"
+        "search" -> contentId?.let { "search_result/${Uri.encode(it)}" }
         "notifications" -> return
         "album" -> contentId?.let { "album/${Uri.encode(it)}" }
         "artist" -> contentId?.let { "artist/${Uri.encode(it)}" }

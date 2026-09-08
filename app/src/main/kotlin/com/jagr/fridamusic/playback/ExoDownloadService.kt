@@ -13,7 +13,7 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import androidx.media3.exoplayer.offline.DownloadService
-import androidx.media3.exoplayer.scheduler.PlatformScheduler
+import com.jagr.fridamusic.utils.ForegroundServiceLaunch
 import androidx.media3.exoplayer.scheduler.Scheduler
 import com.jagr.fridamusic.R
 import dagger.hilt.android.AndroidEntryPoint
@@ -32,6 +32,7 @@ class ExoDownloadService : DownloadService(
     lateinit var downloadUtil: DownloadUtil
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ForegroundServiceLaunch.log("exo_download_service", "start_command")
         if (intent?.action == REMOVE_ALL_PENDING_DOWNLOADS) {
             downloadManager.currentDownloads.forEach { download ->
                 downloadManager.removeDownload(download.request.id)
@@ -42,7 +43,7 @@ class ExoDownloadService : DownloadService(
 
     override fun getDownloadManager() = downloadUtil.downloadManager
 
-    override fun getScheduler(): Scheduler = PlatformScheduler(this, JOB_ID)
+    override fun getScheduler(): Scheduler = DownloadRestartScheduler(this, JOB_ID)
 
     override fun getForegroundNotification(
         downloads: MutableList<Download>,

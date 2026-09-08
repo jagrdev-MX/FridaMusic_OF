@@ -1684,9 +1684,9 @@
     <string name="calendar">Calendario</string>
     <string name="notifications">Notificaciones</string>
     <string name="music_recommendation_notifications">Recomendaciones musicales</string>
-    <string name="music_recommendation_notifications_desc">Hasta una sugerencia útil al día usando música que Frida ya conoce.</string>
+    <string name="music_recommendation_notifications_desc">Hasta tres oportunidades al día: mañana, tarde y noche. Sólo se envía si hay contenido apropiado.</string>
     <string name="new_release_notifications">Nuevos lanzamientos</string>
-    <string name="new_release_notifications_desc">Avisa cuando ya existe un lanzamiento nuevo fiable en los datos locales.</string>
+    <string name="new_release_notifications_desc">Lanzamientos de una selección de artistas seguidos, actualizados diariamente con conexión y con datos locales como respaldo.</string>
     <string name="frida_reminder_notifications">Recordatorios de Frida</string>
     <string name="frida_reminder_notifications_desc">Recordatorios amigables y ocasionales cuando no hay una sugerencia musical mejor.</string>
     <string name="internal_notification_test_title">Forzar notificación ahora</string>
@@ -2038,4 +2038,6 @@
     </string-array>
     <string name="library_artist_song_count">%1$d canciones en biblioteca</string>
     <string name="internal_crashlytics_unavailable">Crashlytics no disponible o recolección deshabilitada</string>
+    <string name="recognition_fgs_retry">Mantén esta pantalla abierta y pulsa Reintentar para reconocer música.</string>
+    <string name="update_fgs_retry">Android no pudo iniciar la descarga de la actualización. Pulsa para abrir las versiones y reintentar la descarga.</string>
 </resources>
