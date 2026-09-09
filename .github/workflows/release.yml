@@ -20,6 +20,11 @@ on:
         options:
           - gms
           - foss
+      apk_asset_name:
+        description: "Nombre opcional del APK publicado (vacío = nombre automático; .apk se agrega si falta)"
+        required: false
+        type: string
+        default: ""
       publish_release:
         description: "Publicar la Release al terminar (desactívalo para dejarla como draft)"
         required: true
@@ -62,6 +67,7 @@ jobs:
         env:
           CHANNEL: ${{ inputs.channel }}
           DISTRIBUTION: ${{ inputs.distribution }}
+          ASSET_NAME_INPUT: ${{ inputs.apk_asset_name }}
         run: |
           set -euo pipefail
 
@@ -124,7 +130,26 @@ jobs:
           esac
 
           TAG="${CHANNEL}-v${VERSION_NAME}-release-apk"
-          ASSET_NAME="FridaMusic_Reborn_v${VERSION_NAME}-${DIST_LABEL}-github_by_FridaLabs.apk"
+          DEFAULT_ASSET_NAME="FridaMusic_Reborn_v${VERSION_NAME}-${DIST_LABEL}-github_by_FridaLabs.apk"
+
+          if [ -n "$ASSET_NAME_INPUT" ]; then
+            if [[ "$ASSET_NAME_INPUT" == */* || "$ASSET_NAME_INPUT" == *\\* ]]; then
+              echo "El nombre personalizado del APK debe ser solo un nombre de archivo, sin rutas." >&2
+              exit 1
+            fi
+            ASSET_NAME="$ASSET_NAME_INPUT"
+          else
+            ASSET_NAME="$DEFAULT_ASSET_NAME"
+          fi
+
+          if [[ "${ASSET_NAME,,}" != *.apk ]]; then
+            ASSET_NAME="${ASSET_NAME}.apk"
+          fi
+
+          if [ "$ASSET_NAME" = ".apk" ]; then
+            echo "El nombre personalizado del APK no puede estar vacío." >&2
+            exit 1
+          fi
 
           {
             echo "version_name=$VERSION_NAME"
@@ -140,6 +165,7 @@ jobs:
           echo "Canal:        $CHANNEL"
           echo "Distribución: $DISTRIBUTION"
           echo "Tag:          $TAG"
+          echo "APK asset:    $ASSET_NAME"
           echo "Gradle task:  $GRADLE_TASK"
 
       - name: Validar que la Release no exista
@@ -204,7 +230,7 @@ jobs:
 
           ./gradlew "$GRADLE_TASK" --stacktrace
 
-          mapfile -t APKS < <(find app/build/outputs/apk -type f -name '*.apk' -print | sort)
+          mapfile -t APKS < <(find app/build/outputs/apk -type f -iname '*.apk' -print | sort)
 
           if [ "${#APKS[@]}" -ne 1 ]; then
             echo "Se esperaba exactamente un APK y se encontraron ${#APKS[@]}:" >&2
@@ -237,18 +263,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          PREVIOUS_TAG="$(gh release list \
-            --repo "$REPOSITORY" \
-            --limit 100 \
-            --json tagName,isDraft \
-            --jq '[.[] | select(.isDraft == false) | .tagName | select(endswith("-release-apk"))][0] // ""')"
+          PREVIOUS_TAG="$(gh api "repos/$REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(.draft == false) | select(any(.assets[]?; ((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk"))))][0].tag_name // ""')"
 
           echo "tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
 
           if [ -n "$PREVIOUS_TAG" ]; then
             echo "Release Android anterior: $PREVIOUS_TAG"
           else
-            echo "No existe una Release Android anterior en este repositorio."
+            echo "No existe una Release Android anterior con APK en este repositorio."
           fi
 
       - name: Crear Release draft y adjuntar APK

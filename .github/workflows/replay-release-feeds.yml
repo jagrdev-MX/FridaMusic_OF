@@ -2,6 +2,12 @@ name: Replay Latest Android Release Feeds
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag exacto a republicar (vacío = última Release Android)"
+        required: false
+        type: string
+        default: ""
   push:
     branches:
       - master
@@ -13,29 +19,57 @@ permissions:
 
 jobs:
   resolve:
-    name: Resolver última Release Android
+    name: Resolver Release Android
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.release.outputs.tag }}
+      apk_name: ${{ steps.release.outputs.apk_name }}
 
     steps:
-      - name: Buscar última Release con APK
+      - name: Resolver Release con APK
         id: release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
-          TAG="$(gh api "repos/$REPOSITORY/releases?per_page=100" \
-            --jq '[.[] | select(any(.assets[]?; (.name | ascii_downcase | endswith(".apk"))))][0].tag_name // ""')"
+          set -euo pipefail
 
-          if [ -z "$TAG" ]; then
-            echo "ERROR: no se encontró ninguna Release con APK adjunto."
+          if [ -n "$REQUESTED_TAG" ]; then
+            RELEASE_JSON="$(gh api "repos/$REPOSITORY/releases/tags/$REQUESTED_TAG")"
+            IS_DRAFT="$(echo "$RELEASE_JSON" | jq -r '.draft')"
+
+            if [ "$IS_DRAFT" = "true" ]; then
+              echo "ERROR: la Release solicitada todavía es draft: $REQUESTED_TAG" >&2
+              exit 1
+            fi
+
+            TAG="$REQUESTED_TAG"
+            APK_NAME="$(echo "$RELEASE_JSON" | jq -r \
+              '[.assets[]? | select(((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk")))][0].name // ""')"
+          else
+            RELEASE_JSON="$(gh api "repos/$REPOSITORY/releases?per_page=100")"
+            TAG="$(echo "$RELEASE_JSON" | jq -r \
+              '[.[] | select(.draft == false) | select(any(.assets[]?; ((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk"))))][0].tag_name // ""')"
+
+            if [ -n "$TAG" ]; then
+              APK_NAME="$(echo "$RELEASE_JSON" | jq -r --arg tag "$TAG" \
+                '[.[] | select(.tag_name == $tag)][0] | [.assets[]? | select(((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk")))][0].name // ""')"
+            else
+              APK_NAME=""
+            fi
+          fi
+
+          if [ -z "$TAG" ] || [ -z "$APK_NAME" ]; then
+            echo "ERROR: no se encontró una Release publicada con un APK válido adjunto." >&2
             exit 1
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
           echo "Release Android detectada: $TAG"
+          echo "APK detectado sin depender del nombre: $APK_NAME"
 
   discord-release:
     name: Discord APK Release
