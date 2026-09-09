@@ -69,7 +69,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
-import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
 import com.jagr.fridamusic.db.entities.Artist
 import com.jagr.fridamusic.db.entities.SongWithStats
@@ -162,7 +161,17 @@ fun RecapScreen(
                             contentDescription = stringResource(R.string.previous_period),
                         )
                     }
-                    Text(state.range.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = state.range.label,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     IconButton(onClick = viewModel::nextPeriod, enabled = offset > 0) {
                         Icon(
                             Icons.AutoMirrored.Rounded.KeyboardArrowRight,
@@ -452,15 +461,17 @@ private fun RecapMetric(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        MarqueeText(
+        Text(
             text = value,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f),
             color = Color.White,
             style = MaterialTheme.typography.titleLarge.copy(
                 fontSize = if (compact) 20.sp else 24.sp,
             ),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -498,11 +509,13 @@ private fun RecapRanking(title: String, rows: List<Triple<String, String, String
                     modifier = Modifier.size(if (compact) 40.dp else 48.dp).clip(RoundedCornerShape(12.dp)),
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    MarqueeText(
+                    Text(
                         text = name,
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     if (subtitle.isNotBlank()) {
                         Text(
@@ -547,15 +560,18 @@ private fun RecapSpotlight(
                 .then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)),
         )
         Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
-        MarqueeText(
+        Text(
             text = title,
             color = Color.White,
             style = MaterialTheme.typography.headlineMedium.copy(
                 fontSize = if (compact) 30.sp else 34.sp,
+                lineHeight = if (compact) 34.sp else 38.sp,
             ),
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(6.dp))
         Text(

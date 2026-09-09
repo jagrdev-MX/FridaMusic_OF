@@ -3530,7 +3530,7 @@ class MusicService :
                 if (player.isPlaying) {
                     updateWidgetUI(true)
                 }
-                delay(200)
+                delay(if (player.isPlaying) 1_000L else 5_000L)
             }
         }
     }
