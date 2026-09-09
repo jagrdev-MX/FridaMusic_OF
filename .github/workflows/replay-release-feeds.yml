@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   resolve:
@@ -71,28 +72,38 @@ jobs:
           echo "Release Android detectada: $TAG"
           echo "APK detectado sin depender del nombre: $APK_NAME"
 
-  discord-release:
-    name: Discord APK Release
+  dispatch-feeds:
+    name: Despachar feeds de Release
     needs: resolve
-    uses: ./.github/workflows/discord-release.yml
-    with:
-      release_tag: ${{ needs.resolve.outputs.tag }}
-    secrets: inherit
+    runs-on: ubuntu-latest
 
-  discord-changelog:
-    name: Discord Changelog
-    needs: resolve
-    uses: ./.github/workflows/discord-changelog.yml
-    with:
-      release_tag: ${{ needs.resolve.outputs.tag }}
-    secrets: inherit
+    steps:
+      - name: Disparar Discord y Telegram
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
 
-  telegram-release:
-    name: Telegram APK Release
-    needs: resolve
-    uses: ./.github/workflows/telegram-release.yml
-    with:
-      release_tag: ${{ needs.resolve.outputs.tag }}
-      product_name: "FridaMusic"
-      test_mode: false
-    secrets: inherit
+          echo "Republicando feeds para: $RELEASE_TAG"
+
+          gh workflow run discord-release.yml \
+            --repo "$REPOSITORY" \
+            --ref master \
+            -f release_tag="$RELEASE_TAG"
+
+          gh workflow run discord-changelog.yml \
+            --repo "$REPOSITORY" \
+            --ref master \
+            -f release_tag="$RELEASE_TAG"
+
+          gh workflow run telegram-release.yml \
+            --repo "$REPOSITORY" \
+            --ref master \
+            -f release_tag="$RELEASE_TAG" \
+            -f product_name="FridaMusic" \
+            -f test_mode=false
+
+          echo "Feeds despachados correctamente."
