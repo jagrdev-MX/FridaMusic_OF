@@ -363,13 +363,15 @@ fun PlaylistLibraryGridItem(
                 fontWeight = FontWeight.SemiBold,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             )
-            playlist.songCountText(LocalContext.current.resources)?.let { countText ->
-                Text(
-                    text = countText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+            Box(modifier = Modifier.height(20.dp)) {
+                playlist.songCountText(LocalContext.current.resources)?.let { countText ->
+                    Text(
+                        text = countText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -377,7 +379,7 @@ fun PlaylistLibraryGridItem(
 
 @Composable
 private fun PlaylistArtwork(playlist: Playlist, modifier: Modifier = Modifier) {
-    val thumbnail = playlist.thumbnails.firstOrNull()
+    val thumbnail = playlist.thumbnails.firstOrNull { it.isNotBlank() }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp)),
@@ -387,19 +389,18 @@ private fun PlaylistArtwork(playlist: Playlist, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {}
+        Icon(
+            imageVector = Icons.Rounded.MusicNote,
+            contentDescription = null,
+            modifier = Modifier.size(38.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        )
         if (thumbnail != null) {
             AsyncImage(
                 model = thumbnail.resize(width = 420),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Rounded.MusicNote,
-                contentDescription = null,
-                modifier = Modifier.size(38.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
             )
         }
     }

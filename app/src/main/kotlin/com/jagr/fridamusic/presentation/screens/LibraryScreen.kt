@@ -906,7 +906,15 @@ private fun PlaylistCompactCard(
                 .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            playlist.thumbnails.firstOrNull()?.let { url ->
+            Icon(
+                imageVector = Icons.Rounded.MusicNote,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(38.dp)
+                    .align(Alignment.Center),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            )
+            playlist.thumbnails.firstOrNull { it.isNotBlank() }?.let { url ->
                 AsyncImage(
                     model = url.resize(width = 240),
                     contentDescription = null,
@@ -924,11 +932,13 @@ private fun PlaylistCompactCard(
         MarqueeText(text = playlist.playlist.name,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground)
-        playlist.songCountText(context.resources)?.let { countText ->
-            Text(text = countText,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+        Box(modifier = Modifier.height(20.dp)) {
+            playlist.songCountText(context.resources)?.let { countText ->
+                Text(text = countText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            }
         }
     }
 }
