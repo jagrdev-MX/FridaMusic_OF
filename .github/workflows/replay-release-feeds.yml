@@ -36,8 +36,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK_FILTER='((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk"))'
-
           if [ -n "$REQUESTED_TAG" ]; then
             RELEASE_JSON="$(gh api "repos/$REPOSITORY/releases/tags/$REQUESTED_TAG")"
             IS_DRAFT="$(echo "$RELEASE_JSON" | jq -r '.draft')"
@@ -48,7 +46,7 @@ jobs:
             fi
 
             TAG="$REQUESTED_TAG"
-            APK_NAME="$(echo "$RELEASE_JSON" | jq -r --argjson _unused null \
+            APK_NAME="$(echo "$RELEASE_JSON" | jq -r \
               '[.assets[]? | select(((.content_type // "") == "application/vnd.android.package-archive") or (.name | ascii_downcase | endswith(".apk")))][0].name // ""')"
           else
             RELEASE_JSON="$(gh api "repos/$REPOSITORY/releases?per_page=100")"
