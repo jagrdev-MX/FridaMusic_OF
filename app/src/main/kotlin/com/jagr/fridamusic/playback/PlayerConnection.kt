@@ -3,6 +3,8 @@
 package com.jagr.fridamusic.playback
 
 import android.content.Context
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -189,7 +191,15 @@ class PlayerConnection(
                 while (isActive) {
                     val currentPlayer = player
                     updatePlaybackClock(currentPlayer)
-                    delay(if (currentPlayer.isPlaying) 50L else 250L)
+                    val isForeground = ProcessLifecycleOwner.get().lifecycle.currentState
+                        .isAtLeast(Lifecycle.State.STARTED)
+                    val delayMs = when {
+                        isForeground && currentPlayer.isPlaying -> 50L
+                        isForeground -> 250L
+                        currentPlayer.isPlaying -> 1_000L
+                        else -> 2_000L
+                    }
+                    delay(delayMs)
                 }
             }
 
@@ -596,8 +606,8 @@ class PlayerConnection(
 
             launch {
                 while (true) {
+                    val currentSegments = sponsorBlockSegments.value
                     if (player.isPlaying) {
-                        val currentSegments = sponsorBlockSegments.value
                         if (currentSegments.isNotEmpty()) {
                             val currentPosSec = player.currentPosition / 1000f
                             for (segment in currentSegments) {
@@ -609,7 +619,18 @@ class PlayerConnection(
                             }
                         }
                     }
-                    delay(500)
+                    val delayMs = if (!player.isPlaying) {
+                        1_500L
+                    } else {
+                        val currentPosSec = player.currentPosition / 1000f
+                        val secondsUntilNextSegment = currentSegments
+                            .asSequence()
+                            .map { it.segment[0] - currentPosSec }
+                            .filter { it >= 0f }
+                            .minOrNull()
+                        if (secondsUntilNextSegment != null && secondsUntilNextSegment <= 5f) 500L else 1_000L
+                    }
+                    delay(delayMs)
                 }
             }
         }
