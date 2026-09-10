@@ -24,6 +24,12 @@ class NotificationHistoryViewModel @Inject constructor(
         0,
     )
 
+    val unreadRecapCount = database.getUnreadRecapNotificationCount().stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        0,
+    )
+
     fun markAsRead(id: String) {
         database.query { markNotificationAsRead(id, System.currentTimeMillis()) }
     }

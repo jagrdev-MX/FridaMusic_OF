@@ -1,5 +1,6 @@
 package com.jagr.fridamusic.utils
 
+import android.os.SystemClock
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.utils.lastfm.LastFM
 import com.jagr.fridamusic.utils.isLocalMediaId
@@ -23,7 +24,8 @@ class ScrobbleManager(
     private var duration: Long? = null
     private var isPlaying = false
     
-    private var playTimeSeconds = 0
+    private var playedDurationMs = 0L
+    private var resumeStartedAtMs: Long? = null
     private var scrobbled = false
     private var trackJob: Job? = null
     private var scrobblingJob: Job? = null
@@ -40,7 +42,8 @@ class ScrobbleManager(
         
         currentMetadata = metadata
         this.duration = duration
-        playTimeSeconds = 0
+        playedDurationMs = 0L
+        resumeStartedAtMs = null
         scrobbled = false
 
         if (!enableScrobbling || metadata == null || metadata.id.isLocalMediaId()) return
@@ -86,20 +89,30 @@ class ScrobbleManager(
     }
 
     private fun startTracking() {
-        trackJob?.cancel()
         if (scrobbled || currentMetadata == null || !enableScrobbling) return
-        
+        if (trackJob?.isActive == true) return
+
+        val dur = duration?.let { it / 1000 } ?: return
+        if (dur < minSongDuration && dur > 0) return
+
+        val actualDuration = if (dur > 0) dur else FALLBACK_DURATION_SECONDS
+        val percentThreshold = (actualDuration * scrobbleDelayPercent).toInt()
+        val thresholdSeconds = minOf(percentThreshold, scrobbleDelaySeconds)
+        val remainingMs = (thresholdSeconds * 1_000L - playedDurationMs).coerceAtLeast(0L)
+
+        resumeStartedAtMs = SystemClock.elapsedRealtime()
         trackJob = scope.launch {
-            while (true) {
-                delay(1000)
-                playTimeSeconds++
-                checkScrobbleThreshold()
-            }
+            delay(remainingMs)
+            accumulatePlayedDuration()
+            trackJob = null
+            checkScrobbleThreshold()
         }
     }
     
     private fun stopTracking() {
+        accumulatePlayedDuration()
         trackJob?.cancel()
+        trackJob = null
     }
 
     fun onSongStop() {
@@ -107,22 +120,28 @@ class ScrobbleManager(
     }
 
     private fun checkScrobbleThreshold() {
-        val meta = currentMetadata ?: return
+        val metadata = currentMetadata ?: return
         val dur = duration?.let { it / 1000 } ?: return
 
         if (scrobbled) return
-        
         if (dur < minSongDuration && dur > 0) return
 
-        val actualDuration = if (dur > 0) dur else 300L
+        val actualDuration = if (dur > 0) dur else FALLBACK_DURATION_SECONDS
         val percentThreshold = (actualDuration * scrobbleDelayPercent).toInt()
-        val absoluteThreshold = scrobbleDelaySeconds
-        val threshold = minOf(percentThreshold, absoluteThreshold)
+        val thresholdMs = minOf(percentThreshold, scrobbleDelaySeconds) * 1_000L
 
-        if (playTimeSeconds >= threshold) {
+        if (playedDurationMs >= thresholdMs) {
             scrobbled = true
-            stopTracking()
-            doScrobble(meta, actualDuration)
+            doScrobble(metadata, actualDuration)
+        } else if (isPlaying) {
+            startTracking()
+        }
+    }
+
+    private fun accumulatePlayedDuration() {
+        resumeStartedAtMs?.let { startedAtMs ->
+            playedDurationMs += (SystemClock.elapsedRealtime() - startedAtMs).coerceAtLeast(0L)
+            resumeStartedAtMs = null
         }
     }
     
@@ -130,7 +149,7 @@ class ScrobbleManager(
         val artists = metadata.artists.joinToString(", ") { it.name }
         if (artists.isEmpty() || metadata.id.isLocalMediaId() || !LastFM.isInitialized()) return
         
-        val timestamp = System.currentTimeMillis() / 1000 - playTimeSeconds
+        val timestamp = System.currentTimeMillis() / 1000 - playedDurationMs / 1000
         
         scrobblingJob?.cancel()
         scrobblingJob = scope.launch {
@@ -147,5 +166,9 @@ class ScrobbleManager(
                 Timber.e(e, "Last.fm scrobble failed")
             }
         }
+    }
+
+    private companion object {
+        const val FALLBACK_DURATION_SECONDS = 300L
     }
 }

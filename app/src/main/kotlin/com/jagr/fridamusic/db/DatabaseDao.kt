@@ -1552,6 +1552,15 @@ interface DatabaseDao {
     @Query("SELECT COUNT(*) FROM notification_history WHERE readAt IS NULL AND dismissedAt IS NULL")
     fun getUnreadNotificationCount(): Flow<Int>
 
+    @Query("""
+        SELECT COUNT(*)
+        FROM notification_history
+        WHERE type = 'RECAP_AVAILABLE'
+          AND readAt IS NULL
+          AND dismissedAt IS NULL
+    """)
+    fun getUnreadRecapNotificationCount(): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertNotificationHistory(notification: NotificationHistoryEntity)
 

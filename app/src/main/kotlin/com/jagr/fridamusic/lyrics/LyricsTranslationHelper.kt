@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.LinkedHashMap
 import java.util.Locale
 
 object LyricsTranslationHelper {
@@ -56,10 +57,28 @@ object LyricsTranslationHelper {
     private var isCompositionActive = true
 
     
-    private val translationCache = mutableMapOf<String, List<String>>()
+    private val translationCacheLock = Any()
+    private val translationCache = object : LinkedHashMap<String, List<String>>(
+        MAX_TRANSLATION_CACHE_ENTRIES,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<String>>?,
+        ): Boolean = size > MAX_TRANSLATION_CACHE_ENTRIES
+    }
 
     private fun getCacheKey(lyricsText: String, mode: String, language: String): String =
         "${lyricsText.hashCode()}_${mode}_$language"
+
+    private fun getCachedTranslation(key: String): List<String>? =
+        synchronized(translationCacheLock) { translationCache[key] }
+
+    private fun cacheTranslation(key: String, translations: List<String>) {
+        synchronized(translationCacheLock) {
+            translationCache[key] = translations
+        }
+    }
 
     
     private fun tryParsePartialTranslation(content: String, expectedCount: Int): List<String> {
@@ -109,7 +128,7 @@ object LyricsTranslationHelper {
     fun getCachedTranslations(lyrics: List<LyricsEntry>, mode: String, language: String): List<String>? {
         val lyricsText = lyrics.filter { it.text.isNotBlank() }.joinToString("\n") { it.text }
         val key = getCacheKey(lyricsText, mode, language)
-        return translationCache[key]
+        return getCachedTranslation(key)
     }
 
     fun applyCachedTranslations(lyrics: List<LyricsEntry>, mode: String, language: String): Boolean {
@@ -150,7 +169,9 @@ object LyricsTranslationHelper {
     }
 
     fun clearCache() {
-        translationCache.clear()
+        synchronized(translationCacheLock) {
+            translationCache.clear()
+        }
     }
 
     fun setCompositionActive(active: Boolean) {
@@ -203,7 +224,7 @@ object LyricsTranslationHelper {
         
         val lyricsText = lyrics.filter { it.text.isNotBlank() }.joinToString("\n") { it.text }
         val cacheKey = getCacheKey(lyricsText, mode, targetLanguage)
-        translationCache[cacheKey] = translatedLines
+        cacheTranslation(cacheKey, translatedLines)
         _hasActiveTranslations.value = true
     }
 
@@ -258,7 +279,7 @@ object LyricsTranslationHelper {
 
                 
                 val cacheKey = getCacheKey(fullText, mode, targetLanguage)
-                val cachedTranslations = translationCache[cacheKey]
+                val cachedTranslations = getCachedTranslation(cacheKey)
                 if (cachedTranslations != null && cachedTranslations.size >= nonEmptyEntries.size) {
                     
                     nonEmptyEntries.forEachIndexed { idx, (originalIndex, _) ->
@@ -399,7 +420,7 @@ object LyricsTranslationHelper {
 
                     
                     val cacheKey2 = getCacheKey(fullText, mode, targetLanguage)
-                    translationCache[cacheKey2] = translatedLines
+                    cacheTranslation(cacheKey2, translatedLines)
 
                     
                     if (songId.isNotBlank() && database != null) {
@@ -479,4 +500,6 @@ object LyricsTranslationHelper {
         data object Success : TranslationStatus()
         data class Error(val message: String) : TranslationStatus()
     }
+
+    private const val MAX_TRANSLATION_CACHE_ENTRIES = 32
 }

@@ -7,18 +7,27 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import timber.log.Timber
+import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class SponsorBlockRepository @Inject constructor() {
     private val client = OkHttpClient.Builder().build()
-    private val cache = mutableMapOf<String, List<SponsorBlockSegment>>()
+    private val cacheLock = Any()
+    private val cache = object : LinkedHashMap<String, List<SponsorBlockSegment>>(
+        MAX_CACHE_ENTRIES,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, List<SponsorBlockSegment>>?,
+        ): Boolean = size > MAX_CACHE_ENTRIES
+    }
 
     suspend fun getSkipSegments(videoId: String): List<SponsorBlockSegment> = withContext(Dispatchers.IO) {
-        if (cache.containsKey(videoId)) {
-            return@withContext cache[videoId] ?: emptyList()
-        }
+        synchronized(cacheLock) { cache[videoId] }
+            ?.let { return@withContext it }
 
         try {
             val categories = listOf("sponsor", "intro", "outro", "interaction", "selfpromo", "music_offtopic")
@@ -59,11 +68,17 @@ class SponsorBlockRepository @Inject constructor() {
                 }
             }
             
-            cache[videoId] = segments
+            synchronized(cacheLock) {
+                cache[videoId] = segments
+            }
             segments
         } catch (e: Exception) {
             Timber.e(e, "Error fetching SponsorBlock segments for $videoId")
             emptyList()
         }
+    }
+
+    private companion object {
+        const val MAX_CACHE_ENTRIES = 128
     }
 }
