@@ -79,17 +79,7 @@ En `Settings → Actions → General`:
 
 - Mantener permisos por defecto lo más restrictivos posible.
 - Permitir que workflows concretos soliciten sólo los permisos que necesiten.
-- Activar `Allow GitHub Actions to create and approve pull requests` únicamente porque `update-contributors.yml` necesita crear/actualizar su PR automático. El workflow no aprueba su propio PR.
-
-`update-contributors.yml` no debe hacer push directo a `master`; debe usar la rama:
-
-```text
-automation/update-contributor-stats
-```
-
-y abrir un Pull Request.
-
-Mientras el permiso anterior no esté habilitado, el workflow actualiza únicamente esa rama y deja una advertencia sin marcar la ejecución como fallida.
+- No mantener automatizaciones destinadas a reescribir periódicamente el README o generar métricas automáticas de contribución; el historial de Git y las vistas nativas de GitHub son la referencia para la actividad del repositorio.
 
 ## Pull Request CI
 
