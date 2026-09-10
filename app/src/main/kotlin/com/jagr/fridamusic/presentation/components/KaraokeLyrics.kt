@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -92,11 +93,15 @@ fun KaraokeLyrics(
     isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    onEmptyStateChange: (Boolean) -> Unit = {},
 ) {
     val document = remember(lyrics, durationMs) {
         LyricsEngine.normalize(lyrics, (durationMs / 1_000L).toInt())
     }
     val timeline = remember(document) { LyricsEngine.buildTimeline(document) }
+    LaunchedEffect(mediaId, lyrics, document.isEmpty) {
+        onEmptyStateChange(document.isEmpty)
+    }
     val latestPositionProvider by rememberUpdatedState(positionProvider)
     val latestIsPlaying by rememberUpdatedState(isPlaying)
     var currentTimelineIndex by remember(mediaId, timeline) { mutableIntStateOf(-1) }
@@ -145,7 +150,18 @@ fun KaraokeLyrics(
     }
 
     if (document.isEmpty) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            awaitPointerEvent().changes.forEach { it.consume() }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
             Text(
                 text = androidx.compose.ui.res.stringResource(R.string.lyrics_not_found),
                 color = Color.White.copy(alpha = 0.55f),

@@ -179,26 +179,23 @@ class RecommendationNotificationWorker(
                     }
                 }
                 reevaluate = false
-                if (!isForcedInternalTest) {
-                    database.insertNotificationHistory(
-                        NotificationHistoryEntity(
-                            id = "${candidate.id}:$now",
-                            candidateId = candidate.id,
-                            type = candidate.type.name,
-                            contentType = candidate.contentType.name,
-                            contentId = candidate.contentId,
-                            title = message.title,
-                            body = message.body,
-                            artworkUrl = candidate.artworkUrl,
-                            deepLink = candidate.deepLink,
-                            source = candidate.source,
-                            reason = candidate.reason,
-                            deliveredAt = deliveredAt,
-                        ),
-                    )
-                    database.trimNotificationHistory(MAX_HISTORY_ENTRIES)
-
-                }
+                database.insertNotificationHistory(
+                    NotificationHistoryEntity(
+                        id = "${candidate.id}:$now",
+                        candidateId = candidate.id,
+                        type = candidate.type.name,
+                        contentType = candidate.contentType.name,
+                        contentId = candidate.contentId,
+                        title = message.title,
+                        body = message.body,
+                        artworkUrl = candidate.artworkUrl,
+                        deepLink = candidate.deepLink,
+                        source = candidate.source,
+                        reason = candidate.reason,
+                        deliveredAt = deliveredAt,
+                    ),
+                )
+                database.trimNotificationHistory(MAX_HISTORY_ENTRIES)
                 true
             }.also { posted -> if (!posted) return Result.success() }
             Timber.tag(TAG).d("Notification posted type=%s", candidate.type.name)

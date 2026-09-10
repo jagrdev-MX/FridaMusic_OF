@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -18,10 +19,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.NotificationsNone
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -31,27 +36,36 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
@@ -59,6 +73,7 @@ import com.jagr.fridamusic.db.entities.Artist as LocalArtist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.HomeContentType
 import com.jagr.fridamusic.presentation.components.HomeMediaCard
@@ -86,6 +101,9 @@ import com.music.innertube.models.YTItem
 import com.music.innertube.pages.HomePage
 import com.music.innertube.pages.MoodAndGenres
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -101,6 +119,12 @@ fun HomeScreen(
     onHistoryClick: () -> Unit = {},
     onRecapClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
+    onEqualizerClick: () -> Unit = {},
+    onAboutClick: () -> Unit = {},
+    onPlayerClick: () -> Unit = {},
+    onAlbumClick: (String) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
+    onSearchClick: (String) -> Unit = {},
     reselectToken: Int = 0,
     viewModel: HomeViewModel = hiltViewModel(),
     notificationHistoryViewModel: NotificationHistoryViewModel = hiltViewModel(),
@@ -119,10 +143,29 @@ fun HomeScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val selectedChip by viewModel.selectedChip.collectAsStateWithLifecycle()
     val pinnedItems by viewModel.pinnedItems.collectAsStateWithLifecycle()
+    val accountName by viewModel.accountName.collectAsStateWithLifecycle()
+    val accountImageUrl by viewModel.accountImageUrl.collectAsStateWithLifecycle()
+    val notificationHistory by notificationHistoryViewModel.notifications.collectAsStateWithLifecycle()
     val unreadNotificationCount by notificationHistoryViewModel.unreadCount.collectAsStateWithLifecycle()
+    val unreadRecapCount = remember(notificationHistory) {
+        notificationHistory.count { notification ->
+            notification.readAt == null && notification.type == "RECAP_AVAILABLE"
+        }
+    }
     var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
     val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    var drawerArtistChoices by remember(currentMediaMetadata?.id) {
+        mutableStateOf<List<MediaMetadata.Artist>?>(null)
+    }
+    val currentArtistId = currentMediaMetadata?.artists?.firstOrNull()?.id
+    val currentArtistImageUrl by remember(currentArtistId, viewModel.database) {
+        currentArtistId?.let { artistId ->
+            viewModel.database.artist(artistId)
+                .map { artist -> artist?.thumbnailUrl }
+                .distinctUntilChanged()
+        } ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
     val currentIsPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value == true
     val isLowEnd = rememberIsLowEndDevice()
     val quickPickItems = quickPicks.orEmpty()
@@ -172,6 +215,7 @@ fun HomeScreen(
 
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
+    var showDrawerOverlay by remember { mutableStateOf(false) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
     val context = LocalContext.current
@@ -189,6 +233,9 @@ fun HomeScreen(
     var quickReturnHeaderHeightPx by remember { mutableIntStateOf(0) }
     val quickReturnHeaderHeight = with(LocalDensity.current) { quickReturnHeaderHeightPx.toDp() }
     val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
+    val quickReturnTouchBlocker = remember { MutableInteractionSource() }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
 
     DisposableEffect(interstitialAdManager, supportBillingManager) {
         MemoryDiagnostics.log("Home entered")
@@ -251,33 +298,33 @@ fun HomeScreen(
     }
 
     PullToRefreshBox(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .nestedScroll(quickReturnConnection),
-        state = pullToRefreshState,
-        isRefreshing = isRefreshing,
-        onRefresh = {
-            pullRefreshHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            viewModel.refresh()
-        },
-        indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
-                state = pullToRefreshState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-        },
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = quickReturnHeaderHeight,
-                    bottom = 140.dp,
-                ),
-            ) {
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .nestedScroll(quickReturnConnection),
+            state = pullToRefreshState,
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                pullRefreshHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.refresh()
+            },
+            indicator = {
+                PullToRefreshDefaults.LoadingIndicator(
+                    state = pullToRefreshState,
+                    isRefreshing = isRefreshing,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            },
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = quickReturnHeaderHeight,
+                        bottom = 140.dp,
+                    ),
+                ) {
 
         if (pinnedSelected) {
             ytSection(
@@ -517,6 +564,11 @@ fun HomeScreen(
                     .zIndex(1f)
                     .graphicsLayer { translationY = quickReturnState.heightOffset }
                     .background(MaterialTheme.colorScheme.background)
+                    .clickable(
+                        interactionSource = quickReturnTouchBlocker,
+                        indication = null,
+                        onClick = {},
+                    )
                     .onSizeChanged { size ->
                         if (size.height > 0 && quickReturnHeaderHeightPx != size.height) {
                             quickReturnHeaderHeightPx = size.height
@@ -528,12 +580,12 @@ fun HomeScreen(
                     },
             ) {
                 HomeHeader(
-                    onHistoryClick = onHistoryClick,
-                    onRecapClick = onRecapClick,
-                    onNotificationsClick = onNotificationsClick,
-                    unreadNotificationCount = unreadNotificationCount,
+                    onMenuClick = { showDrawerOverlay = true },
                     onSettingsClick = onSettingsClick,
                     onSupportClick = { showSupportDialog = true },
+                    accountImageUrl = accountImageUrl,
+                    hasActiveMedia = currentMediaMetadata != null,
+                    showActivityIndicator = unreadNotificationCount > 0,
                 )
                 MoodChipsRow(
                     chips = homePage?.chips,
@@ -554,6 +606,154 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    val closeDrawer = { onClosed: () -> Unit ->
+        drawerScope.launch {
+            try {
+                drawerState.close()
+            } finally {
+                showDrawerOverlay = false
+                onClosed()
+            }
+        }
+    }
+
+    if (showDrawerOverlay) {
+        Dialog(
+            onDismissRequest = {
+                closeDrawer {}
+            },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+                dismissOnClickOutside = false,
+                dismissOnBackPress = true,
+            ),
+        ) {
+            val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+            SideEffect {
+                dialogWindow?.setWindowAnimations(0)
+            }
+            LaunchedEffect(drawerState) {
+                var drawerBecameActive = false
+                snapshotFlow { drawerState.currentValue to drawerState.targetValue }
+                    .collect { (currentValue, targetValue) ->
+                        val isFullyClosed = currentValue == DrawerValue.Closed &&
+                            targetValue == DrawerValue.Closed
+                        if (!isFullyClosed) {
+                            drawerBecameActive = true
+                        } else if (drawerBecameActive) {
+                            showDrawerOverlay = false
+                        }
+                    }
+            }
+            LaunchedEffect(drawerState) {
+                drawerState.open()
+            }
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                scrimColor = Color.Transparent,
+                drawerContent = {
+                    BoxWithConstraints {
+                        val drawerWidth = (maxWidth * 0.8f).coerceAtMost(420.dp)
+                        HomeNavigationDrawer(
+                            modifier = Modifier.width(drawerWidth),
+                            currentMediaMetadata = currentMediaMetadata,
+                            currentArtistImageUrl = currentArtistImageUrl,
+                            accountName = accountName,
+                            accountImageUrl = accountImageUrl,
+                            unreadNotificationCount = unreadNotificationCount,
+                            unreadRecapCount = unreadRecapCount,
+                            onArtworkClick = {
+                                closeDrawer {
+                                    onPlayerClick()
+                                }
+                            },
+                            onTitleClick = {
+                                val albumId = currentMediaMetadata?.album?.id
+                                    ?.trim()
+                                    ?.takeIf {
+                                        it.startsWith("MPREb_") || it.startsWith("LOCAL_ALBUM_")
+                                    }
+                                val searchQuery = currentMediaMetadata?.let { metadata ->
+                                    listOfNotNull(
+                                        metadata.title.trim().takeIf(String::isNotEmpty),
+                                        metadata.artists.firstOrNull()?.name
+                                            ?.trim()
+                                            ?.takeIf(String::isNotEmpty),
+                                    ).joinToString(" ")
+                                }.orEmpty()
+                                closeDrawer {
+                                    if (albumId != null) {
+                                        onAlbumClick(albumId)
+                                    } else if (searchQuery.isNotEmpty()) {
+                                        onSearchClick(searchQuery)
+                                    }
+                                }
+                            },
+                            onArtistClick = {
+                                val artists = currentMediaMetadata?.artists.orEmpty()
+                                val singleArtistId = artists.singleOrNull()
+                                    ?.id
+                                    ?.trim()
+                                    ?.takeIf(String::isNotEmpty)
+                                closeDrawer {
+                                    if (artists.size > 1) {
+                                        drawerArtistChoices = artists
+                                    } else if (singleArtistId != null) {
+                                        onArtistClick(singleArtistId)
+                                    }
+                                }
+                            },
+                            onHistoryClick = {
+                                closeDrawer {
+                                    onHistoryClick()
+                                }
+                            },
+                            onRecapClick = {
+                                closeDrawer {
+                                    onRecapClick()
+                                }
+                            },
+                            onNotificationsClick = {
+                                closeDrawer {
+                                    onNotificationsClick()
+                                }
+                            },
+                            onEqualizerClick = {
+                                closeDrawer {
+                                    onEqualizerClick()
+                                }
+                            },
+                            onAboutClick = {
+                                closeDrawer {
+                                    onAboutClick()
+                                }
+                            },
+                            onDonateClick = {
+                                closeDrawer {
+                                    showSupportDialog = true
+                                }
+                            },
+                        )
+                    }
+                },
+            ) {
+                Box(modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+
+    drawerArtistChoices?.let { artists ->
+        DrawerArtistPickerSheet(
+            artists = artists,
+            onDismiss = { drawerArtistChoices = null },
+            onSelect = { artistId ->
+                drawerArtistChoices = null
+                onArtistClick(artistId)
+            },
+        )
     }
 
     if (showSupportDialog) {
@@ -585,45 +785,472 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 @Composable
-private fun HomeHeader(
+private fun HomeNavigationDrawer(
+    currentMediaMetadata: MediaMetadata?,
+    currentArtistImageUrl: String?,
+    accountName: String,
+    accountImageUrl: String?,
+    unreadNotificationCount: Int,
+    unreadRecapCount: Int,
+    onArtworkClick: () -> Unit,
+    onTitleClick: () -> Unit,
+    onArtistClick: () -> Unit,
     onHistoryClick: () -> Unit,
     onRecapClick: () -> Unit,
     onNotificationsClick: () -> Unit,
-    unreadNotificationCount: Int,
-    onSettingsClick: () -> Unit,
-    onSupportClick: () -> Unit,
+    onEqualizerClick: () -> Unit,
+    onAboutClick: () -> Unit,
+    onDonateClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    val snackbarHostState = remember { SnackbarHostState() }
+    val easterEggScope = rememberCoroutineScope()
+    var logoTapCount by remember { mutableIntStateOf(0) }
+    val easterEggMessages = listOf(
+        stringResource(R.string.frida_easter_egg_queue),
+        stringResource(R.string.frida_easter_egg_sniff),
+        stringResource(R.string.frida_easter_egg_dj),
+        stringResource(R.string.frida_easter_egg_shuffle),
+    )
+    ModalDrawerSheet(
+        modifier = modifier.fillMaxHeight(),
+        drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+        drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        windowInsets = WindowInsets(0, 0, 0, 0),
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Top,
+            ) {
+                item {
+                    Column {
+                    DrawerContextHeader(
+                        currentMediaMetadata = currentMediaMetadata,
+                        currentArtistImageUrl = currentArtistImageUrl,
+                        accountName = accountName,
+                        accountImageUrl = accountImageUrl,
+                        onArtworkClick = onArtworkClick,
+                        onTitleClick = onTitleClick,
+                        onArtistClick = onArtistClick,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.history)) },
+                        selected = false,
+                        onClick = onHistoryClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.fridamusic_recap)) },
+                        selected = false,
+                        onClick = onRecapClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.CalendarMonth,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        badge = { DrawerCountBadge(unreadRecapCount) },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.notifications)) },
+                        selected = false,
+                        onClick = onNotificationsClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.NotificationsNone,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        badge = { DrawerCountBadge(unreadNotificationCount) },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.equalizer)) },
+                        selected = false,
+                        onClick = onEqualizerClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.GraphicEq,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.about)) },
+                        selected = false,
+                        onClick = onAboutClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.support_project)) },
+                        selected = false,
+                        onClick = onDonateClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.VolunteerActivism,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+                }
+                item {
+                    DrawerBrand(
+                        hasActiveMedia = currentMediaMetadata != null,
+                        onLogoClick = {
+                            logoTapCount += 1
+                            if (logoTapCount >= 5) {
+                                val message = easterEggMessages[
+                                    (logoTapCount - 5) % easterEggMessages.size
+                                ]
+                                easterEggScope.launch {
+                                    snackbarHostState.currentSnackbarData?.dismiss()
+                                    snackbarHostState.showSnackbar(
+                                        message = message,
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(
+                            start = 24.dp,
+                            top = 116.dp,
+                            end = 24.dp,
+                            bottom = 32.dp,
+                        ),
+                    )
+                }
+            }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawerCountBadge(count: Int) {
+    if (count > 0) {
+        Badge {
+            Text(if (count > 99) "99+" else count.toString())
+        }
+    }
+}
+
+@Composable
+private fun DrawerBrand(
+    hasActiveMedia: Boolean,
+    onLogoClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val brandColor = if (hasActiveMedia) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.frida_music_logo_monochrome),
+            contentDescription = stringResource(R.string.frida_logo_easter_egg),
+            tint = brandColor,
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onLogoClick),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "FridaMusic",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = brandColor,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            // Nuevo ícono agregado al principio para mayor visibilidad
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DrawerArtistPickerSheet(
+    artists: List<MediaMetadata.Artist>,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.artists),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            )
+            artists.forEach { artist ->
+                val artistId = artist.id?.trim()?.takeIf(String::isNotEmpty)
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = artist.name,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    },
+                    leadingContent = {
+                    Icon(
+                        imageVector = Icons.Rounded.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = artistId != null) {
+                            artistId?.let(onSelect)
+                        }
+                        .graphicsLayer { alpha = if (artistId != null) 1f else 0.45f },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerItemLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        maxLines = 2,
+    )
+}
+
+@Composable
+private fun DrawerContextHeader(
+    currentMediaMetadata: MediaMetadata?,
+    currentArtistImageUrl: String?,
+    accountName: String,
+    accountImageUrl: String?,
+    onArtworkClick: () -> Unit,
+    onTitleClick: () -> Unit,
+    onArtistClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (currentMediaMetadata != null) {
+        val artworkUrl = currentMediaMetadata.thumbnailUrl?.takeIf(String::isNotBlank)
+        val backdropUrl = currentArtistImageUrl?.takeIf(String::isNotBlank) ?: artworkUrl
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(152.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+        ) {
+            backdropUrl?.let { imageUrl ->
+                AsyncImage(
+                    model = imageUrl.resize(720, 720),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .blur(12.dp),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.42f),
+                            0.55f to MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.58f),
+                            1f to MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable(onClick = onArtworkClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Album,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    artworkUrl?.let { imageUrl ->
+                        AsyncImage(
+                            model = imageUrl.resize(240, 240),
+                            contentDescription = currentMediaMetadata.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.matchParentSize(),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = currentMediaMetadata.title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onTitleClick)
+                            .padding(vertical = 2.dp),
+                    )
+                    Text(
+                        text = currentMediaMetadata.artists.joinToString(", ") { it.name },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(
+                                enabled = currentMediaMetadata.artists.isNotEmpty(),
+                                onClick = onArtistClick,
+                            )
+                            .padding(vertical = 2.dp),
+                    )
+                }
+            }
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ProfileAvatar(
+                accountImageUrl = accountImageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "FridaMusic",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (!accountName.equals("Guest", ignoreCase = true) && accountName.isNotBlank()) {
+                    Text(
+                        text = accountName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeHeader(
+    onMenuClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onSupportClick: () -> Unit,
+    accountImageUrl: String?,
+    hasActiveMedia: Boolean,
+    showActivityIndicator: Boolean,
+) {
+    val brandColor = if (hasActiveMedia) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onBackground
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .height(36.dp),
+    ) {
+        HeaderIconButton(
+            icon = Icons.Rounded.Menu,
+            description = "Navigation menu",
+            onClick = onMenuClick,
+            tint = brandColor,
+            showActivityIndicator = showActivityIndicator,
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
+        Text(
+            text = "FridaMusic",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = brandColor,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             HeaderIconButton(
                 icon = Icons.Rounded.VolunteerActivism,
                 description = stringResource(R.string.support_project),
                 onClick = onSupportClick,
-                tint = MaterialTheme.colorScheme.primary // Le damos un toque de color para que resalte sutilmente
+                tint = MaterialTheme.colorScheme.primary,
             )
-            HeaderIconButton(Icons.Rounded.History, stringResource(R.string.history), onHistoryClick)
-            HeaderIconButton(Icons.Rounded.CalendarMonth, stringResource(R.string.fridamusic_recap), onRecapClick)
-            HeaderIconButton(
-                Icons.Rounded.NotificationsNone,
-                stringResource(R.string.notifications),
-                onNotificationsClick,
-                badgeCount = unreadNotificationCount,
+            ProfileButton(
+                accountImageUrl = accountImageUrl,
+                onClick = onSettingsClick,
             )
-            HeaderIconButton(Icons.Rounded.Settings, stringResource(R.string.settings), onSettingsClick)
         }
     }
 }
@@ -633,19 +1260,16 @@ private fun HeaderIconButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    badgeCount: Int = 0,
+    showActivityIndicator: Boolean = false,
 ) {
-    BadgedBox(
-        badge = {
-            if (badgeCount > 0) {
-                Badge { Text(if (badgeCount > 99) "99+" else badgeCount.toString()) }
-            }
-        },
+    Box(
+        modifier = modifier.size(36.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .matchParentSize()
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 .clickable(onClick = onClick),
@@ -656,6 +1280,67 @@ private fun HeaderIconButton(
                 contentDescription = description,
                 tint = tint,
                 modifier = Modifier.size(18.dp),
+            )
+        }
+        if (showActivityIndicator) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 2.dp, y = (-2).dp)
+                    .size(11.dp)
+                    .background(MaterialTheme.colorScheme.background, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileButton(
+    accountImageUrl: String?,
+    onClick: () -> Unit,
+) {
+    ProfileAvatar(
+        accountImageUrl = accountImageUrl,
+        contentDescription = stringResource(R.string.settings),
+        modifier = Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    )
+}
+
+@Composable
+private fun ProfileAvatar(
+    accountImageUrl: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Person,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.fillMaxSize(0.5f),
+        )
+        accountImageUrl?.takeIf(String::isNotBlank)?.let { imageUrl ->
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(CircleShape),
             )
         }
     }

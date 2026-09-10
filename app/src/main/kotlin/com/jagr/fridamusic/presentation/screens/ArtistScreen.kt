@@ -50,12 +50,11 @@ import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
 import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongActionContext
-import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongRow
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
+import com.jagr.fridamusic.presentation.components.YTContentCard
 import com.jagr.fridamusic.presentation.components.toSongActionContext
-import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.components.resolveRemoteArtistPage
 import com.jagr.fridamusic.playback.queues.YouTubeQueue
 import com.jagr.fridamusic.presentation.playYTItem
@@ -64,31 +63,32 @@ import com.jagr.fridamusic.viewmodels.ArtistViewModel
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.BrowseEndpoint
-import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 
 @Composable
 fun ArtistScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onAlbumClick: (Album) -> Unit,
     onRemoteItemClick: (YTItem) -> Unit,
+    onRemoteItemPlay: (YTItem) -> Unit,
     onBrowseClick: (BrowseEndpoint, String, Int?, Boolean) -> Unit,
     onBack: () -> Unit,
     viewModel: ArtistViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
-    val currentSongIdFlow = remember(playerConnection) {
-        playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
+    val mediaMetadataFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata ?: flowOf(null)
     }
     val isPlayingFlow = remember(playerConnection) {
         playerConnection?.isEffectivelyPlaying ?: flowOf(false)
     }
-    val currentSongId by currentSongIdFlow.collectAsState(initial = null)
+    val mediaMetadata by mediaMetadataFlow.collectAsState(initial = null)
+    val currentSongId = mediaMetadata?.id
+    val currentAlbumId = mediaMetadata?.album?.id
     val isPlaying by isPlayingFlow.collectAsState(initial = false)
     val coroutineScope = rememberCoroutineScope()
     val libraryArtist by viewModel.libraryArtist.collectAsState()
@@ -470,10 +470,14 @@ fun ArtistScreen(
                                     "remote_item_${sectionIndex}_${item.id}_$itemIndex"
                                 },
                             ) { _, item ->
-                                RemoteItemCard(
+                                YTContentCard(
                                     item = item,
+                                    currentMediaId = currentSongId,
+                                    currentAlbumId = currentAlbumId,
+                                    isPlaying = isPlaying,
                                     onClick = { onRemoteItemClick(item) },
-                                    onMoreClick = { remoteMenuItem = item },
+                                    onPlay = item.playAction(onRemoteItemPlay),
+                                    onMore = { remoteMenuItem = it },
                                 )
                             }
                         }
@@ -597,6 +601,7 @@ fun ArtistScreen(
             item = remoteMenuItem,
             onDismiss = { remoteMenuItem = null },
             onOpen = { remoteMenuItem?.let(onRemoteItemClick) },
+            onPlay = remoteMenuItem?.playAction(onRemoteItemPlay),
         )
     }
 }
@@ -648,62 +653,6 @@ private fun RemoteSongRow(
             )
         },
     )
-}
-
-@Composable
-private fun RemoteItemCard(
-    item: YTItem,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit,
-) {
-    val subtitle = when (item) {
-        is AlbumItem -> item.year?.toString() ?: ""
-        is SongItem -> item.artists.joinToString(", ") { it.name }
-        is PlaylistItem -> item.author?.name ?: item.songCountText.orEmpty()
-        is ArtistItem -> ""
-    }
-
-    Column(
-        modifier = Modifier
-            .width(150.dp)
-            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(modifier = Modifier.size(150.dp)) {
-            AsyncImage(
-                model = item.thumbnail?.resize(width = 300),
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(if (item is ArtistItem) CircleShape else RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            if (item !is ArtistItem) {
-                SongOptionsButton(
-                    onClick = onMoreClick,
-                    modifier = Modifier.align(Alignment.TopEnd),
-                    iconColor = Color.White,
-                    containerColor = Color.Black.copy(alpha = 0.38f),
-                )
-            }
-        }
-        MarqueeText(
-            text = item.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        if (subtitle.isNotEmpty()) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
 }
 
 private fun formatArtistSongDuration(seconds: Int): String =

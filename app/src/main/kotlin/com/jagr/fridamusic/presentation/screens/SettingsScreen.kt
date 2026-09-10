@@ -76,6 +76,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.stringResource
@@ -85,6 +86,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
 import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.*
@@ -103,6 +105,7 @@ private data class SettingsItem(
     val title: String,
     val subtitle: String,
     val accentColor: Color = Color.Unspecified,
+    val accountImageUrl: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -132,6 +135,7 @@ fun SettingsScreen(
     onNavigateToLogin: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
+    accountImageUrl: String? = null,
 ) {
     var currentPage: SettingsPage by remember { mutableStateOf(SettingsPage.None) }
     val rootListState = rememberLazyListState()
@@ -157,6 +161,7 @@ fun SettingsScreen(
             onBack = { currentPage = SettingsPage.None },
             onNavigateToLogin = onNavigateToLogin,
             onNavigateToAbout = onNavigateToAbout,
+            accountImageUrl = accountImageUrl,
         )
         return
     }
@@ -169,8 +174,13 @@ fun SettingsScreen(
         SettingsGroup(
             title = stringResource(R.string.account_and_stats),
             items = listOf(
-                SettingsItem(Icons.Rounded.AccountCircle, stringResource(R.string.account),
-                    stringResource(R.string.login_sync_desc), primaryColor) {
+                SettingsItem(
+                    icon = Icons.Rounded.AccountCircle,
+                    title = stringResource(R.string.account),
+                    subtitle = stringResource(R.string.login_sync_desc),
+                    accentColor = primaryColor,
+                    accountImageUrl = accountImageUrl,
+                ) {
                     currentPage = SettingsPage.Account
                 },
                 SettingsItem(Icons.Rounded.BarChart, stringResource(R.string.stats),
@@ -331,8 +341,16 @@ private fun SettingsSegmentItem(
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(accentColor),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(imageVector = item.icon, contentDescription = null,
-                    tint = Color.White, modifier = Modifier.size(24.dp))
+                if (item.accountImageUrl.isNullOrBlank()) {
+                    Icon(imageVector = item.icon, contentDescription = null,
+                        tint = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    SettingsAccountAvatar(
+                        accountImageUrl = item.accountImageUrl,
+                        fallbackTint = Color.White,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
@@ -368,6 +386,7 @@ private fun SettingsDetailPage(
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateToAbout: () -> Unit = {},
+    accountImageUrl: String? = null,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding(),
@@ -388,7 +407,7 @@ private fun SettingsDetailPage(
             contentPadding = PaddingValues(top = 8.dp, bottom = 160.dp),
         ) {
             when (page) {
-                SettingsPage.Account    -> accountItems(onNavigateToLogin)
+                SettingsPage.Account    -> accountItems(onNavigateToLogin, accountImageUrl)
                 SettingsPage.Playback   -> playbackItems()
                 SettingsPage.Equalizer  -> {}
                 SettingsPage.Appearance -> appearanceItems()
@@ -419,13 +438,49 @@ private fun pageTitle(page: SettingsPage) = when (page) {
     SettingsPage.None       -> ""
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.accountItems(onNavigateToLogin: () -> Unit) {
-    item { AccountSection(onNavigateToLogin = onNavigateToLogin) }
+private fun androidx.compose.foundation.lazy.LazyListScope.accountItems(
+    onNavigateToLogin: () -> Unit,
+    accountImageUrl: String?,
+) {
+    item {
+        AccountSection(
+            onNavigateToLogin = onNavigateToLogin,
+            accountImageUrl = accountImageUrl,
+        )
+    }
+}
+
+@Composable
+private fun SettingsAccountAvatar(
+    accountImageUrl: String?,
+    fallbackTint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.clip(CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.AccountCircle,
+            contentDescription = null,
+            tint = fallbackTint,
+            modifier = Modifier.fillMaxSize(0.64f),
+        )
+        accountImageUrl?.takeIf(String::isNotBlank)?.let { imageUrl ->
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+    }
 }
 
 @Composable
 private fun AccountSection(
     onNavigateToLogin: () -> Unit,
+    accountImageUrl: String?,
     viewModel: AccountSettingsViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -448,8 +503,11 @@ private fun AccountSection(
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(imageVector = Icons.Rounded.AccountCircle, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                    SettingsAccountAvatar(
+                        accountImageUrl = accountImageUrl,
+                        fallbackTint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = accountName.ifEmpty { stringResource(R.string.google_account) },

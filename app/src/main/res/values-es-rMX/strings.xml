@@ -2040,4 +2040,9 @@
     <string name="internal_crashlytics_unavailable">Crashlytics no disponible o recolección deshabilitada</string>
     <string name="recognition_fgs_retry">Mantén esta pantalla abierta y pulsa Reintentar para reconocer música.</string>
     <string name="update_fgs_retry">Android no pudo iniciar la descarga de la actualización. Pulsa para abrir las versiones y reintentar la descarga.</string>
+    <string name="frida_logo_easter_egg">Logo de FridaMusic</string>
+    <string name="frida_easter_egg_queue">Frida inspeccionó la cola. Premios aprobados.</string>
+    <string name="frida_easter_egg_sniff">¡Guau! Esta mezcla pasó la prueba del olfato de Frida.</string>
+    <string name="frida_easter_egg_dj">Secreto desbloqueado: Frida es la verdadera DJ.</string>
+    <string name="frida_easter_egg_shuffle">Frida volvió a pulsar aleatorio con la patita.</string>
 </resources>
