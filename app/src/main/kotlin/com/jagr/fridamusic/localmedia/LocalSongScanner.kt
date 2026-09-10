@@ -112,41 +112,73 @@ constructor(
 
                 snapshot.artists.forEach { artist ->
                     val existingArtist = existingArtists[artist.id]
-                    insert(
-                        ArtistEntity(
+                    if (existingArtist == null) {
+                        insert(
+                            ArtistEntity(
+                                id = artist.id,
+                                name = artist.name,
+                                thumbnailUrl = null,
+                                channelId = null,
+                                lastUpdateTime = LocalDateTime.now(),
+                                bookmarkedAt = null,
+                                isLocal = true,
+                            ),
+                        )
+                    } else {
+                        val updatedArtist = existingArtist.copy(
                             id = artist.id,
                             name = artist.name,
-                            thumbnailUrl = existingArtist?.thumbnailUrl,
                             channelId = null,
-                            lastUpdateTime = existingArtist?.lastUpdateTime ?: LocalDateTime.now(),
-                            bookmarkedAt = existingArtist?.bookmarkedAt,
                             isLocal = true,
-                        ),
-                    )
+                        )
+                        if (updatedArtist != existingArtist) {
+                            update(updatedArtist.copy(lastUpdateTime = LocalDateTime.now()))
+                        }
+                    }
                 }
 
                 snapshot.albums.forEach { album ->
                     val existingAlbum = existingAlbums[album.id]
-                    insert(
-                        AlbumEntity(
+                    val resolvedYear = album.year ?: existingAlbum?.year
+                    val resolvedThumbnailUrl = album.thumbnailUrl
+                        ?: existingAlbum?.thumbnailUrl?.takeIf {
+                            !it.startsWith("content://media/external/audio/media/")
+                        }
+                    if (existingAlbum == null) {
+                        insert(
+                            AlbumEntity(
+                                id = album.id,
+                                playlistId = null,
+                                title = album.title,
+                                year = resolvedYear,
+                                thumbnailUrl = resolvedThumbnailUrl,
+                                themeColor = null,
+                                songCount = album.songCount,
+                                duration = album.duration,
+                                explicit = false,
+                                lastUpdateTime = LocalDateTime.now(),
+                                bookmarkedAt = null,
+                                likedDate = null,
+                                inLibrary = null,
+                                isLocal = true,
+                            ),
+                        )
+                    } else {
+                        val updatedAlbum = existingAlbum.copy(
                             id = album.id,
                             playlistId = null,
                             title = album.title,
-                            year = album.year ?: existingAlbum?.year,
-                            thumbnailUrl = album.thumbnailUrl ?: existingAlbum?.thumbnailUrl?.takeIf {
-                                !it.startsWith("content://media/external/audio/media/")
-                            },
-                            themeColor = existingAlbum?.themeColor,
+                            year = resolvedYear,
+                            thumbnailUrl = resolvedThumbnailUrl,
                             songCount = album.songCount,
                             duration = album.duration,
                             explicit = false,
-                            lastUpdateTime = LocalDateTime.now(),
-                            bookmarkedAt = existingAlbum?.bookmarkedAt,
-                            likedDate = existingAlbum?.likedDate,
-                            inLibrary = existingAlbum?.inLibrary,
                             isLocal = true,
-                        ),
-                    )
+                        )
+                        if (updatedAlbum != existingAlbum) {
+                            update(updatedAlbum.copy(lastUpdateTime = LocalDateTime.now()))
+                        }
+                    }
                 }
 
                 snapshot.albums
@@ -167,62 +199,91 @@ constructor(
                 }
 
                 snapshot.tracks.forEach { track ->
-                    val existingSong = existingSongs[track.id]?.song
-                    insert(
-                        SongEntity(
-                            id = track.id,
-                            title = track.title,
-                            duration = track.durationSeconds,
-                            thumbnailUrl = track.thumbnailUrl ?: existingSong?.thumbnailUrl?.takeIf {
-                                !it.startsWith("content://media/external/audio/media/")
-                            },
-                            albumId = track.albumId,
-                            albumName = track.albumName,
-                            explicit = existingSong?.explicit ?: false,
-                            year = track.year ?: existingSong?.year,
-                            date = track.dateAdded ?: existingSong?.date,
-                            dateModified = track.dateModified ?: existingSong?.dateModified,
-                            liked = existingSong?.liked ?: false,
-                            likedDate = existingSong?.likedDate,
-                            totalPlayTime = existingSong?.totalPlayTime ?: 0L,
-                            inLibrary = null,
-                            dateDownload = existingSong?.dateDownload,
-                            isLocal = true,
-                        ),
+                    val existingItem = existingSongs[track.id]
+                    val existingSong = existingItem?.song
+                    val resolvedThumbnailUrl = track.thumbnailUrl
+                        ?: existingSong?.thumbnailUrl?.takeIf {
+                            !it.startsWith("content://media/external/audio/media/")
+                        }
+                    val updatedSong = existingSong?.copy(
+                        id = track.id,
+                        title = track.title,
+                        duration = track.durationSeconds,
+                        thumbnailUrl = resolvedThumbnailUrl,
+                        albumId = track.albumId,
+                        albumName = track.albumName,
+                        year = track.year ?: existingSong.year,
+                        date = track.dateAdded ?: existingSong.date,
+                        dateModified = track.dateModified ?: existingSong.dateModified,
+                        isLocal = true,
                     )
-                    upsert(
-                        FormatEntity(
-                            id = track.id,
-                            itag = -1,
-                            mimeType = track.mimeType,
-                            codecs = "",
-                            bitrate = 0,
-                            sampleRate = null,
-                            contentLength = track.sizeBytes,
-                            loudnessDb = null,
-                            perceptualLoudnessDb = null,
-                            playbackUrl = null,
-                        ),
-                    )
-                    deleteSongArtistMaps(track.id)
-                    track.artists.forEachIndexed { index, artist ->
+                    if (existingSong == null) {
                         insert(
-                            SongArtistMap(
-                                songId = track.id,
-                                artistId = artist.id,
-                                position = index,
+                            SongEntity(
+                                id = track.id,
+                                title = track.title,
+                                duration = track.durationSeconds,
+                                thumbnailUrl = resolvedThumbnailUrl,
+                                albumId = track.albumId,
+                                albumName = track.albumName,
+                                explicit = false,
+                                year = track.year,
+                                date = track.dateAdded,
+                                dateModified = track.dateModified,
+                                liked = false,
+                                likedDate = null,
+                                totalPlayTime = 0L,
+                                inLibrary = null,
+                                dateDownload = null,
+                                isLocal = true,
                             ),
                         )
+                    } else if (updatedSong != existingSong) {
+                        update(requireNotNull(updatedSong))
                     }
-                    deleteSongAlbumMaps(track.id)
-                    track.albumId?.let { albumId ->
-                        insert(
-                            SongAlbumMap(
-                                songId = track.id,
-                                albumId = albumId,
-                                index = 0,
-                            ),
-                        )
+
+                    val updatedFormat = FormatEntity(
+                        id = track.id,
+                        itag = -1,
+                        mimeType = track.mimeType,
+                        codecs = "",
+                        bitrate = 0,
+                        sampleRate = null,
+                        contentLength = track.sizeBytes,
+                        loudnessDb = null,
+                        perceptualLoudnessDb = null,
+                        playbackUrl = null,
+                    )
+                    if (existingItem?.format != updatedFormat) {
+                        upsert(updatedFormat)
+                    }
+
+                    val scannedArtistIds = track.artists.map(LocalArtistRecord::id)
+                    val existingArtistIds = existingItem?.artists?.map(ArtistEntity::id).orEmpty()
+                    if (scannedArtistIds != existingArtistIds) {
+                        deleteSongArtistMaps(track.id)
+                        track.artists.forEachIndexed { index, artist ->
+                            insert(
+                                SongArtistMap(
+                                    songId = track.id,
+                                    artistId = artist.id,
+                                    position = index,
+                                ),
+                            )
+                        }
+                    }
+
+                    if (existingItem?.album?.id != track.albumId) {
+                        deleteSongAlbumMaps(track.id)
+                        track.albumId?.let { albumId ->
+                            insert(
+                                SongAlbumMap(
+                                    songId = track.id,
+                                    albumId = albumId,
+                                    index = 0,
+                                ),
+                            )
+                        }
                     }
                 }
 

@@ -26,12 +26,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -73,8 +73,6 @@ class CachePlaylistViewModel @Inject constructor(
             }
         }
 
-        refreshRequests.trySend(Unit)
-
         viewModelScope.launch {
             downloadUtil.downloads
                 .map { downloads ->
@@ -100,11 +98,19 @@ class CachePlaylistViewModel @Inject constructor(
                 .collect { refreshRequests.trySend(Unit) }
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                delay(CACHE_FALLBACK_REFRESH_INTERVAL_MS)
-                refreshRequests.trySend(Unit)
-            }
+        viewModelScope.launch {
+            _cachedSongs.subscriptionCount
+                .map { subscriberCount -> subscriberCount > 0 }
+                .distinctUntilChanged()
+                .collectLatest { observed ->
+                    if (observed) {
+                        refreshRequests.trySend(Unit)
+                        while (true) {
+                            delay(CACHE_FALLBACK_REFRESH_INTERVAL_MS)
+                            refreshRequests.trySend(Unit)
+                        }
+                    }
+                }
         }
     }
 

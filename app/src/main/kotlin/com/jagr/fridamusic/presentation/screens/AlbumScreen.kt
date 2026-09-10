@@ -42,16 +42,14 @@ import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.AnimatedLibraryHeartButton
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
-import com.jagr.fridamusic.presentation.components.MarqueeText
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SongNavigationTarget
-import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.UniversalSongRow
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
+import com.jagr.fridamusic.presentation.components.YTContentCard
 import com.jagr.fridamusic.presentation.components.toSongActionContext
-import com.jagr.fridamusic.presentation.components.universalMediaClickable
-import com.jagr.fridamusic.presentation.playYTItem
+import com.jagr.fridamusic.playback.queues.YouTubeAlbumRadio
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.AlbumViewModel
 import com.jagr.fridamusic.R
@@ -73,10 +71,14 @@ fun AlbumScreen(
     val currentSongIdFlow = remember(playerConnection) {
         playerConnection?.mediaMetadata?.map { it?.id } ?: flowOf(null)
     }
+    val currentAlbumIdFlow = remember(playerConnection) {
+        playerConnection?.mediaMetadata?.map { it?.album?.id } ?: flowOf(null)
+    }
     val isPlayingFlow = remember(playerConnection) {
         playerConnection?.isEffectivelyPlaying ?: flowOf(false)
     }
     val currentSongId by currentSongIdFlow.collectAsState(initial = null)
+    val currentAlbumId by currentAlbumIdFlow.collectAsState(initial = null)
     val isPlaying by isPlayingFlow.collectAsState(initial = false)
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -377,10 +379,20 @@ fun AlbumScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(otherVersions, key = { "other_${it.browseId}" }) { albumItem ->
-                            AlbumCard(
-                                album = albumItem,
+                            YTContentCard(
+                                item = albumItem,
+                                currentMediaId = currentSongId,
+                                currentAlbumId = currentAlbumId,
+                                currentQueueTitle = null,
+                                isPlaying = isPlaying,
                                 onClick = { onAlbumClick(albumItem) },
-                                onMoreClick = { remoteMenuAlbum = albumItem },
+                                onPlay = albumItem.playlistId.takeIf(String::isNotBlank)?.let { playlistId ->
+                                    playerConnection?.let { connection ->
+                                        { connection.playQueue(YouTubeAlbumRadio(playlistId)) }
+                                    }
+                                },
+                                onMore = { remoteMenuAlbum = albumItem },
+                                thumbnailWidth = 300,
                             )
                         }
                     }
@@ -403,10 +415,20 @@ fun AlbumScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         items(releasesForYou, key = { "release_${it.browseId}" }) { albumItem ->
-                            AlbumCard(
-                                album = albumItem,
+                            YTContentCard(
+                                item = albumItem,
+                                currentMediaId = currentSongId,
+                                currentAlbumId = currentAlbumId,
+                                currentQueueTitle = null,
+                                isPlaying = isPlaying,
                                 onClick = { onAlbumClick(albumItem) },
-                                onMoreClick = { remoteMenuAlbum = albumItem },
+                                onPlay = albumItem.playlistId.takeIf(String::isNotBlank)?.let { playlistId ->
+                                    playerConnection?.let { connection ->
+                                        { connection.playQueue(YouTubeAlbumRadio(playlistId)) }
+                                    }
+                                },
+                                onMore = { remoteMenuAlbum = albumItem },
+                                thumbnailWidth = 300,
                             )
                         }
                     }
@@ -423,51 +445,6 @@ fun AlbumScreen(
             onDismiss = { remoteMenuAlbum = null },
             onOpen = { remoteMenuAlbum?.let(onAlbumClick) },
         )
-    }
-}
-
-@Composable
-private fun AlbumCard(
-    album: AlbumItem,
-    onClick: () -> Unit,
-    onMoreClick: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .width(150.dp)
-            .universalMediaClickable(onClick = onClick, onLongClick = onMoreClick),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(modifier = Modifier.size(150.dp)) {
-            AsyncImage(
-                model = album.thumbnail.resize(width = 300),
-                contentDescription = album.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            SongOptionsButton(
-                onClick = onMoreClick,
-                modifier = Modifier.align(Alignment.TopEnd),
-                iconColor = Color.White,
-                containerColor = Color.Black.copy(alpha = 0.38f),
-            )
-        }
-        MarqueeText(
-            text = album.title,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        album.year?.let {
-            Text(
-                text = it.toString(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 

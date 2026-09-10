@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.db.entities.Song
@@ -108,20 +110,38 @@ constructor(
         emptyList(),
     )
 
-    private val scanRequests = Channel<ScanRequest>(Channel.CONFLATED)
+    private val scanRequests = Channel<Unit>(Channel.CONFLATED)
+    private val scanRequestMutex = Mutex()
+    private var pendingScanRequest: ScanRequest? = null
+    private val sortMetadataRequests = Channel<SortMetadataRequest>(Channel.CONFLATED)
     private var preferenceRefreshJob: Job? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            for (request in scanRequests) {
+            for (ignored in scanRequests) {
+                val request = scanRequestMutex.withLock {
+                    pendingScanRequest.also { pendingScanRequest = null }
+                } ?: continue
                 performScan(request)
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            var lastLoadedSongIds: Set<String>? = null
+            for (request in sortMetadataRequests) {
+                if (!request.force && request.localSongIds == lastLoadedSongIds) continue
+                loadSortMetadata(request.localSongIds)
+                lastLoadedSongIds = request.localSongIds
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
             database.observeLocalSongIds()
                 .map { localSongIds -> localSongIds.toSet() }
                 .distinctUntilChanged()
-                .collect { localSongIds -> loadSortMetadata(localSongIds) }
+                .collect { localSongIds ->
+                    sortMetadataRequests.send(
+                        SortMetadataRequest(localSongIds = localSongIds, force = false),
+                    )
+                }
         }
     }
 
@@ -134,9 +154,12 @@ constructor(
     }
 
     fun refreshSortMetadata() {
-        viewModelScope.launch(Dispatchers.IO) {
-            loadSortMetadata(allLocalSongs.value.mapTo(linkedSetOf()) { it.song.id })
-        }
+        sortMetadataRequests.trySend(
+            SortMetadataRequest(
+                localSongIds = allLocalSongs.value.mapTo(linkedSetOf()) { it.song.id },
+                force = true,
+            ),
+        )
     }
 
     fun togglePinnedSong(songId: String) {
@@ -265,12 +288,15 @@ constructor(
     private fun enqueueCurrentConfig(force: Boolean) {
         if (!hasAudioPermission()) return
         viewModelScope.launch {
-            scanRequests.send(
-                ScanRequest(
-                    config = preferencesRepository.currentScanConfig(),
-                    force = force,
-                ),
-            )
+            val config = preferencesRepository.currentScanConfig()
+            scanRequestMutex.withLock {
+                val pendingForce = pendingScanRequest?.force == true
+                pendingScanRequest = ScanRequest(
+                    config = config,
+                    force = force || pendingForce,
+                )
+                scanRequests.trySend(Unit)
+            }
         }
     }
 
@@ -319,11 +345,17 @@ constructor(
 
     override fun onCleared() {
         scanRequests.close()
+        sortMetadataRequests.close()
         super.onCleared()
     }
 
     private data class ScanRequest(
         val config: LocalSongScanConfig,
+        val force: Boolean,
+    )
+
+    private data class SortMetadataRequest(
+        val localSongIds: Set<String>,
         val force: Boolean,
     )
 

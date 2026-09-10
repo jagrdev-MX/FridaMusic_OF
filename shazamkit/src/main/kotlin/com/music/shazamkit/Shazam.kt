@@ -15,18 +15,23 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import java.util.LinkedHashMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 /**
@@ -46,19 +51,33 @@ object Shazam {
     private const val INITIAL_RETRY_DELAY_MS = 2000L
     
     private const val CACHE_DURATION_MS = 300000L
+
+    private const val MAX_CACHE_SIZE = 100
     
     private const val MAX_QUEUE_SIZE = 50
 
     // Internal State
     private val activeRequests = AtomicInteger(0)
     
-    private var lastRequestTime = 0L
+    private var lastRequestTimeNanos = 0L
     
     private val requestMutex = Mutex()
+
+    private val rateLimitMutex = Mutex()
+
+    private val requestSemaphore = Semaphore(MAX_CONCURRENT_REQUESTS)
     
     private val requestQueue = ConcurrentLinkedQueue<PendingRequest>()
     
-    private val resultCache = ConcurrentHashMap<String, CachedResult>()
+    private val outstandingRequests = ConcurrentHashMap.newKeySet<PendingRequest>()
+
+    private val resultCacheLock = Any()
+
+    private val resultCache = object : LinkedHashMap<String, CachedResult>(MAX_CACHE_SIZE, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedResult>?): Boolean {
+            return size > MAX_CACHE_SIZE
+        }
+    }
     
     private var nextRequestId = 0L
     
@@ -123,14 +142,22 @@ object Shazam {
      * Clear cache
      */
     fun clearCache() {
-        resultCache.clear()
+        synchronized(resultCacheLock) {
+            resultCache.clear()
+        }
     }
 
     /**
      * Cancel all pending requests
      */
     fun cancelPendingRequests() {
-        requestQueue.clear()
+        outstandingRequests.forEach { request ->
+            if (!request.hasStarted()) {
+                requestQueue.remove(request)
+                request.cancel()
+                outstandingRequests.remove(request)
+            }
+        }
     }
 
     /**
@@ -162,6 +189,7 @@ object Shazam {
             )
 
             requestQueue.offer(request)
+            outstandingRequests.add(request)
 
             if (!isProcessingQueue) {
                 isProcessingQueue = true
@@ -171,7 +199,13 @@ object Shazam {
             request
         }
 
-        return request.awaitResult()
+        return try {
+            request.awaitResult()
+        } catch (error: CancellationException) {
+            requestQueue.remove(request)
+            request.cancel(error)
+            throw error
+        }
     }
 
     /**
@@ -179,12 +213,18 @@ object Shazam {
      */
     private suspend fun processQueue() {
         while (true) {
-            val request = requestQueue.poll() ?: break
+            val request = requestMutex.withLock {
+                requestQueue.poll().also { nextRequest ->
+                    if (nextRequest == null) isProcessingQueue = false
+                }
+            } ?: return
 
-            while (activeRequests.get() >= MAX_CONCURRENT_REQUESTS) {
-                delay(100)
+            requestSemaphore.acquire()
+            if (!request.tryStart()) {
+                outstandingRequests.remove(request)
+                requestSemaphore.release()
+                continue
             }
-
             activeRequests.incrementAndGet()
 
             scope.launch {
@@ -195,13 +235,11 @@ object Shazam {
                     request.completeWith(Result.failure(e))
                 } finally {
                     activeRequests.decrementAndGet()
+                    outstandingRequests.remove(request)
+                    requestSemaphore.release()
                 }
             }
-
-            enforceRateLimit()
         }
-
-        isProcessingQueue = false
     }
 
     /**
@@ -302,15 +340,16 @@ object Shazam {
      * Enforce minimum time between requests
      */
     private suspend fun enforceRateLimit() {
-        val currentTime = System.currentTimeMillis()
-        val timeSinceLastRequest = currentTime - lastRequestTime
-
-        if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
-            val delayTime = MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest
-            delay(delayTime)
+        rateLimitMutex.withLock {
+            val currentTimeNanos = System.nanoTime()
+            if (lastRequestTimeNanos != 0L) {
+                val elapsedMs = (currentTimeNanos - lastRequestTimeNanos) / NANOS_PER_MILLISECOND
+                if (elapsedMs < MIN_REQUEST_INTERVAL_MS) {
+                    delay(MIN_REQUEST_INTERVAL_MS - elapsedMs)
+                }
+            }
+            lastRequestTimeNanos = System.nanoTime()
         }
-
-        lastRequestTime = System.currentTimeMillis()
     }
 
     /**
@@ -331,41 +370,40 @@ object Shazam {
      * Get result from cache
      */
     private fun getCachedResult(key: String): RecognitionResult? {
-        val cached = resultCache[key] ?: return null
-        val currentTime = System.currentTimeMillis()
-
-        if (currentTime - cached.timestamp > CACHE_DURATION_MS) {
-            resultCache.remove(key)
-            return null
+        synchronized(resultCacheLock) {
+            val cached = resultCache[key] ?: return null
+            val currentTime = System.nanoTime()
+            if ((currentTime - cached.timestampNanos) / NANOS_PER_MILLISECOND > CACHE_DURATION_MS) {
+                resultCache.remove(key)
+                return null
+            }
+            return cached.result
         }
-
-        return cached.result
     }
 
     /**
      * Cache result
      */
     private fun cacheResult(key: String, result: RecognitionResult) {
-        resultCache[key] = CachedResult(
-            timestamp = System.currentTimeMillis(),
-            result = result
-        )
-
-        cleanupCache()
+        synchronized(resultCacheLock) {
+            resultCache[key] = CachedResult(
+                timestampNanos = System.nanoTime(),
+                result = result,
+            )
+            cleanupCacheLocked()
+        }
     }
 
     /**
      * Cleanup expired cache entries
      */
-    private fun cleanupCache() {
-        if (resultCache.size < 100) return
-
-        val currentTime = System.currentTimeMillis()
+    private fun cleanupCacheLocked() {
+        val currentTime = System.nanoTime()
         val iterator = resultCache.entries.iterator()
 
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            if (currentTime - entry.value.timestamp > CACHE_DURATION_MS) {
+            if ((currentTime - entry.value.timestampNanos) / NANOS_PER_MILLISECOND > CACHE_DURATION_MS) {
                 iterator.remove()
             }
         }
@@ -430,20 +468,21 @@ object Shazam {
         val signature: String,
         val sampleDurationMs: Long
     ) {
-        private val mutex = Mutex()
-        private var result: Result<RecognitionResult>? = null
-        private var isCompleted = false
+        private val deferred = CompletableDeferred<Result<RecognitionResult>>()
+        private val started = AtomicBoolean(false)
 
-        suspend fun awaitResult(): Result<RecognitionResult> {
-            while (!isCompleted) {
-                delay(50)
-            }
-            return result ?: Result.failure(Exception("Result not received"))
-        }
+        suspend fun awaitResult(): Result<RecognitionResult> = deferred.await()
 
         fun completeWith(result: Result<RecognitionResult>) {
-            this.result = result
-            this.isCompleted = true
+            deferred.complete(result)
+        }
+
+        fun tryStart(): Boolean = started.compareAndSet(false, true) && deferred.isActive
+
+        fun hasStarted(): Boolean = started.get()
+
+        fun cancel(cause: CancellationException = CancellationException("Pending request cancelled")) {
+            deferred.cancel(cause)
         }
     }
 
@@ -451,7 +490,9 @@ object Shazam {
      * Cached result
      */
     private data class CachedResult(
-        val timestamp: Long,
+        val timestampNanos: Long,
         val result: RecognitionResult
     )
+
+    private const val NANOS_PER_MILLISECOND = 1_000_000L
 }
