@@ -145,13 +145,8 @@ fun HomeScreen(
     val pinnedItems by viewModel.pinnedItems.collectAsStateWithLifecycle()
     val accountName by viewModel.accountName.collectAsStateWithLifecycle()
     val accountImageUrl by viewModel.accountImageUrl.collectAsStateWithLifecycle()
-    val notificationHistory by notificationHistoryViewModel.notifications.collectAsStateWithLifecycle()
     val unreadNotificationCount by notificationHistoryViewModel.unreadCount.collectAsStateWithLifecycle()
-    val unreadRecapCount = remember(notificationHistory) {
-        notificationHistory.count { notification ->
-            notification.readAt == null && notification.type == "RECAP_AVAILABLE"
-        }
-    }
+    val unreadRecapCount by notificationHistoryViewModel.unreadRecapCount.collectAsStateWithLifecycle()
     var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
     val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
@@ -159,14 +154,6 @@ fun HomeScreen(
     var drawerArtistChoices by remember(currentMediaMetadata?.id) {
         mutableStateOf<List<MediaMetadata.Artist>?>(null)
     }
-    val currentArtistId = currentMediaMetadata?.artists?.firstOrNull()?.id
-    val currentArtistImageUrl by remember(currentArtistId, viewModel.database) {
-        currentArtistId?.let { artistId ->
-            viewModel.database.artist(artistId)
-                .map { artist -> artist?.thumbnailUrl }
-                .distinctUntilChanged()
-        } ?: flowOf(null)
-    }.collectAsStateWithLifecycle(initialValue = null)
     val currentIsPlaying = playerConnection?.isPlaying?.collectAsStateWithLifecycle()?.value == true
     val isLowEnd = rememberIsLowEndDevice()
     val quickPickItems = quickPicks.orEmpty()
@@ -629,6 +616,15 @@ fun HomeScreen(
     }
 
     if (showDrawerOverlay) {
+        val currentArtistId = currentMediaMetadata?.artists?.firstOrNull()?.id
+        val currentArtistImageUrl by remember(currentArtistId, viewModel.database) {
+            currentArtistId?.let { artistId ->
+                viewModel.database.artist(artistId)
+                    .map { artist -> artist?.thumbnailUrl }
+                    .distinctUntilChanged()
+            } ?: flowOf(null)
+        }.collectAsStateWithLifecycle(initialValue = null)
+
         Dialog(
             onDismissRequest = {
                 closeDrawer {}

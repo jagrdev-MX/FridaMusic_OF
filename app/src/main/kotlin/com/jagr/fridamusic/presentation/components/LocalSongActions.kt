@@ -238,6 +238,22 @@ fun LocalPlayingBars(
     color: Color,
     modifier: Modifier = Modifier,
 ) {
+    if (active) {
+        AnimatedLocalPlayingBars(color = color, modifier = modifier)
+    } else {
+        LocalPlayingBarsContent(
+            heights = listOf(0.42f, 0.72f, 0.52f),
+            color = color,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun AnimatedLocalPlayingBars(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
     val transition = rememberInfiniteTransition(label = "localPlayingBars")
     val first by transition.animateFloat(
         initialValue = 0.35f,
@@ -257,8 +273,20 @@ fun LocalPlayingBars(
         animationSpec = infiniteRepeatable(tween(430), RepeatMode.Reverse),
         label = "localPlayingBar3",
     )
-    val heights = if (active) listOf(first, second, third) else listOf(0.42f, 0.72f, 0.52f)
 
+    LocalPlayingBarsContent(
+        heights = listOf(first, second, third),
+        color = color,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun LocalPlayingBarsContent(
+    heights: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
