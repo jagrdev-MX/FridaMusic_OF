@@ -3,6 +3,9 @@ package com.jagr.fridamusic.presentation.screens
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.ColorDrawable
+import android.view.WindowManager
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -204,6 +207,7 @@ fun HomeScreen(
     // Estado para controlar la visibilidad del popup de apoyo
     var showSupportDialog by remember { mutableStateOf(false) }
     var showDrawerOverlay by remember { mutableStateOf(false) }
+    var pendingDrawerAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
     val context = LocalContext.current
@@ -605,13 +609,9 @@ fun HomeScreen(
     }
 
     val closeDrawer = { onClosed: () -> Unit ->
-        drawerScope.launch {
-            try {
-                drawerState.close()
-            } finally {
-                showDrawerOverlay = false
-                onClosed()
-            }
+        if (pendingDrawerAction == null) {
+            pendingDrawerAction = onClosed
+            drawerScope.launch { drawerState.close() }
         }
     }
 
@@ -638,27 +638,39 @@ fun HomeScreen(
         ) {
             val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
             SideEffect {
-                dialogWindow?.setWindowAnimations(0)
+                dialogWindow?.apply {
+                    setWindowAnimations(0)
+                    setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
+                    clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                    setDimAmount(0f)
+                }
             }
             LaunchedEffect(drawerState) {
                 var drawerBecameActive = false
-                snapshotFlow { drawerState.currentValue to drawerState.targetValue }
-                    .collect { (currentValue, targetValue) ->
-                        val isFullyClosed = currentValue == DrawerValue.Closed &&
-                            targetValue == DrawerValue.Closed
-                        if (!isFullyClosed) {
-                            drawerBecameActive = true
-                        } else if (drawerBecameActive) {
-                            showDrawerOverlay = false
-                        }
+                snapshotFlow {
+                    Triple(
+                        drawerState.currentValue,
+                        drawerState.targetValue,
+                        pendingDrawerAction,
+                    )
+                }.collect { (currentValue, targetValue, pendingAction) ->
+                    val isFullyClosed = currentValue == DrawerValue.Closed &&
+                        targetValue == DrawerValue.Closed
+                    if (!isFullyClosed) {
+                        drawerBecameActive = true
+                    } else if (drawerBecameActive || pendingAction != null) {
+                        pendingDrawerAction = null
+                        showDrawerOverlay = false
+                        pendingAction?.invoke()
                     }
+                }
             }
             LaunchedEffect(drawerState) {
                 drawerState.open()
             }
             ModalNavigationDrawer(
                 drawerState = drawerState,
-                scrimColor = Color.Transparent,
+                scrimColor = DrawerDefaults.scrimColor,
                 drawerContent = {
                     BoxWithConstraints {
                         val drawerWidth = (maxWidth * 0.8f).coerceAtMost(420.dp)

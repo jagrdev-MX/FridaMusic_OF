@@ -271,6 +271,7 @@ fun UniversalSongActionsHost(
                 toast(R.string.local_song_action_failed)
             }
             pendingDeleteSongId = null
+            onDismiss()
         }
     }
 
@@ -286,12 +287,15 @@ fun UniversalSongActionsHost(
                     songId?.let(::removeDeletedSongFromQueue)
                     toast(R.string.local_song_deleted)
                     pendingDeleteSongId = null
+                    onDismiss()
                 }
                 pendingDeleteSongId != null -> completeLegacyDelete()
             }
         } else {
+            val wasDeleting = pendingDeleteSongId != null
             pendingMetadataUpdate = null
             pendingDeleteSongId = null
+            if (wasDeleting) onDismiss()
         }
     }
 
@@ -301,9 +305,11 @@ fun UniversalSongActionsHost(
         if (granted) {
             if (pendingMetadataUpdate != null) completeMetadataUpdate() else completeLegacyDelete()
         } else {
+            val wasDeleting = pendingDeleteSongId != null
             toast(R.string.local_song_action_failed)
             pendingMetadataUpdate = null
             pendingDeleteSongId = null
+            if (wasDeleting) onDismiss()
         }
     }
 
@@ -311,9 +317,11 @@ fun UniversalSongActionsHost(
         runCatching {
             mediaPermissionLauncher.launch(IntentSenderRequest.Builder(result.pendingIntent.intentSender).build())
         }.onFailure {
+            val wasDeleting = pendingDeleteSongId != null
             toast(R.string.local_song_action_failed)
             pendingMetadataUpdate = null
             pendingDeleteSongId = null
+            if (wasDeleting) onDismiss()
         }
     }
 
@@ -360,11 +368,13 @@ fun UniversalSongActionsHost(
                     removeDeletedSongFromQueue(songId)
                     toast(R.string.local_song_deleted)
                     pendingDeleteSongId = null
+                    onDismiss()
                 }
                 is LocalMediaStoreActionResult.PermissionRequired -> launchMediaPermission(result)
                 is LocalMediaStoreActionResult.Failure -> {
                     toast(R.string.local_song_action_failed)
                     pendingDeleteSongId = null
+                    onDismiss()
                 }
             }
         }
@@ -866,7 +876,7 @@ fun SongActionsSheet(
             onDismiss = { subview = SongActionsSubview.NONE },
             onConfirm = {
                 actions.onDelete?.invoke()
-                onDismiss()
+                subview = SongActionsSubview.NONE
             },
         )
         SongActionsSubview.NONE -> Unit
