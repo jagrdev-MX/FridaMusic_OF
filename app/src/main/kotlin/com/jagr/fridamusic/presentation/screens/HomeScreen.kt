@@ -155,6 +155,7 @@ fun HomeScreen(
     var pinnedSelected by rememberSaveable { mutableStateOf(false) }
     val playerConnection = LocalPlayerConnection.current
     val currentMediaMetadata = playerConnection?.mediaMetadata?.collectAsStateWithLifecycle()?.value
+    val currentQueueTitle = playerConnection?.queueTitle?.collectAsStateWithLifecycle()?.value
     var drawerArtistChoices by remember(currentMediaMetadata?.id) {
         mutableStateOf<List<MediaMetadata.Artist>?>(null)
     }
@@ -336,6 +337,7 @@ fun HomeScreen(
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
+                currentQueueTitle = currentQueueTitle,
                 isPlaying = currentIsPlaying,
                 onItemMore = { remoteMenuItem = it },
             )
@@ -366,6 +368,7 @@ fun HomeScreen(
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
+                currentQueueTitle = currentQueueTitle,
                 isPlaying = currentIsPlaying,
                 onSeeAll = {
                     onCollectionClick(HomeCollectionKind.DAILY_DISCOVER, 0, dailyDiscoverTitle)
@@ -415,6 +418,7 @@ fun HomeScreen(
                     onPlayItem = onPlayItem,
                     currentMediaId = currentMediaMetadata?.id,
                     currentAlbumId = currentMediaMetadata?.album?.id,
+                    currentQueueTitle = currentQueueTitle,
                     isPlaying = currentIsPlaying,
                     onSeeAll = {
                         onCollectionClick(HomeCollectionKind.ECHO_BRAIN, index, playlist.playlist.title)
@@ -442,6 +446,7 @@ fun HomeScreen(
                     onPlayItem = onPlayItem,
                     currentMediaId = currentMediaMetadata?.id,
                     currentAlbumId = currentMediaMetadata?.album?.id,
+                    currentQueueTitle = currentQueueTitle,
                     isPlaying = currentIsPlaying,
                     onSeeAll = when {
                         opensWrongMoodCollection -> ({
@@ -474,6 +479,7 @@ fun HomeScreen(
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
+                currentQueueTitle = currentQueueTitle,
                 isPlaying = currentIsPlaying,
                 onSeeAll = {
                     onCollectionClick(HomeCollectionKind.ACCOUNT_PLAYLISTS, 0, accountPlaylistsTitle)
@@ -490,6 +496,7 @@ fun HomeScreen(
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
+                currentQueueTitle = currentQueueTitle,
                 isPlaying = currentIsPlaying,
                 onSeeAll = onNewReleasesClick,
                 onItemMore = { remoteMenuItem = it },
@@ -512,6 +519,7 @@ fun HomeScreen(
                     onPlayItem = onPlayItem,
                     currentMediaId = currentMediaMetadata?.id,
                     currentAlbumId = currentMediaMetadata?.album?.id,
+                    currentQueueTitle = currentQueueTitle,
                     isPlaying = currentIsPlaying,
                     onSeeAll = {
                         onCollectionClick(
@@ -535,6 +543,7 @@ fun HomeScreen(
                 onPlayItem = onPlayItem,
                 currentMediaId = currentMediaMetadata?.id,
                 currentAlbumId = currentMediaMetadata?.album?.id,
+                currentQueueTitle = currentQueueTitle,
                 isPlaying = currentIsPlaying,
                 onSeeAll = {
                     onCollectionClick(HomeCollectionKind.COMMUNITY, 0, communityTitle)
@@ -1612,6 +1621,7 @@ private fun LazyListScope.ytSection(
     onPlayItem: (YTItem) -> Unit,
     currentMediaId: String?,
     currentAlbumId: String?,
+    currentQueueTitle: String?,
     isPlaying: Boolean,
     onSeeAll: (() -> Unit)? = null,
     onItemMore: (YTItem) -> Unit,
@@ -1641,6 +1651,7 @@ private fun LazyListScope.ytSection(
                     item = item,
                     currentMediaId = currentMediaId,
                     currentAlbumId = currentAlbumId,
+                    currentQueueTitle = currentQueueTitle,
                     isPlaying = isPlaying,
                     onClick = { onItemClick(item) },
                     onPlay = when (item) {

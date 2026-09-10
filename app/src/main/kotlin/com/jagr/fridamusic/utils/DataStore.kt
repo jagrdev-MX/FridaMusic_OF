@@ -37,6 +37,14 @@ fun <T> DataStore<Preferences>.get(
         data.first()[key] ?: defaultValue
     }
 
+suspend fun <T> DataStore<Preferences>.read(key: Preferences.Key<T>): T? =
+    data.first()[key]
+
+suspend fun <T> DataStore<Preferences>.read(
+    key: Preferences.Key<T>,
+    defaultValue: T,
+): T = data.first()[key] ?: defaultValue
+
 fun <T> preference(
     context: Context,
     key: Preferences.Key<T>,

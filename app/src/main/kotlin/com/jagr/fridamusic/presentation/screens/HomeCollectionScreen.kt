@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
@@ -89,6 +90,7 @@ fun HomeCollectionScreen(
     val playerConnection = LocalPlayerConnection.current
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
+    val currentQueueTitle = playerConnection?.queueTitle?.collectAsStateWithLifecycle()?.value
     var songMenu by remember { mutableStateOf<SongActionContext?>(null) }
     var ytMenu by remember { mutableStateOf<YTItem?>(null) }
     var localMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
@@ -210,6 +212,7 @@ fun HomeCollectionScreen(
                         item = item,
                         currentMediaId = mediaMetadata?.id,
                         currentAlbumId = mediaMetadata?.album?.id,
+                        currentQueueTitle = currentQueueTitle,
                         isPlaying = isPlaying,
                         onClick = { onItemClick(item) },
                         onPlay = item.playAction(onPlayItem),

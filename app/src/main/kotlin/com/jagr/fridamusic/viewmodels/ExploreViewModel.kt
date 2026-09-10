@@ -11,7 +11,7 @@ import com.music.innertube.pages.ExplorePage
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -61,7 +61,7 @@ constructor(
                                         }
                                     } ?: Int.MAX_VALUE
                                 firstArtistKey
-                            }.filterExplicit(context.dataStore.get(HideExplicitKey, false)),
+                            }.filterExplicit(context.dataStore.read(HideExplicitKey, false)),
                     )
             }.onFailure {
                 reportException(it)

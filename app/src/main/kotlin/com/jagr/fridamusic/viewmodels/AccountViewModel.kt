@@ -14,7 +14,7 @@ import com.music.innertube.utils.completed
 import com.jagr.fridamusic.constants.HideYoutubeShortsKey
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -41,7 +41,7 @@ class AccountViewModel @Inject constructor(
     val selectedContentType = MutableStateFlow(AccountContentType.PLAYLISTS)
 
     private suspend fun loadPlaylists() {
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+        val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
         YouTube.library("FEmusic_liked_playlists").completed().onSuccess {
             playlists.value = it.items.filterIsInstance<PlaylistItem>()
                 .filterNot { it.id == "SE" }

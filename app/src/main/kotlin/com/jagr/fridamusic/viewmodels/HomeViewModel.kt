@@ -38,7 +38,7 @@ import com.jagr.fridamusic.extensions.toEnum
 import com.jagr.fridamusic.models.SimilarRecommendation
 import com.jagr.fridamusic.localmedia.LocalAudioPreferencesRepository
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -56,8 +56,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlin.random.Random
@@ -86,6 +89,8 @@ class HomeViewModel @Inject constructor(
     val echoBrainEngine: com.jagr.fridamusic.engine.EchoBrainEngine,
     localAudioPreferencesRepository: LocalAudioPreferencesRepository,
 ) : ViewModel() {
+    private val homeNetworkSemaphore = Semaphore(HOME_NETWORK_CONCURRENCY_LIMIT)
+
     val isRefreshing = MutableStateFlow(false)
     val isLoading = MutableStateFlow(false)
     val isRandomizing = MutableStateFlow(false)
@@ -270,7 +275,7 @@ class HomeViewModel @Inject constructor(
     private var isProcessingAccountData = false
 
     private suspend fun getDailyDiscover() {
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
         val likedSongs = database.likedSongsByCreateDateAsc().first()
         if (likedSongs.isEmpty()) return
 
@@ -282,9 +287,11 @@ class HomeViewModel @Inject constructor(
         kotlinx.coroutines.coroutineScope {
             seeds.map { seed ->
                 launch(Dispatchers.IO) {
-                    val endpoint = YouTube.next(WatchEndpoint(videoId = seed.id)).getOrNull()?.relatedEndpoint
+                    val endpoint = homeNetworkCall {
+                        YouTube.next(WatchEndpoint(videoId = seed.id))
+                    }.getOrNull()?.relatedEndpoint
                     if (endpoint != null) {
-                        YouTube.related(endpoint).onSuccess { page ->
+                        homeNetworkCall { YouTube.related(endpoint) }.onSuccess { page ->
                             val recommendations = page.songs
                                 .filter { item ->
                                     if (hideVideoSongs && item.isVideoSong) return@filter false
@@ -318,7 +325,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun getQuickPicks() {
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
         when (quickPicksEnum.first()) {
             QuickPicks.QUICK_PICKS -> {
                 val relatedSongs = database.quickPicks().first().filterVideoSongs(hideVideoSongs)
@@ -329,9 +336,11 @@ class HomeViewModel @Inject constructor(
                 val ytSimilarSongs = mutableListOf<Song>()
 
                 if (recentSong != null) {
-                    val endpoint = YouTube.next(WatchEndpoint(videoId = recentSong.id)).getOrNull()?.relatedEndpoint
+                    val endpoint = homeNetworkCall {
+                        YouTube.next(WatchEndpoint(videoId = recentSong.id))
+                    }.getOrNull()?.relatedEndpoint
                     if (endpoint != null) {
-                        YouTube.related(endpoint).onSuccess { page ->
+                        homeNetworkCall { YouTube.related(endpoint) }.onSuccess { page ->
                             val freshCandidates = page.songs
                                 .filter { ytSong -> !hideVideoSongs || !ytSong.isVideoSong }
                                 .take(NOTIFICATION_RECOMMENDATIONS_PER_SEED)
@@ -382,7 +391,7 @@ class HomeViewModel @Inject constructor(
         kotlinx.coroutines.coroutineScope {
             artistSeeds.map { seed ->
                 launch(Dispatchers.IO) {
-                    YouTube.artist(seed.id).onSuccess { page ->
+                    homeNetworkCall { YouTube.artist(seed.id) }.onSuccess { page ->
                         page.sections.forEach { section ->
                             section.items.filterIsInstance<PlaylistItem>().forEach { playlist ->
                                 if (playlist.author?.name != "YouTube Music" &&
@@ -402,9 +411,11 @@ class HomeViewModel @Inject constructor(
 
             songSeeds.map { seed ->
                 launch(Dispatchers.IO) {
-                    val endpoint = YouTube.next(WatchEndpoint(videoId = seed.id)).getOrNull()?.relatedEndpoint
+                    val endpoint = homeNetworkCall {
+                        YouTube.next(WatchEndpoint(videoId = seed.id))
+                    }.getOrNull()?.relatedEndpoint
                     if (endpoint != null) {
-                        YouTube.related(endpoint).onSuccess { page ->
+                        homeNetworkCall { YouTube.related(endpoint) }.onSuccess { page ->
                             page.playlists.forEach { playlist ->
                                 if (playlist.author?.name != "YouTube Music" &&
                                     playlist.author?.name != "YouTube" &&
@@ -434,7 +445,7 @@ class HomeViewModel @Inject constructor(
                         playlists.add(CommunityPlaylistItem(playlist, emptyList()))
                         return@launch
                     }
-                    YouTube.playlist(playlist.id).onSuccess { page ->
+                    homeNetworkCall { YouTube.playlist(playlist.id) }.onSuccess { page ->
                         val songs = page.songs.take(10)
                         if (songs.isNotEmpty()) {
                             
@@ -451,7 +462,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun getEchoBrainPlaylists() {
-        if (!context.dataStore.get(EchoBrainEnabledKey, false)) {
+        if (!context.dataStore.read(EchoBrainEnabledKey, false)) {
             echoBrainPlaylists.value = emptyList()
             return
         }
@@ -487,7 +498,7 @@ class HomeViewModel @Inject constructor(
 
     
     private suspend fun loadLocalDataPhase() {
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
 
         getQuickPicks()
 
@@ -509,8 +520,8 @@ class HomeViewModel @Inject constructor(
 
     
     private suspend fun loadSimilarRecommendations() {
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
 
         coroutineScope {
@@ -520,7 +531,7 @@ class HomeViewModel @Inject constructor(
                 .map { artist ->
                     async(Dispatchers.IO) {
                         val items = mutableListOf<YTItem>()
-                        YouTube.artist(artist.id).onSuccess { page ->
+                        homeNetworkCall { YouTube.artist(artist.id) }.onSuccess { page ->
                             page.sections.takeLast(3).forEach { section -> items += section.items }
                         }
                         database.cacheNotificationCandidates(
@@ -545,9 +556,12 @@ class HomeViewModel @Inject constructor(
                 .shuffled().take(3)
                 .map { song ->
                     async(Dispatchers.IO) {
-                        val endpoint = YouTube.next(WatchEndpoint(videoId = song.id)).getOrNull()?.relatedEndpoint
+                        val endpoint = homeNetworkCall {
+                            YouTube.next(WatchEndpoint(videoId = song.id))
+                        }.getOrNull()?.relatedEndpoint
                             ?: return@async null
-                        val page = YouTube.related(endpoint).getOrNull() ?: return@async null
+                        val page = homeNetworkCall { YouTube.related(endpoint) }.getOrNull()
+                            ?: return@async null
                         val relatedItems = (
                             page.songs.shuffled().take(16) +
                                 page.albums.shuffled().take(6) +
@@ -575,11 +589,11 @@ class HomeViewModel @Inject constructor(
                 .map { album ->
                     async(Dispatchers.IO) {
                         val items = mutableListOf<YTItem>()
-                        YouTube.album(album.id).onSuccess { page ->
+                        homeNetworkCall { YouTube.album(album.id) }.onSuccess { page ->
                             page.otherVersions.let { items += it }
                         }
                         album.artists.firstOrNull()?.id?.let { artistId ->
-                            YouTube.artist(artistId).onSuccess { page ->
+                            homeNetworkCall { YouTube.artist(artistId) }.onSuccess { page ->
                                 page.sections.lastOrNull()?.items?.let { items += it }
                             }
                         }
@@ -607,9 +621,9 @@ class HomeViewModel @Inject constructor(
 
     
     private suspend fun loadNetworkDataPhase() {
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+        val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+        val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
 
         coroutineScope {
             launch(Dispatchers.IO) { getDailyDiscover() }
@@ -617,7 +631,7 @@ class HomeViewModel @Inject constructor(
             launch(Dispatchers.IO) { getEchoBrainPlaylists() }
             launch(Dispatchers.IO) { loadSimilarRecommendations() }
             launch(Dispatchers.IO) {
-                YouTube.home().onSuccess { page ->
+                homeNetworkCall { YouTube.home() }.onSuccess { page ->
                     val filteredPage = page.copy(
                         sections = page.sections.mapNotNull { section ->
                             val filteredItems = section.items
@@ -638,7 +652,7 @@ class HomeViewModel @Inject constructor(
                 }.onFailure { reportException(it) }
             }
             launch(Dispatchers.IO) {
-                YouTube.explore().onSuccess { page ->
+                homeNetworkCall { YouTube.explore() }.onSuccess { page ->
                     val releases = page.newReleaseAlbums.filterExplicit(hideExplicit)
                     explorePage.value = page.copy(newReleaseAlbums = releases)
                     database.cacheNotificationCandidates(
@@ -668,6 +682,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
+    private var loadJob: Job? = null
     private var loadMoreJob: Job? = null
     private var chipLoadJob: Job? = null
 
@@ -677,19 +692,21 @@ class HomeViewModel @Inject constructor(
             homePage.value?.continuation != continuation
         ) return
 
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
         val expectedChip = selectedChip.value
 
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             _isLoadingMore.value = true
             try {
+                val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+                val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+                val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
                 var currentContinuation = continuation
                 var hasNewItems = false
 
                 while (currentContinuation != null && !hasNewItems) {
-                    val nextSections = YouTube.home(currentContinuation).getOrNull() ?: break
+                    val nextSections = homeNetworkCall {
+                        YouTube.home(currentContinuation)
+                    }.getOrNull() ?: break
                     currentContinuation = nextSections.continuation
 
                     val newSections = nextSections.sections.mapNotNull { section ->
@@ -735,7 +752,11 @@ class HomeViewModel @Inject constructor(
         const val NOTIFICATION_ITEMS_PER_REMOTE_SOURCE = 30
         const val NOTIFICATION_HOME_CACHE_LIMIT = 80
         const val MAX_PINNED_IDS_PER_QUERY = 900
+        const val HOME_NETWORK_CONCURRENCY_LIMIT = 4
     }
+
+    private suspend fun <T> homeNetworkCall(block: suspend () -> T): T =
+        homeNetworkSemaphore.withPermit { block() }
 
     fun toggleChip(chip: HomePage.Chip?) {
         if (chip == null || chip == selectedChip.value && previousHomePage.value != null) {
@@ -758,10 +779,12 @@ class HomeViewModel @Inject constructor(
         selectedChip.value = chip
 
         chipLoadJob = viewModelScope.launch(Dispatchers.IO) {
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-            val nextSections = YouTube.home(params = chip.endpoint?.params).getOrNull()
+            val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+            val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+            val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
+            val nextSections = homeNetworkCall {
+                YouTube.home(params = chip.endpoint?.params)
+            }.getOrNull()
             if (nextSections == null) {
                 if (selectedChip.value == chip) {
                     previousHomePage.value?.let { homePage.value = it }
@@ -795,8 +818,10 @@ class HomeViewModel @Inject constructor(
     }
 
     private suspend fun loadAccountPlaylists() {
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-        YouTube.library("FEmusic_liked_playlists").completed().onSuccess {
+        val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
+        homeNetworkCall {
+            YouTube.library("FEmusic_liked_playlists").completed()
+        }.onSuccess {
             accountPlaylists.value = it.items.filterIsInstance<PlaylistItem>()
                 .filterNot { it.id == "SE" }
                 .filterYoutubeShorts(hideYoutubeShorts)
@@ -807,9 +832,11 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         if (isRefreshing.value) return
-        viewModelScope.launch(Dispatchers.IO) {
+        isRefreshing.value = true
+        val previousLoadJob = loadJob
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                isRefreshing.value = true
+                previousLoadJob?.cancelAndJoin()
                 chipLoadJob?.cancel()
                 loadMoreJob?.cancel()
                 _isLoadingMore.value = false
@@ -826,7 +853,7 @@ class HomeViewModel @Inject constructor(
     init {
 
         
-        viewModelScope.launch(Dispatchers.IO) {
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
             context.dataStore.data
                 .map { it[InnerTubeCookieKey] }
                 .distinctUntilChanged()
@@ -853,7 +880,7 @@ class HomeViewModel @Inject constructor(
                             YouTube.cookie = cookie
 
                             
-                            YouTube.accountInfo().onSuccess { info ->
+                            homeNetworkCall { YouTube.accountInfo() }.onSuccess { info ->
                                 accountName.value = info.name
                                 accountImageUrl.value = info.thumbnailUrl
                             }.onFailure {
