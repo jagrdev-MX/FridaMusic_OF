@@ -14,7 +14,7 @@ import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.HideYoutubeShortsKey
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -94,9 +94,9 @@ constructor(
     }
 
     private suspend fun BrowseResult.applyContentFilters(): BrowseResult {
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-        val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+        val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+        val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
         return filterExplicit(hideExplicit)
             .filterVideoSongs(hideVideoSongs)
             .filterYoutubeShorts(hideYoutubeShorts)

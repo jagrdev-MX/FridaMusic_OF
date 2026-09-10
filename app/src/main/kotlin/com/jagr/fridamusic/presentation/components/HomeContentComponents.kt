@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,6 +140,7 @@ fun YTContentCard(
     item: YTItem,
     currentMediaId: String?,
     currentAlbumId: String?,
+    currentQueueTitle: String?,
     isPlaying: Boolean,
     onClick: () -> Unit,
     onPlay: (() -> Unit)? = null,
@@ -150,10 +150,6 @@ fun YTContentCard(
     fillMaxWidth: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val currentQueueTitle = LocalPlayerConnection.current
-        ?.queueTitle
-        ?.collectAsState()
-        ?.value
     val type = when (item) {
         is SongItem -> HomeContentType.SONG
         is AlbumItem -> HomeContentType.ALBUM

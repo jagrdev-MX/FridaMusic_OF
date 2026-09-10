@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -86,10 +87,14 @@ fun ArtistScreen(
     val isPlayingFlow = remember(playerConnection) {
         playerConnection?.isEffectivelyPlaying ?: flowOf(false)
     }
+    val queueTitleFlow = remember(playerConnection) {
+        playerConnection?.queueTitle ?: flowOf(null)
+    }
     val mediaMetadata by mediaMetadataFlow.collectAsState(initial = null)
     val currentSongId = mediaMetadata?.id
     val currentAlbumId = mediaMetadata?.album?.id
     val isPlaying by isPlayingFlow.collectAsState(initial = false)
+    val currentQueueTitle by queueTitleFlow.collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val libraryArtist by viewModel.libraryArtist.collectAsState()
     val librarySongs by viewModel.librarySongs.collectAsState()
@@ -474,6 +479,7 @@ fun ArtistScreen(
                                     item = item,
                                     currentMediaId = currentSongId,
                                     currentAlbumId = currentAlbumId,
+                                    currentQueueTitle = currentQueueTitle,
                                     isPlaying = isPlaying,
                                     onClick = { onRemoteItemClick(item) },
                                     onPlay = item.playAction(onRemoteItemPlay),

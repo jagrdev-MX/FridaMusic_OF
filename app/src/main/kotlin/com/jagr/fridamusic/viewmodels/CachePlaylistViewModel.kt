@@ -19,7 +19,7 @@ import com.jagr.fridamusic.extensions.filterExplicit
 import com.jagr.fridamusic.extensions.filterVideoSongs
 import com.jagr.fridamusic.playback.DownloadUtil
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -109,8 +109,8 @@ class CachePlaylistViewModel @Inject constructor(
     }
 
     private suspend fun refreshAvailableSongs() {
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+        val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
 
         val verifiedDownloadIds = downloadUtil.downloads.value.values
             .asSequence()

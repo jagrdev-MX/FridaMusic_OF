@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
@@ -51,6 +52,7 @@ fun NewReleaseScreen(
     val playerConnection = LocalPlayerConnection.current
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
+    val currentQueueTitle = playerConnection?.queueTitle?.collectAsStateWithLifecycle()?.value
     var menuAlbum by remember { mutableStateOf<AlbumItem?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -116,6 +118,7 @@ fun NewReleaseScreen(
                             item = album,
                             currentMediaId = mediaMetadata?.id,
                             currentAlbumId = mediaMetadata?.album?.id,
+                            currentQueueTitle = currentQueueTitle,
                             isPlaying = isPlaying,
                             onClick = { onAlbumClick(album) },
                             onPlay = album.playlistId.takeIf(String::isNotBlank)

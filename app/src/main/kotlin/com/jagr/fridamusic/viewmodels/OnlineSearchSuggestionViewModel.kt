@@ -17,7 +17,7 @@ import com.jagr.fridamusic.constants.PauseSearchHistoryKey
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.SearchHistory
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -63,8 +63,8 @@ constructor(
                                 } else {
                                     YouTube.searchSuggestions(query).getOrNull()
                                 }
-                            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+                            val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+                            val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
 
                             emitAll(
                                 database.searchHistory(query).map { history ->
@@ -102,7 +102,7 @@ constructor(
         if (query.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            if (context.dataStore.get(PauseSearchHistoryKey, false)) return@launch
+            if (context.dataStore.read(PauseSearchHistoryKey, false)) return@launch
             if (database.searchHistory(query).first().none { it.query == query }) {
                 database.insert(SearchHistory(query = query))
             }

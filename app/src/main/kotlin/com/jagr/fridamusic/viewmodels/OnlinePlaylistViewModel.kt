@@ -14,7 +14,7 @@ import com.music.innertube.models.filterVideoSongs
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -184,8 +184,8 @@ class OnlinePlaylistViewModel @Inject constructor(
     private fun Throwable.safeHttpStatus(): String =
         (this as? ResponseException)?.response?.status?.value?.toString() ?: "n/a"
 
-    private fun applySongFilters(songs: List<SongItem>): List<SongItem> {
-        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
+    private suspend fun applySongFilters(songs: List<SongItem>): List<SongItem> {
+        val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
         val uniqueSongs = songs.distinctBy { it.id }
         if (!hideVideoSongs) return uniqueSongs
 

@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
@@ -61,6 +62,7 @@ fun BrowseScreen(
     val playerConnection = LocalPlayerConnection.current
     val mediaMetadata = playerConnection?.mediaMetadata?.collectAsState()?.value
     val isPlaying = playerConnection?.isPlaying?.collectAsState()?.value == true
+    val currentQueueTitle = playerConnection?.queueTitle?.collectAsStateWithLifecycle()?.value
     var menuItem by remember { mutableStateOf<YTItem?>(null) }
     val allItems = result?.items.orEmpty()
         .flatMap { section -> section.items }
@@ -140,6 +142,7 @@ fun BrowseScreen(
                             item = item,
                             currentMediaId = mediaMetadata?.id,
                             currentAlbumId = mediaMetadata?.album?.id,
+                            currentQueueTitle = currentQueueTitle,
                             isPlaying = isPlaying,
                             onClick = { onItemClick(item) },
                             onPlay = item.playAction(onPlayItem),

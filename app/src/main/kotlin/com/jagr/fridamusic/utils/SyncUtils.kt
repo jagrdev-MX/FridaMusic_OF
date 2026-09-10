@@ -143,8 +143,8 @@ class SyncUtils @Inject constructor(
         startProcessingQueue()
 
         syncScope.launch {
-            val initialSyncPending = context.dataStore.get(InitialSyncPendingKey, false)
-            val syncEnabled = context.dataStore.get(YtmSyncKey, true)
+            val initialSyncPending = context.dataStore.read(InitialSyncPendingKey, false)
+            val syncEnabled = context.dataStore.read(YtmSyncKey, true)
             if (initialSyncPending && syncEnabled) {
                 Timber.d("Running pending initial full sync")
                 enqueue(SyncOperation.FullSync)
@@ -333,7 +333,7 @@ class SyncUtils @Inject constructor(
                 return@launch
             }
 
-            val syncEnabled = context.dataStore.get(YtmSyncKey, true)
+            val syncEnabled = context.dataStore.read(YtmSyncKey, true)
             if (!syncEnabled) {
                 return@launch
             }
@@ -690,7 +690,7 @@ class SyncUtils @Inject constructor(
                     }
             }
 
-            val lastSync = context.dataStore.get(LastFullSyncKey, 0L)
+            val lastSync = context.dataStore.read(LastFullSyncKey, 0L)
             val localLikedSongs = database.likedSongSyncStates()
             val localIdsToClear = ArrayList<String>()
             localLikedSongs

@@ -14,6 +14,7 @@ import androidx.room.RenameColumn
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.withTransaction
 import androidx.room.migration.AutoMigrationSpec
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -79,16 +80,11 @@ class MusicDatabase(
             }
         }
 
-    suspend fun withTransaction(block: suspend MusicDatabase.() -> Unit) =
-        with(delegate) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runInTransaction {
-                    kotlinx.coroutines.runBlocking {
-                        block(this@MusicDatabase)
-                    }
-                }
-            }
+    suspend fun withTransaction(block: suspend MusicDatabase.() -> Unit) {
+        delegate.withTransaction {
+            block(this@MusicDatabase)
         }
+    }
 
     fun close() = delegate.close()
 }

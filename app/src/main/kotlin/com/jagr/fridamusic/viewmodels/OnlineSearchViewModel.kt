@@ -20,7 +20,7 @@ import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.HideYoutubeShortsKey
 import com.jagr.fridamusic.models.ItemsPage
 import com.jagr.fridamusic.utils.dataStore
-import com.jagr.fridamusic.utils.get
+import com.jagr.fridamusic.utils.read
 import com.jagr.fridamusic.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -117,9 +117,9 @@ constructor(
                         .onSuccess { result ->
                             if (!isCurrentRequest(expectedGeneration, expectedQuery, filter)) return@onSuccess
 
-                            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                            val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+                            val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+                            val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
                             if (!isCurrentRequest(expectedGeneration, expectedQuery, filter)) return@onSuccess
                             summaryPage = result
                                 .filterExplicit(hideExplicit)
@@ -135,9 +135,9 @@ constructor(
                         .onSuccess { result ->
                             if (!isCurrentRequest(expectedGeneration, expectedQuery, filter)) return@onSuccess
 
-                            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-                            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+                            val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+                            val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+                            val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
                             if (!isCurrentRequest(expectedGeneration, expectedQuery, filter)) return@onSuccess
                             viewStateMap[filter.value] = ItemsPage(
                                 result.items
@@ -197,9 +197,9 @@ constructor(
                 return@launch
             }
 
-            val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-            val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false)
-            val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
+            val hideExplicit = context.dataStore.read(HideExplicitKey, false)
+            val hideVideoSongs = context.dataStore.read(HideVideoSongsKey, false)
+            val hideYoutubeShorts = context.dataStore.read(HideYoutubeShortsKey, false)
             if (!isCurrentRequest(expectedGeneration, expectedQuery, selectedFilter) ||
                 viewStateMap[filterValue]?.continuation != continuation
             ) {
