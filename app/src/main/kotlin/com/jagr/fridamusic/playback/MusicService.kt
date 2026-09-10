@@ -497,6 +497,9 @@ class MusicService :
     @Volatile
     private var serviceDestroyed = false
 
+    @Volatile
+    private var taskRemovalShutdownRequested = false
+
     private var guardedMediaNotificationProvider: GuardedMediaNotificationProvider? = null
 
 
@@ -594,6 +597,7 @@ class MusicService :
 
     private fun isActiveMediaSession(session: MediaSession): Boolean =
         !serviceDestroyed &&
+            !taskRemovalShutdownRequested &&
             ::mediaSession.isInitialized &&
             mediaSession === session
 
@@ -633,6 +637,7 @@ class MusicService :
     override fun onCreate() {
         super.onCreate()
         serviceDestroyed = false
+        taskRemovalShutdownRequested = false
         isRunning = true
 
 
@@ -3461,11 +3466,46 @@ class MusicService :
     override fun onBind(intent: Intent?) = super.onBind(intent) ?: binder
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        if (dataStore.get(StopMusicOnTaskClearKey, false)) {
-            player.stop()
-            stopSelf()
+        if (!dataStore.get(StopMusicOnTaskClearKey, false)) {
+            super.onTaskRemoved(rootIntent)
+            return
         }
+
+        if (taskRemovalShutdownRequested) return
+
+        if (dataStore.get(PersistentQueueKey, true) && ::player.isInitialized) {
+            saveQueueToDisk()
+        }
+
+        taskRemovalShutdownRequested = true
+        super.onTaskRemoved(rootIntent)
+
+        guardedMediaNotificationProvider?.release()
+        guardedMediaNotificationProvider = null
+        playerInitialized.value = false
+
+        if (::player.isInitialized) {
+            player.stop()
+            player.playWhenReady = false
+        }
+        secondaryPlayer?.runCatching {
+            stop()
+            playWhenReady = false
+        }
+        fadingPlayer?.runCatching {
+            stop()
+            playWhenReady = false
+        }
+
+        wasPlayingBeforeAudioFocusLoss = false
+        cancelAudioFocusTransitions()
+        if (::audioManager.isInitialized) {
+            abandonAudioFocus()
+        }
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        stopSelf()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =

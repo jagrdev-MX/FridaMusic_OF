@@ -49,6 +49,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.Album
 import com.jagr.fridamusic.db.entities.Artist
@@ -112,6 +113,7 @@ fun MainScreen(
     val playerConnection = LocalPlayerConnection.current
     val context = LocalContext.current
     val homeViewModel: HomeViewModel = hiltViewModel()
+    val accountImageUrl by homeViewModel.accountImageUrl.collectAsStateWithLifecycle()
     val fabScope = rememberCoroutineScope()
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     var shuffleJob by remember { mutableStateOf<Job?>(null) }
@@ -139,6 +141,7 @@ fun MainScreen(
             currentRoute != "notifications" &&
             currentRoute != RECAP_ROUTE &&
             currentRoute != "about" &&
+            currentRoute != "equalizer" &&
             currentRoute != "music_recognition"
 
     CompositionLocalProvider(
@@ -205,6 +208,18 @@ fun MainScreen(
                     onHistoryClick = { navController.navigate("history") },
                     onRecapClick = { navController.navigate("recap") },
                     onNotificationsClick = { navController.navigate("notifications") },
+                    onEqualizerClick = { navController.navigate("equalizer") },
+                    onAboutClick = { navController.navigate("about") },
+                    onPlayerClick = {
+                        navController.navigate("now_playing") { launchSingleTop = true }
+                    },
+                    onAlbumClick = { id ->
+                        navController.navigate("album/${Uri.encode(id)}")
+                    },
+                    onArtistClick = { id ->
+                        navController.navigate("artist/${Uri.encode(id)}")
+                    },
+                    onSearchClick = navController::navigateToSearchResult,
                     reselectToken = homeReselectToken,
                     viewModel = homeViewModel,
                 )
@@ -360,6 +375,7 @@ fun MainScreen(
                     onNavigateToLogin = { navController.navigate("login") },
                     onNavigateToStats = { navController.navigate("stats") },
                     onNavigateToAbout = { navController.navigate("about") },
+                    accountImageUrl = accountImageUrl,
                 )
             }
             composable(
@@ -486,6 +502,9 @@ fun MainScreen(
             composable("about") {
                 AboutScreen(onBack = { navController.popBackStack() })
             }
+            composable("equalizer") {
+                EQScreen(onBack = { navController.popBackStack() })
+            }
             composable("login") {
                 LoginScreen(
                     onLoginSuccess = {
@@ -564,6 +583,7 @@ fun MainScreen(
                             },
                         )
                     },
+                    onRemoteItemPlay = playRemoteItem,
                     onBrowseClick = { endpoint, title, maxItems, artistItems ->
                         navController.navigateToBrowse(endpoint, title, maxItems, artistItems)
                     },

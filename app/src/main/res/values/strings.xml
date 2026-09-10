@@ -2033,4 +2033,9 @@
     <string name="internal_crashlytics_unavailable">Crashlytics unavailable or collection disabled</string>
     <string name="recognition_fgs_retry">Keep this screen open and tap Retry to recognize music.</string>
     <string name="update_fgs_retry">Android could not start the update download. Tap to open releases and retry the download.</string>
+    <string name="frida_logo_easter_egg">FridaMusic logo</string>
+    <string name="frida_easter_egg_queue">Frida inspected the queue. Treats approved.</string>
+    <string name="frida_easter_egg_sniff">Woof! This mix passed Frida’s sniff test.</string>
+    <string name="frida_easter_egg_dj">Secret unlocked: Frida is the real DJ.</string>
+    <string name="frida_easter_egg_shuffle">Frida pressed shuffle with her paw again.</string>
 </resources>
