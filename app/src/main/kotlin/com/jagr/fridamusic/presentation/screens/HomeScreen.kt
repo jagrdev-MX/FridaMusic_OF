@@ -23,9 +23,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.NotificationsNone
@@ -78,6 +79,7 @@ import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
+import com.jagr.fridamusic.presentation.components.CastDrawerItem
 import com.jagr.fridamusic.presentation.components.HomeContentType
 import com.jagr.fridamusic.presentation.components.HomeMediaCard
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
@@ -119,9 +121,9 @@ fun HomeScreen(
     onMoodAndGenresClick: () -> Unit = {},
     onCollectionClick: (HomeCollectionKind, Int, String) -> Unit = { _, _, _ -> },
     onSettingsClick: () -> Unit = {},
-    onHistoryClick: () -> Unit = {},
     onRecapClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
+    onStatsClick: () -> Unit = {},
     onEqualizerClick: () -> Unit = {},
     onAboutClick: () -> Unit = {},
     onPlayerClick: () -> Unit = {},
@@ -584,7 +586,6 @@ fun HomeScreen(
                     onSettingsClick = onSettingsClick,
                     onSupportClick = { showSupportDialog = true },
                     accountImageUrl = accountImageUrl,
-                    hasActiveMedia = currentMediaMetadata != null,
                     showActivityIndicator = unreadNotificationCount > 0,
                 )
                 MoodChipsRow(
@@ -682,6 +683,7 @@ fun HomeScreen(
                             accountImageUrl = accountImageUrl,
                             unreadNotificationCount = unreadNotificationCount,
                             unreadRecapCount = unreadRecapCount,
+                            playerConnection = playerConnection,
                             onArtworkClick = {
                                 closeDrawer {
                                     onPlayerClick()
@@ -723,11 +725,6 @@ fun HomeScreen(
                                     }
                                 }
                             },
-                            onHistoryClick = {
-                                closeDrawer {
-                                    onHistoryClick()
-                                }
-                            },
                             onRecapClick = {
                                 closeDrawer {
                                     onRecapClick()
@@ -736,6 +733,11 @@ fun HomeScreen(
                             onNotificationsClick = {
                                 closeDrawer {
                                     onNotificationsClick()
+                                }
+                            },
+                            onStatsClick = {
+                                closeDrawer {
+                                    onStatsClick()
                                 }
                             },
                             onEqualizerClick = {
@@ -809,12 +811,13 @@ private fun HomeNavigationDrawer(
     accountImageUrl: String?,
     unreadNotificationCount: Int,
     unreadRecapCount: Int,
+    playerConnection: com.jagr.fridamusic.playback.PlayerConnection?,
     onArtworkClick: () -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: () -> Unit,
-    onHistoryClick: () -> Unit,
     onRecapClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onStatsClick: () -> Unit,
     onEqualizerClick: () -> Unit,
     onAboutClick: () -> Unit,
     onDonateClick: () -> Unit,
@@ -853,30 +856,16 @@ private fun HomeNavigationDrawer(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     NavigationDrawerItem(
-                        label = { DrawerItemLabel(stringResource(R.string.history)) },
+                        label = { DrawerItemLabel(stringResource(R.string.support_project)) },
                         selected = false,
-                        onClick = onHistoryClick,
+                        onClick = onDonateClick,
                         icon = {
                             Icon(
-                                imageVector = Icons.Rounded.History,
+                                imageVector = Icons.Rounded.VolunteerActivism,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                    NavigationDrawerItem(
-                        label = { DrawerItemLabel(stringResource(R.string.fridamusic_recap)) },
-                        selected = false,
-                        onClick = onRecapClick,
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Rounded.CalendarMonth,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                        badge = { DrawerCountBadge(unreadRecapCount) },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                     NavigationDrawerItem(
@@ -893,7 +882,50 @@ private fun HomeNavigationDrawer(
                         badge = { DrawerCountBadge(unreadNotificationCount) },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    CastDrawerItem(
+                        playerConnection = playerConnection,
+                    ) { onCastClick ->
+                        NavigationDrawerItem(
+                            label = { DrawerItemLabel(stringResource(R.string.chromecast)) },
+                            selected = false,
+                            onClick = onCastClick,
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Cast,
+                                    contentDescription = stringResource(R.string.cast_select_device),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.fridamusic_recap)) },
+                        selected = false,
+                        onClick = onRecapClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.CalendarMonth,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        badge = { DrawerCountBadge(unreadRecapCount) },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.stats)) },
+                        selected = false,
+                        onClick = onStatsClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.BarChart,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
                     NavigationDrawerItem(
                         label = { DrawerItemLabel(stringResource(R.string.equalizer)) },
                         selected = false,
@@ -920,24 +952,10 @@ private fun HomeNavigationDrawer(
                         },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     )
-                    NavigationDrawerItem(
-                        label = { DrawerItemLabel(stringResource(R.string.support_project)) },
-                        selected = false,
-                        onClick = onDonateClick,
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Rounded.VolunteerActivism,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
                 }
                 }
                 item {
                     DrawerBrand(
-                        hasActiveMedia = currentMediaMetadata != null,
                         onLogoClick = {
                             logoTapCount += 1
                             if (logoTapCount >= 5) {
@@ -955,7 +973,7 @@ private fun HomeNavigationDrawer(
                         },
                         modifier = Modifier.padding(
                             start = 24.dp,
-                            top = 116.dp,
+                            top = 60.dp,
                             end = 24.dp,
                             bottom = 32.dp,
                         ),
@@ -983,15 +1001,10 @@ private fun DrawerCountBadge(count: Int) {
 
 @Composable
 private fun DrawerBrand(
-    hasActiveMedia: Boolean,
     onLogoClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val brandColor = if (hasActiveMedia) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
+    val brandColor = MaterialTheme.colorScheme.primary
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1223,14 +1236,9 @@ private fun HomeHeader(
     onSettingsClick: () -> Unit,
     onSupportClick: () -> Unit,
     accountImageUrl: String?,
-    hasActiveMedia: Boolean,
     showActivityIndicator: Boolean,
 ) {
-    val brandColor = if (hasActiveMedia) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onBackground
-    }
+    val brandColor = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
             .fillMaxWidth()

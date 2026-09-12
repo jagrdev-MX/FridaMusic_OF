@@ -10,9 +10,25 @@ class InterstitialAdManager(activity: Activity?) {
         Timber.tag(TAG).d("Interstitial unavailable in FOSS build")
     }
 
+    fun show(onFinished: () -> Unit) {
+        Timber.tag(TAG).d("Interstitial unavailable in FOSS build")
+        onFinished()
+    }
+
+    fun show(
+        onShown: () -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        Timber.tag(TAG).d("Interstitial unavailable in FOSS build")
+        onFinished()
+    }
+
     fun release() = Unit
 
-    private companion object {
-        const val TAG = "InterstitialAd"
+    companion object {
+        private const val TAG = "InterstitialAd"
+
+        fun forSongSync(activity: Activity?): InterstitialAdManager =
+            InterstitialAdManager(activity)
     }
 }

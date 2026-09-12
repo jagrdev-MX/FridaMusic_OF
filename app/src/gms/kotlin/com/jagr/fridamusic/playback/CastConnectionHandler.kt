@@ -14,12 +14,16 @@ import com.google.android.gms.cast.MediaSeekOptions
 import com.google.android.gms.cast.MediaStatus
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.CastState
+import com.google.android.gms.cast.framework.CastStateListener
 import com.google.android.gms.cast.framework.SessionManager
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.images.WebImage
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata as AppMediaMetadata
+import com.jagr.fridamusic.utils.YTPlayerUtils
+import com.jagr.fridamusic.utils.isLocalMediaId
 import com.jagr.fridamusic.utils.resize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,11 +80,30 @@ class CastConnectionHandler(
     
     private val _castVolume = MutableStateFlow(1.0f)
     val castVolume: StateFlow<Float> = _castVolume.asStateFlow()
+
+    private val _hasCastDevices = MutableStateFlow(false)
+    val hasCastDevices: StateFlow<Boolean> = _hasCastDevices.asStateFlow()
+
+    private val _castError = MutableStateFlow<String?>(null)
+    val castError: StateFlow<String?> = _castError.asStateFlow()
     
     private var positionUpdateJob: Job? = null
     private var currentMediaId: String? = null
     private var lastCastItemId: Int = -1
     private var isReloadingQueue: Boolean = false
+    private var retriedMediaId: String? = null
+    private var localPausedForCast = false
+    private var disconnectSnapshot: DisconnectSnapshot? = null
+
+    private data class DisconnectSnapshot(
+        val mediaId: String?,
+        val positionMs: Long,
+        val wasPlaying: Boolean,
+    )
+
+    private val castStateListener = CastStateListener { state ->
+        _hasCastDevices.value = state != CastState.NO_DEVICES_AVAILABLE
+    }
     
     // Flag to prevent reverse sync when Cast triggers local player update
     var isSyncingFromCast: Boolean = false
@@ -98,6 +121,7 @@ class CastConnectionHandler(
                 _castIsBuffering.value = playerState == MediaStatus.PLAYER_STATE_BUFFERING || 
                                          playerState == MediaStatus.PLAYER_STATE_LOADING
                 _castDuration.value = client.streamDuration
+                castSession?.let { _castVolume.value = it.volume.toFloat() }
                 
                 // Check if the current Cast item changed (user skipped on Cast widget)
                 val currentItemId = mediaStatus?.currentItemId ?: -1
@@ -113,6 +137,7 @@ class CastConnectionHandler(
         
         override fun onMediaError(error: com.google.android.gms.cast.MediaError) {
             Timber.e("Cast media error: ${error.reason}")
+            retryCurrentMediaOnce()
         }
         
         override fun onQueueStatusUpdated() {
@@ -243,7 +268,11 @@ class CastConnectionHandler(
                     if (itemsToAdd.isNotEmpty()) {
                         Timber.d("Appending ${itemsToAdd.size} items to Cast queue")
                         withContext(Dispatchers.Main) {
-                            client.queueAppendItem(itemsToAdd.first(), null)
+                            client.queueInsertItems(
+                                itemsToAdd.toTypedArray(),
+                                MediaQueueItem.INVALID_ITEM_ID,
+                                org.json.JSONObject(),
+                            )
                         }
                     }
                 }
@@ -324,8 +353,8 @@ class CastConnectionHandler(
                         remoteMediaClient?.queueLoad(
                             queueItems.toTypedArray(),
                             startIndex,
-                            MediaStatus.REPEAT_MODE_REPEAT_OFF,
-                            0L, // Start from beginning since Cast already has position
+                            castRepeatMode(player.repeatMode),
+                            remoteMediaClient?.approximateStreamPosition ?: _castPosition.value,
                             org.json.JSONObject()
                         )
                     }
@@ -351,6 +380,7 @@ class CastConnectionHandler(
             _isCasting.value = true
             _isConnecting.value = false
             _castDeviceName.value = session.castDevice?.friendlyName
+            _castError.value = null
             castSession = session
             remoteMediaClient = session.remoteMediaClient
             remoteMediaClient?.registerCallback(remoteMediaClientCallback)
@@ -369,16 +399,18 @@ class CastConnectionHandler(
             Timber.e("Cast session start failed: $error")
             _isCasting.value = false
             _isConnecting.value = false
+            _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_connection_failed)
         }
         
         override fun onSessionEnding(session: CastSession) {
             Timber.d("Cast session ending")
-            // Capture Cast position before session ends
-            val castPosition = remoteMediaClient?.approximateStreamPosition ?: _castPosition.value
-            if (castPosition > 0) {
-                // Seek local player to Cast position so playback can continue from there
-                musicService.player.seekTo(castPosition)
-                Timber.d("Saved Cast position: $castPosition")
+            if (localPausedForCast) {
+                disconnectSnapshot = DisconnectSnapshot(
+                    mediaId = currentMediaId,
+                    positionMs = (remoteMediaClient?.approximateStreamPosition ?: _castPosition.value)
+                        .coerceAtLeast(0L),
+                    wasPlaying = _castIsPlaying.value,
+                )
             }
         }
         
@@ -394,8 +426,7 @@ class CastConnectionHandler(
             
             stopPositionUpdates()
             
-            // Pause local playback when disconnecting from Cast
-            musicService.player.pause()
+            restoreLocalPlaybackAfterCast()
         }
         
         override fun onSessionResuming(session: CastSession, sessionId: String) {
@@ -406,23 +437,44 @@ class CastConnectionHandler(
             _isCasting.value = true
             _isConnecting.value = false
             _castDeviceName.value = session.castDevice?.friendlyName
-            
+            castSession = session
             remoteMediaClient = session.remoteMediaClient
             remoteMediaClient?.registerCallback(remoteMediaClientCallback)
-            
+            localPausedForCast = true
+            musicService.player.pause()
+            syncFromCurrentCastItem()
             startPositionUpdates()
         }
         
         override fun onSessionResumeFailed(session: CastSession, error: Int) {
+            if (localPausedForCast) {
+                disconnectSnapshot = DisconnectSnapshot(
+                    mediaId = currentMediaId,
+                    positionMs = _castPosition.value.coerceAtLeast(0L),
+                    wasPlaying = _castIsPlaying.value,
+                )
+            }
+            _isCasting.value = false
             _isConnecting.value = false
+            _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_connection_failed)
+            stopPositionUpdates()
+            remoteMediaClient?.unregisterCallback(remoteMediaClientCallback)
+            remoteMediaClient = null
+            castSession = null
+            restoreLocalPlaybackAfterCast()
         }
         
-        override fun onSessionSuspended(session: CastSession, reason: Int) {}
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            _isConnecting.value = true
+            stopPositionUpdates()
+        }
     }
     
     fun initialize(): Boolean {
         return try {
             castContext = CastContext.getSharedInstance(context)
+            castContext?.addCastStateListener(castStateListener)
+            _hasCastDevices.value = castContext?.castState != CastState.NO_DEVICES_AVAILABLE
             sessionManager = castContext?.sessionManager
             mediaRouter = MediaRouter.getInstance(context)
             routeSelector = MediaRouteSelector.Builder()
@@ -435,8 +487,12 @@ class CastConnectionHandler(
             sessionManager?.currentCastSession?.let { session ->
                 _isCasting.value = true
                 _castDeviceName.value = session.castDevice?.friendlyName
+                castSession = session
                 remoteMediaClient = session.remoteMediaClient
                 remoteMediaClient?.registerCallback(remoteMediaClientCallback)
+                localPausedForCast = true
+                musicService.player.pause()
+                syncFromCurrentCastItem()
                 startPositionUpdates()
             }
             
@@ -482,7 +538,8 @@ class CastConnectionHandler(
      * Build MediaInfo for a single track
      */
     private suspend fun buildMediaInfo(metadata: AppMediaMetadata): MediaInfo? {
-        val streamUrl = musicService.getStreamUrl(metadata.id) ?: return null
+        if (metadata.id.isLocalMediaId()) return null
+        val streamInfo = musicService.getCastStreamInfo(metadata.id) ?: return null
         
         val castMetadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MUSIC_TRACK).apply {
             putString(MediaMetadata.KEY_TITLE, metadata.title)
@@ -495,9 +552,9 @@ class CastConnectionHandler(
             }
         }
         
-        return MediaInfo.Builder(streamUrl)
+        return MediaInfo.Builder(streamInfo.url)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType("audio/mp4")
+            .setContentType(streamInfo.contentType)
             .setMetadata(castMetadata)
             .setCustomData(org.json.JSONObject().put("mediaId", metadata.id))
             .build()
@@ -510,10 +567,30 @@ class CastConnectionHandler(
      */
     private fun loadMediaWithQueue(metadata: AppMediaMetadata) {
         if (!_isCasting.value) return
+
+        if (metadata.id.isLocalMediaId()) {
+            _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_local_media_unsupported)
+            _castIsBuffering.value = false
+            if (localPausedForCast) {
+                disconnectSnapshot = DisconnectSnapshot(
+                    mediaId = metadata.id,
+                    positionMs = musicService.player.currentPosition.coerceAtLeast(0L),
+                    wasPlaying = _castIsPlaying.value,
+                )
+                localPausedForCast = false
+            }
+            sessionManager?.endCurrentSession(true)
+            return
+        }
+
+        if (currentMediaId != metadata.id) {
+            retriedMediaId = null
+        }
         
         isReloadingQueue = true // Prevent sync logic from triggering during load
         scope.launch {
             try {
+                val wasAlreadyCastingThisMedia = localPausedForCast && currentMediaId == metadata.id
                 currentMediaId = metadata.id
                 _castIsBuffering.value = true
                 lastCastItemId = -1 // Reset to prevent false change detection
@@ -552,7 +629,10 @@ class CastConnectionHandler(
                 val currentMediaInfo = buildMediaInfo(metadata)
                 if (currentMediaInfo == null) {
                     Timber.e("Failed to get stream URL for Cast")
+                    _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_media_load_failed)
                     _castIsBuffering.value = false
+                    prepareLocalFallbackIfNeeded(metadata.id, musicService.player.currentPosition)
+                    sessionManager?.endCurrentSession(true)
                     return@launch
                 }
                 queueItems.add(MediaQueueItem.Builder(currentMediaInfo).build())
@@ -573,7 +653,9 @@ class CastConnectionHandler(
                 }
                 
                 // Get current position from local player if same song
-                val startPosition = if (player.currentMediaItem?.mediaId == metadata.id) {
+                val startPosition = if (wasAlreadyCastingThisMedia) {
+                    remoteMediaClient?.approximateStreamPosition ?: _castPosition.value
+                } else if (player.currentMediaItem?.mediaId == metadata.id) {
                     player.currentPosition
                 } else {
                     0L
@@ -585,22 +667,34 @@ class CastConnectionHandler(
                     val client = remoteMediaClient ?: return@withContext
                     
                     // Load the queue
-                    client.queueLoad(
+                    val pendingResult = client.queueLoad(
                         queueItems.toTypedArray(),
                         startIndex,
-                        MediaStatus.REPEAT_MODE_REPEAT_OFF,
+                        castRepeatMode(player.repeatMode),
                         startPosition,
                         org.json.JSONObject()
                     )
-                    
-                    // Pause local playback
-                    musicService.player.pause()
+                    pendingResult.setResultCallback { result ->
+                        if (result.status.isSuccess) {
+                            localPausedForCast = true
+                            _castError.value = null
+                            musicService.player.pause()
+                            Timber.d("Loaded media on Cast: ${metadata.title}")
+                        } else {
+                            _castIsBuffering.value = false
+                            _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_media_load_failed)
+                            Timber.e("Cast queue load failed: ${result.status.statusCode}")
+                            prepareLocalFallbackIfNeeded(metadata.id, startPosition)
+                            sessionManager?.endCurrentSession(true)
+                        }
+                    }
                 }
-                
-                Timber.d("Loaded media on Cast: ${metadata.title}")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to load media on Cast")
+                _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_media_load_failed)
                 _castIsBuffering.value = false
+                prepareLocalFallbackIfNeeded(metadata.id, musicService.player.currentPosition)
+                sessionManager?.endCurrentSession(true)
             } finally {
                 // Allow sync logic after a delay
                 delay(1500)
@@ -769,10 +863,131 @@ class CastConnectionHandler(
         positionUpdateJob?.cancel()
         positionUpdateJob = null
     }
+
+    fun syncQueueModes(rebuildQueue: Boolean) {
+        if (!_isCasting.value) return
+        if (rebuildQueue) {
+            musicService.currentMediaMetadata.value?.let(::reloadQueueForCurrentItem)
+        } else {
+            remoteMediaClient?.queueSetRepeatMode(
+                castRepeatMode(musicService.player.repeatMode),
+                org.json.JSONObject(),
+            )
+        }
+    }
+
+    /**
+     * Mirrors explicit queue mutations without replacing the active Cast item.
+     * When shuffle is active, rebuilding the small Cast window is safer because
+     * the local Timeline, rather than insertion order, defines what plays next.
+     */
+    fun insertQueueItems(items: List<androidx.media3.common.MediaItem>, playNext: Boolean) {
+        if (!_isCasting.value || items.isEmpty()) return
+        if (musicService.player.shuffleModeEnabled) {
+            musicService.currentMediaMetadata.value?.let(::reloadQueueForCurrentItem)
+            return
+        }
+
+        scope.launch {
+            val castItems = items.mapNotNull { item ->
+                item.metadata?.let { metadata ->
+                    buildMediaInfo(metadata)?.let { MediaQueueItem.Builder(it).build() }
+                }
+            }
+            if (castItems.isEmpty()) {
+                if (items.any { it.mediaId.isLocalMediaId() }) {
+                    _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_local_media_unsupported)
+                }
+                return@launch
+            }
+
+            withContext(Dispatchers.Main) {
+                val client = remoteMediaClient ?: return@withContext
+                val status = client.mediaStatus
+                val queueItems = status?.queueItems.orEmpty()
+                val currentIndex = queueItems.indexOfFirst { it.itemId == status?.currentItemId }
+                val insertBeforeItemId = if (playNext && currentIndex in 0 until queueItems.lastIndex) {
+                    queueItems[currentIndex + 1].itemId
+                } else {
+                    MediaQueueItem.INVALID_ITEM_ID
+                }
+
+                client.queueInsertItems(
+                    castItems.toTypedArray(),
+                    insertBeforeItemId,
+                    org.json.JSONObject(),
+                ).setResultCallback { result ->
+                    if (!result.status.isSuccess) {
+                        _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_media_load_failed)
+                        Timber.e("Cast queue insertion failed: ${result.status.statusCode}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun retryCurrentMediaOnce() {
+        val mediaId = currentMediaId ?: return
+        if (retriedMediaId == mediaId || mediaId.isLocalMediaId()) return
+        val metadata = musicService.currentMediaMetadata.value?.takeIf { it.id == mediaId } ?: return
+        retriedMediaId = mediaId
+        _castError.value = context.getString(com.jagr.fridamusic.R.string.cast_retrying_media)
+        YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+        loadMediaWithQueue(metadata)
+    }
+
+    private fun syncFromCurrentCastItem() {
+        val status = remoteMediaClient?.mediaStatus ?: return
+        val item = status.queueItems.firstOrNull { it.itemId == status.currentItemId } ?: return
+        val mediaId = item.media?.customData?.optString("mediaId")?.takeIf { it.isNotBlank() } ?: return
+        currentMediaId = null
+        handleCastItemChanged(status)
+        currentMediaId = mediaId
+        remoteMediaClientCallback.onStatusUpdated()
+    }
+
+    private fun restoreLocalPlaybackAfterCast() {
+        val snapshot = disconnectSnapshot
+        disconnectSnapshot = null
+        if (snapshot == null) {
+            localPausedForCast = false
+            return
+        }
+
+        val player = musicService.player
+        val targetIndex = snapshot.mediaId?.let { mediaId ->
+            (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == mediaId }
+        }
+        if (targetIndex != null) {
+            player.seekTo(targetIndex, snapshot.positionMs)
+        } else {
+            player.seekTo(snapshot.positionMs)
+        }
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+        player.playWhenReady = snapshot.wasPlaying
+        localPausedForCast = false
+    }
+
+    private fun prepareLocalFallbackIfNeeded(mediaId: String, positionMs: Long) {
+        if (!localPausedForCast) return
+        disconnectSnapshot = DisconnectSnapshot(
+            mediaId = mediaId,
+            positionMs = positionMs.coerceAtLeast(0L),
+            wasPlaying = _castIsPlaying.value,
+        )
+        localPausedForCast = false
+    }
+
+    private fun castRepeatMode(repeatMode: Int): Int = when (repeatMode) {
+        Player.REPEAT_MODE_ONE -> MediaStatus.REPEAT_MODE_REPEAT_SINGLE
+        Player.REPEAT_MODE_ALL -> MediaStatus.REPEAT_MODE_REPEAT_ALL
+        else -> MediaStatus.REPEAT_MODE_REPEAT_OFF
+    }
     
     fun release() {
         stopPositionUpdates()
         remoteMediaClient?.unregisterCallback(remoteMediaClientCallback)
         sessionManager?.removeSessionManagerListener(sessionManagerListener, CastSession::class.java)
+        castContext?.removeCastStateListener(castStateListener)
     }
 }

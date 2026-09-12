@@ -205,9 +205,9 @@ fun MainScreen(
                         )
                     },
                     onSettingsClick = { navController.navigate("settings") },
-                    onHistoryClick = { navController.navigate("history") },
                     onRecapClick = { navController.navigate("recap") },
                     onNotificationsClick = { navController.navigate("notifications") },
+                    onStatsClick = { navController.navigate("stats") },
                     onEqualizerClick = { navController.navigate("equalizer") },
                     onAboutClick = { navController.navigate("about") },
                     onPlayerClick = {

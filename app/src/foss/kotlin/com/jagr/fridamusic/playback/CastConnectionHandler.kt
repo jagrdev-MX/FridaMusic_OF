@@ -37,6 +37,12 @@ class CastConnectionHandler(
     
     private val _castVolume = MutableStateFlow(1.0f)
     val castVolume: StateFlow<Float> = _castVolume
+
+    private val _hasCastDevices = MutableStateFlow(false)
+    val hasCastDevices: StateFlow<Boolean> = _hasCastDevices
+
+    private val _castError = MutableStateFlow<String?>(null)
+    val castError: StateFlow<String?> = _castError
     
     var isSyncingFromCast: Boolean = false
         private set
@@ -49,6 +55,8 @@ class CastConnectionHandler(
     fun pause() {}
     fun seekTo(position: Long) {}
     fun setVolume(volume: Float) {}
+    fun syncQueueModes(rebuildQueue: Boolean) {}
+    fun insertQueueItems(items: List<androidx.media3.common.MediaItem>, playNext: Boolean) {}
     fun skipToNext() {}
     fun skipToPrevious() {}
     fun navigateToMediaIfInQueue(mediaId: String): Boolean = false

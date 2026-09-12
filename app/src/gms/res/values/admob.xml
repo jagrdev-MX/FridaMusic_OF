@@ -9,4 +9,8 @@
         name="admob_interstitial_ad_unit_id"
         translatable="false">ca-app-pub-4175362947670909/9454380817</string>
 
+    <string
+        name="admob_song_sync_interstitial_ad_unit_id"
+        translatable="false">ca-app-pub-4175362947670909/8324263401</string>
+
 </resources>

@@ -11,22 +11,33 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.utils.MemoryDiagnostics
 import timber.log.Timber
+import java.util.concurrent.atomic.AtomicBoolean
 
-class InterstitialAdManager(activity: Activity?) {
+class InterstitialAdManager(
+    activity: Activity?,
+    private val adUnitIdRes: Int = R.string.admob_interstitial_ad_unit_id,
+) {
     private var activity: Activity? = activity
     private var interstitialAd: InterstitialAd? = null
     private var isInitializing = false
     private var isInitialized = false
     private var isLoading = false
     private var showWhenLoaded = false
+    private var pendingOnShown: (() -> Unit)? = null
+    private var pendingCompletion: (() -> Unit)? = null
     private var isReleased = false
 
     fun load() {
-        if (isReleased || isLoading || interstitialAd != null) return
+        if (isReleased) {
+            finishPendingShow()
+            return
+        }
+        if (isLoading || interstitialAd != null) return
 
         val currentActivity = activity
-        if (currentActivity == null) {
+        if (currentActivity == null || currentActivity.isFinishing || currentActivity.isDestroyed) {
             Timber.tag(TAG).w("Interstitial load skipped: Activity unavailable")
+            finishPendingShow()
             return
         }
 
@@ -39,12 +50,35 @@ class InterstitialAdManager(activity: Activity?) {
     }
 
     fun show() {
-        if (isReleased) return
+        show(onFinished = {})
+    }
+
+    fun show(onFinished: () -> Unit) {
+        show(onShown = {}, onFinished = onFinished)
+    }
+
+    fun show(
+        onShown: () -> Unit,
+        onFinished: () -> Unit,
+    ) {
+        val shown = once(onShown)
+        val completion = once(onFinished)
+        if (isReleased) {
+            completion()
+            return
+        }
+        if (pendingCompletion != null) {
+            Timber.tag(TAG).w("Interstitial show ignored: another show is pending")
+            completion()
+            return
+        }
+        pendingOnShown = shown
+        pendingCompletion = completion
 
         val currentActivity = activity
         if (currentActivity == null || currentActivity.isFinishing || currentActivity.isDestroyed) {
-            showWhenLoaded = false
             Timber.tag(TAG).w("Interstitial show skipped: Activity unavailable")
+            finishPendingShow()
             return
         }
 
@@ -56,11 +90,16 @@ class InterstitialAdManager(activity: Activity?) {
             return
         }
 
+        showAd(currentActivity, ad)
+    }
+
+    private fun showAd(currentActivity: Activity, ad: InterstitialAd) {
         showWhenLoaded = false
         interstitialAd = null
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() {
                 Timber.tag(TAG).d("Interstitial shown")
+                notifyShown()
             }
 
             override fun onAdDismissedFullScreenContent() {
@@ -68,6 +107,7 @@ class InterstitialAdManager(activity: Activity?) {
                 showWhenLoaded = false
                 Timber.tag(TAG).d("Interstitial dismissed")
                 MemoryDiagnostics.log("After interstitial dismissed")
+                finishPendingShow()
             }
 
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
@@ -80,6 +120,7 @@ class InterstitialAdManager(activity: Activity?) {
                     adError.message,
                 )
                 MemoryDiagnostics.log("After interstitial show failure")
+                finishPendingShow()
             }
         }
 
@@ -90,6 +131,7 @@ class InterstitialAdManager(activity: Activity?) {
             showWhenLoaded = false
             Timber.tag(TAG).w(error, "Interstitial show failed")
             MemoryDiagnostics.log("After interstitial show exception")
+            finishPendingShow()
         }
     }
 
@@ -100,6 +142,7 @@ class InterstitialAdManager(activity: Activity?) {
         interstitialAd?.fullScreenContentCallback = null
         interstitialAd = null
         activity = null
+        finishPendingShow()
     }
 
     private fun initializeAndLoad(currentActivity: Activity) {
@@ -120,8 +163,8 @@ class InterstitialAdManager(activity: Activity?) {
             }
         } catch (error: Exception) {
             isInitializing = false
-            showWhenLoaded = false
             Timber.tag(TAG).w(error, "Mobile Ads initialization failed")
+            finishPendingShow()
         }
     }
 
@@ -131,7 +174,7 @@ class InterstitialAdManager(activity: Activity?) {
         try {
             InterstitialAd.load(
                 currentActivity.applicationContext,
-                currentActivity.getString(R.string.admob_interstitial_ad_unit_id),
+                currentActivity.getString(adUnitIdRes),
                 AdRequest.Builder().build(),
                 object : InterstitialAdLoadCallback() {
                     override fun onAdLoaded(ad: InterstitialAd) {
@@ -141,13 +184,19 @@ class InterstitialAdManager(activity: Activity?) {
                         interstitialAd = ad
                         Timber.tag(TAG).d("Interstitial loaded")
                         MemoryDiagnostics.log("After interstitial load")
-                        if (showWhenLoaded) show()
+                        if (showWhenLoaded) {
+                            val showActivity = activity
+                            if (showActivity == null || showActivity.isFinishing || showActivity.isDestroyed) {
+                                finishPendingShow()
+                            } else {
+                                showAd(showActivity, ad)
+                            }
+                        }
                     }
 
                     override fun onAdFailedToLoad(adError: LoadAdError) {
                         isLoading = false
                         interstitialAd = null
-                        showWhenLoaded = false
                         Timber.tag(TAG).w(
                             "Interstitial failed to load: code=%d domain=%s message=%s",
                             adError.code,
@@ -155,18 +204,46 @@ class InterstitialAdManager(activity: Activity?) {
                             adError.message,
                         )
                         MemoryDiagnostics.log("After interstitial load failure")
+                        finishPendingShow()
                     }
                 },
             )
         } catch (error: Exception) {
             isLoading = false
-            showWhenLoaded = false
             Timber.tag(TAG).w(error, "Interstitial load failed")
             MemoryDiagnostics.log("After interstitial load exception")
+            finishPendingShow()
         }
     }
 
-    private companion object {
-        const val TAG = "InterstitialAd"
+    private fun finishPendingShow() {
+        showWhenLoaded = false
+        pendingOnShown = null
+        val completion = pendingCompletion
+        pendingCompletion = null
+        completion?.invoke()
+    }
+
+    private fun notifyShown() {
+        val callback = pendingOnShown
+        pendingOnShown = null
+        callback?.invoke()
+    }
+
+    private fun once(callback: () -> Unit): () -> Unit {
+        val completed = AtomicBoolean(false)
+        return {
+            if (completed.compareAndSet(false, true)) callback()
+        }
+    }
+
+    companion object {
+        private const val TAG = "InterstitialAd"
+
+        fun forSongSync(activity: Activity?): InterstitialAdManager =
+            InterstitialAdManager(
+                activity = activity,
+                adUnitIdRes = R.string.admob_song_sync_interstitial_ad_unit_id,
+            )
     }
 }

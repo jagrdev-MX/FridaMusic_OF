@@ -156,6 +156,8 @@ fun NowPlayingScreen(
     val repeatMode by playerConnection.repeatMode.collectAsState()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
+    val isCasting by playerConnection.isCasting.collectAsState()
+    val castDeviceName by playerConnection.castDeviceName.collectAsState()
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentQueueIndex by playerConnection.currentWindowIndex.collectAsState()
     val sleepTimer = playerConnection.service.sleepTimer
@@ -232,8 +234,14 @@ fun NowPlayingScreen(
         while (isActive) {
             liveAudioFormat = playerConnection.player.audioFormat
             if (!isDragging) {
-                positionMs = playerConnection.player.currentPosition
-                durationMs = playerConnection.player.duration.coerceAtLeast(0L)
+                val castHandler = playerConnection.service.castConnectionHandler
+                if (castHandler?.isCasting?.value == true) {
+                    positionMs = castHandler.castPosition.value
+                    durationMs = castHandler.castDuration.value.coerceAtLeast(0L)
+                } else {
+                    positionMs = playerConnection.player.currentPosition
+                    durationMs = playerConnection.player.duration.coerceAtLeast(0L)
+                }
             }
             delay(500.milliseconds)
         }
@@ -356,16 +364,23 @@ fun NowPlayingScreen(
     }
     val speakerLabel = stringResource(R.string.audio_output_speaker)
     val bluetoothLabel = stringResource(R.string.audio_output_bluetooth)
+    val castOutputLabel = if (isCasting) {
+        stringResource(R.string.casting_to, castDeviceName ?: stringResource(R.string.google_cast))
+    } else {
+        null
+    }
     val audioOutputLabel = remember(
         audioOutputDevices,
         selectedAudioOutputDeviceId,
         speakerLabel,
         bluetoothLabel,
+        castOutputLabel,
     ) {
         val selectedDevice = audioOutputDevices.firstOrNull {
             it.id == selectedAudioOutputDeviceId
         }
         when {
+            castOutputLabel != null -> castOutputLabel
             selectedDevice?.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> speakerLabel
             selectedDevice?.isBluetoothMediaOutput() == true ->
                 selectedDevice.productName.toString().trim().ifBlank { bluetoothLabel }

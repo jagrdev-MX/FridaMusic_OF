@@ -303,6 +303,11 @@ private fun List<AudioDeviceInfo>.canonicalAudioOutputDevices(): List<AudioDevic
             ) ?: equivalentRoutes.first()
         }
 
+data class CastStreamInfo(
+    val url: String,
+    val contentType: String,
+)
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @androidx.annotation.OptIn(UnstableApi::class)
 @AndroidEntryPoint
@@ -1950,6 +1955,7 @@ class MusicService :
                 player.setShuffleOrder(DefaultShuffleOrder(finalOrder, System.currentTimeMillis()))
             }
         }
+        castConnectionHandler?.insertQueueItems(items, playNext = true)
     }
 
     fun addToQueue(items: List<MediaItem>) {
@@ -1977,6 +1983,7 @@ class MusicService :
             applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
         }
         player.prepare()
+        castConnectionHandler?.insertQueueItems(items, playNext = false)
     }
 
     fun toggleLibrary() {
@@ -2387,6 +2394,7 @@ class MusicService :
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
+        castConnectionHandler?.syncQueueModes(rebuildQueue = true)
     }
 
     override fun onRepeatModeChanged(repeatMode: Int) {
@@ -2401,6 +2409,7 @@ class MusicService :
         if (dataStore.get(PersistentQueueKey, true)) {
             saveQueueToDisk()
         }
+        castConnectionHandler?.syncQueueModes(rebuildQueue = false)
     }
 
 
@@ -3595,7 +3604,9 @@ class MusicService :
     }
 
 
-    suspend fun getStreamUrl(mediaId: String): String? {
+    suspend fun getStreamUrl(mediaId: String): String? = getCastStreamInfo(mediaId)?.url
+
+    suspend fun getCastStreamInfo(mediaId: String): CastStreamInfo? {
         return withContext(Dispatchers.IO) {
             try {
                 val playbackData = YTPlayerUtils.playerResponseForPlayback(
@@ -3603,7 +3614,12 @@ class MusicService :
                     audioQuality = audioQuality.effectiveForPlayback(),
                     connectivityManager = connectivityManager,
                 ).getOrNull()
-                playbackData?.streamUrl
+                playbackData?.let {
+                    CastStreamInfo(
+                        url = it.streamUrl,
+                        contentType = it.format.mimeType.substringBefore(';').ifBlank { "audio/mp4" },
+                    )
+                }
             } catch (e: Exception) {
                 timber.log.Timber.e(e, "Failed to get stream URL for Cast")
                 null

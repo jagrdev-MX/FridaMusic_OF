@@ -2,6 +2,8 @@ package com.jagr.fridamusic.presentation.components
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -61,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +92,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.db.entities.Playlist
 import com.jagr.fridamusic.db.entities.Song
@@ -110,6 +114,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class SongMenuActions(
     val onToggleFavorite: (() -> Unit)? = null,
@@ -534,10 +539,17 @@ fun SongActionsSheet(
     actions: SongMenuActions,
     playbackPositionMs: Long = 0L,
 ) {
+    val androidContext = LocalContext.current
+    val activity = remember(androidContext) { androidContext.findActivity() }
+    val interstitialAdManager = remember(activity) {
+        InterstitialAdManager.forSongSync(activity)
+    }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
     var subview by remember(context.mediaId) { mutableStateOf(SongActionsSubview.NONE) }
     var duplicatePlaylist by remember(context.mediaId) { mutableStateOf<Playlist?>(null) }
+    var showSyncConfirmation by remember(context.mediaId) { mutableStateOf(false) }
+    var syncGateActive by remember(context.mediaId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val capabilities = resolveSongActionCapabilities(
@@ -553,6 +565,10 @@ fun SongActionsSheet(
             deleteAvailable = actions.onDelete != null,
         ),
     )
+
+    DisposableEffect(interstitialAdManager) {
+        onDispose { interstitialAdManager.release() }
+    }
     val navigableArtists = context.artists.filter(SongNavigationTarget::isNavigable)
     val navigableAlbumArtists = context.albumArtists.filter(SongNavigationTarget::isNavigable)
 
@@ -658,7 +674,12 @@ fun SongActionsSheet(
                             ),
                             enabled = !actions.isDownloading,
                         ) {
-                            performAndDismiss(actions.onToggleDownload)
+                            if (actions.isDownloaded) {
+                                performAndDismiss(actions.onToggleDownload)
+                            } else if (!syncGateActive) {
+                                syncGateActive = true
+                                showSyncConfirmation = true
+                            }
                         }
                     }
                 }
@@ -911,6 +932,65 @@ fun SongActionsSheet(
             },
         )
     }
+
+    if (showSyncConfirmation) {
+        AlertDialog(
+            onDismissRequest = {
+                showSyncConfirmation = false
+                syncGateActive = false
+            },
+            title = { Text(stringResource(R.string.sync_song_ad_title)) },
+            text = { Text(stringResource(R.string.sync_song_ad_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (!showSyncConfirmation) return@TextButton
+                        showSyncConfirmation = false
+                        val startSync = actions.onToggleDownload
+                        if (startSync == null) {
+                            syncGateActive = false
+                        } else {
+                            val syncStarted = AtomicBoolean(false)
+                            val startSyncOnce = {
+                                if (syncStarted.compareAndSet(false, true)) {
+                                    startSync()
+                                }
+                            }
+                            interstitialAdManager.show(
+                                onShown = startSyncOnce,
+                                onFinished = {
+                                    try {
+                                        startSyncOnce()
+                                    } finally {
+                                        syncGateActive = false
+                                        onDismiss()
+                                    }
+                                },
+                            )
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.continue_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSyncConfirmation = false
+                        syncGateActive = false
+                    },
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
