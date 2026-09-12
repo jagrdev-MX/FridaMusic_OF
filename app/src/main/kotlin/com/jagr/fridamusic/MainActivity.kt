@@ -12,7 +12,6 @@ import android.provider.OpenableColumns
 import android.view.Window // <-- Required import for qualifier warning
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -35,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
+import androidx.fragment.app.FragmentActivity
 import com.jagr.fridamusic.constants.DisableScreenshotKey
 import com.jagr.fridamusic.constants.DynamicThemeKey
 import com.jagr.fridamusic.constants.KeepScreenOn
@@ -73,7 +73,7 @@ import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds // <-- Importation for delay()
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private data class ExternalAudioRequest(
         val uri: Uri,

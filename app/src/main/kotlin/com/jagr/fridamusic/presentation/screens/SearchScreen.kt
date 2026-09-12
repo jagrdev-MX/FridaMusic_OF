@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -37,7 +38,6 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.db.entities.SearchHistory
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.MarqueeText
-import com.jagr.fridamusic.presentation.components.MediaArtworkActionButton
 import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.SearchInput
@@ -329,13 +329,17 @@ fun YTItemRow(
     }
     val isRound = item is ArtistItem
     val isCurrent = item is SongItem && item.id == currentMediaId
+    val primaryAction = if (isCurrent) onTogglePlayPause else onClick
     var menuItem by remember(item.id) { mutableStateOf<YTItem?>(null) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(
+                if (isCurrent) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+            )
             .universalMediaClickable(
-                onClick = onClick,
+                onClick = primaryAction,
                 onLongClick = { menuItem = item },
             )
             .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -358,19 +362,12 @@ fun YTItemRow(
                 if (isCurrent) {
                     MediaPlaybackIndicator(
                         isPlaying = isPlaying,
-                        onClick = onTogglePlayPause,
+                        onClick = primaryAction,
                         modifier = Modifier.align(Alignment.Center),
                         buttonSize = 38.dp,
                         indicatorSize = 22.dp,
-                    )
-                } else {
-                    MediaArtworkActionButton(
-                        icon = Icons.Rounded.PlayArrow,
-                        contentDescription = stringResource(R.string.play),
-                        onClick = onClick,
-                        modifier = Modifier.align(Alignment.Center),
-                        buttonSize = 38.dp,
-                        iconSize = 22.dp,
+                        indicatorColor = Color.White,
+                        pausedIcon = Icons.Rounded.PlayArrow,
                     )
                 }
             }
@@ -380,7 +377,7 @@ fun YTItemRow(
                 text = item.title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(
@@ -400,6 +397,6 @@ fun YTItemRow(
     UniversalYTItemActionsHost(
         item = menuItem,
         onDismiss = { menuItem = null },
-        onOpen = onClick,
+        onOpen = primaryAction,
     )
 }

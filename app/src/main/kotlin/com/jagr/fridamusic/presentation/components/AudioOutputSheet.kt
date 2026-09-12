@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -53,6 +54,11 @@ fun AudioOutputSheet(
     val devices by service.audioOutputDevices.collectAsState()
     val selectedDeviceId by service.selectedAudioOutputDeviceId.collectAsState()
     val playerVolume by service.playerVolume.collectAsState()
+    val castHandler = service.castConnectionHandler
+    val unavailableCasting = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
+    val unavailableCastVolume = remember { kotlinx.coroutines.flow.MutableStateFlow(1f) }
+    val isCasting by (castHandler?.isCasting ?: unavailableCasting).collectAsState()
+    val castVolume by (castHandler?.castVolume ?: unavailableCastVolume).collectAsState()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -109,8 +115,14 @@ fun AudioOutputSheet(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
             Slider(
-                value = playerVolume.coerceIn(0f, 1f),
-                onValueChange = { service.playerVolume.value = it.coerceIn(0f, 1f) },
+                value = (if (isCasting) castVolume else playerVolume).coerceIn(0f, 1f),
+                onValueChange = { volume ->
+                    if (isCasting) {
+                        castHandler?.setVolume(volume)
+                    } else {
+                        service.playerVolume.value = volume.coerceIn(0f, 1f)
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             )
         }

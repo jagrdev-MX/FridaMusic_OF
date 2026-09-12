@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ThemeOverlay.FridaMusic.CastRouteButton" parent="ThemeOverlay.AppCompat.Dark">
+        <item name="mediaRouteButtonStyle">@style/Widget.FridaMusic.CastRouteButton</item>
+    </style>
+
+    <style name="Widget.FridaMusic.CastRouteButton" parent="Widget.MediaRouter.MediaRouteButton">
+        <item name="mediaRouteButtonTint">@android:color/white</item>
+    </style>
+</resources>

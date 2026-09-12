@@ -107,7 +107,9 @@
     <string name="add_all_to_library">Añadir todo a la biblioteca</string>
     <string name="remove_from_library">Quitar de la biblioteca</string>
     <string name="remove_all_from_library">Quitar todo de la biblioteca</string>
-    <string name="action_download">Sincroniza</string>
+    <string name="action_download">Sincronizar canción</string>
+    <string name="sync_song_ad_title">Sincronizar canción</string>
+    <string name="sync_song_ad_message">Antes de sincronizar esta canción puede mostrarse un anuncio breve. Esto ayuda a mantener FridaMusic disponible.</string>
     <string name="downloading">Sincronizando</string>
     <string name="downloading_ellipsis">Sincronizando…</string>
     <string name="loading">Cargando</string>
@@ -1042,6 +1044,7 @@
     <string name="audio_offload_description">Usa el camino de audio offload. Puede reducir el consumo de energía.</string>
     <string name="audio_offload_disabled_by_crossfade">Desactivado por Crossfade activo</string>
     <string name="google_cast">Google Cast</string>
+    <string name="chromecast">Chromecast</string>
     <string name="google_cast_description">Habilitar transmisión a Chromecast y otros dispositivos</string>
     <string name="lyrics_romanize_macedonian">Romanizar letras en macedonio</string>
     <string name="lyrics_romanize_as_main">Mostrar letras romanizadas como principal</string>
@@ -1214,7 +1217,13 @@
     <string name="eq_no_custom_presets">No hay ajustes personalizados</string>
     <string name="found_in_settings_content">Encontrado en Ajustes &gt; Contenido</string>
     <string name="plays">reproducciones</string>
-    <string name="casting_to">Transmitiendo a %s</string>
+    <string name="casting_to">Reproduciendo en %s</string>
+    <string name="cast_select_device">Selecciona un dispositivo Cast</string>
+    <string name="cast_connecting">Conectando…</string>
+    <string name="cast_connection_failed">No se pudo conectar al dispositivo Cast</string>
+    <string name="cast_media_load_failed">No se pudo reproducir esta canción en el dispositivo Cast</string>
+    <string name="cast_retrying_media">Actualizando el stream e intentando una vez más…</string>
+    <string name="cast_local_media_unsupported">Los archivos locales aún no se pueden transmitir; la reproducción continúa en este dispositivo</string>
     <string name="progress_percent">Progreso %s%%</string>
     <string name="listening_to_echomusic">Escuchando en FridaMusic</string>
     <string name="listen_on_youtube_music">Abrir fuente original</string>

@@ -27,7 +27,6 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.SettableFuture
 import com.music.innertube.YouTube
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
@@ -37,6 +36,7 @@ import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.HideExplicitKey
 import com.jagr.fridamusic.constants.HideVideoSongsKey
 import com.jagr.fridamusic.constants.MediaSessionConstants
+import com.jagr.fridamusic.constants.PersistentQueueKey
 import com.jagr.fridamusic.constants.SongSortType
 import com.jagr.fridamusic.db.MusicDatabase
 import com.jagr.fridamusic.db.entities.PlaylistEntity
@@ -44,6 +44,7 @@ import com.jagr.fridamusic.db.entities.Song
 import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.extensions.toggleRepeatMode
 import com.jagr.fridamusic.models.toMediaMetadata
+import com.jagr.fridamusic.models.PersistQueue
 import com.jagr.fridamusic.utils.dataStore
 import com.jagr.fridamusic.utils.get
 import com.jagr.fridamusic.utils.reportException
@@ -56,6 +57,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ObjectInputStream
 import javax.inject.Inject
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -67,7 +70,6 @@ constructor(
     val downloadUtil: DownloadUtil,
 ) : MediaLibrarySession.Callback {
     private val scope = CoroutineScope(Dispatchers.Main) + Job()
-    lateinit var service: MusicService
     var toggleLike: () -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
     var toggleLibrary: () -> Unit = {}
@@ -128,7 +130,32 @@ constructor(
         mediaSession: MediaSession,
         controller: MediaSession.ControllerInfo
     ): ListenableFuture<MediaItemsWithStartPosition> {
-        return SettableFuture.create<MediaItemsWithStartPosition>()
+        return scope.future(Dispatchers.IO) {
+            val emptyResult = MediaItemsWithStartPosition(emptyList(), C.INDEX_UNSET, C.TIME_UNSET)
+            if (!context.dataStore.get(PersistentQueueKey, true)) {
+                return@future emptyResult
+            }
+
+            runCatching {
+                context.filesDir.resolve(MusicService.PERSISTENT_QUEUE_FILE)
+                    .takeIf { it.isFile }
+                    ?.inputStream()
+                    ?.use { input ->
+                        ObjectInputStream(input).use { it.readObject() as PersistQueue }
+                    }
+            }.getOrNull()?.let { queue ->
+                val mediaItems = queue.items.map { it.toMediaItem() }
+                if (mediaItems.isEmpty()) {
+                    emptyResult
+                } else {
+                    MediaItemsWithStartPosition(
+                        mediaItems,
+                        queue.mediaItemIndex.coerceIn(mediaItems.indices),
+                        queue.position.coerceAtLeast(0L),
+                    )
+                }
+            } ?: emptyResult
+        }
     }
 
     override fun onGetLibraryRoot(
@@ -189,10 +216,12 @@ constructor(
                         val likedSongCount = database.likedSongsCount().first()
                         val downloadedSongCount = downloadUtil.downloads.value.size
                         val youtubePlaylists = try {
-                            YouTube.home().getOrNull()?.sections
-                                ?.flatMap { it.items }
-                                ?.filterIsInstance<PlaylistItem>()
-                                ?.take(10)
+                            withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                                YouTube.home().getOrNull()?.sections
+                                    ?.flatMap { it.items }
+                                    ?.filterIsInstance<PlaylistItem>()
+                                    ?.take(10)
+                            }
                                 ?: emptyList()
                         } catch (e: Exception) {
                             reportException(e)
@@ -262,10 +291,12 @@ constructor(
                             parentId.startsWith("${MusicService.YOUTUBE_PLAYLIST}/") -> {
                                 val playlistId = parentId.removePrefix("${MusicService.YOUTUBE_PLAYLIST}/")
                                 try {
-                                    val songs = YouTube.playlist(playlistId).getOrNull()?.songs
-                                        ?.take(100)
-                                        ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                                        ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
+                                    val songs = withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                                        YouTube.playlist(playlistId).getOrNull()?.songs
+                                            ?.take(100)
+                                            ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                                            ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
+                                    }
                                         ?: emptyList()
 
                                     listOf(shuffleMediaItem(parentId)) + songs.map { it.toMediaItem(parentId) }
@@ -352,23 +383,25 @@ constructor(
                 }
 
                 try {
-                    val onlineResults = YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                        .getOrNull()
-                        ?.items
-                        ?.filterIsInstance<SongItem>()
-                        ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                        ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
-                        ?.filter { onlineSong ->
-                            !allLocalSongs.any { localSong ->
-                                localSong.id == onlineSong.id ||
-                                (localSong.song.title.equals(onlineSong.title, ignoreCase = true) &&
-                                 localSong.artists.any { artist ->
-                                     onlineSong.artists.any {
-                                         it.name.equals(artist.name, ignoreCase = true)
-                                     }
-                                 })
+                    val onlineResults = withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                            .getOrNull()
+                            ?.items
+                            ?.filterIsInstance<SongItem>()
+                            ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                            ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
+                            ?.filter { onlineSong ->
+                                !allLocalSongs.any { localSong ->
+                                    localSong.id == onlineSong.id ||
+                                    (localSong.song.title.equals(onlineSong.title, ignoreCase = true) &&
+                                     localSong.artists.any { artist ->
+                                         onlineSong.artists.any {
+                                             it.name.equals(artist.name, ignoreCase = true)
+                                         }
+                                     })
+                                }
                             }
-                        } ?: emptyList()
+                    } ?: emptyList()
 
                     onlineResults.forEach { songItem ->
                         try {
@@ -489,8 +522,10 @@ constructor(
                     val playlistId = path.getOrNull(1) ?: return@future defaultResult
 
                     val songs = try {
-                        YouTube.playlist(playlistId).getOrNull()?.songs?.map {
-                            it.toMediaItem()
+                        withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                            YouTube.playlist(playlistId).getOrNull()?.songs?.map {
+                                it.toMediaItem()
+                            }
                         } ?: emptyList()
                     } catch (e: Exception) {
                         reportException(e)
@@ -547,23 +582,25 @@ constructor(
                     searchResults.addAll(allLocalSongs)
                     
                     try {
-                        val onlineResults = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG)
-                            .getOrNull()
-                            ?.items
-                            ?.filterIsInstance<SongItem>()
-                            ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                            ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
-                            ?.filter { onlineSong ->
-                                !allLocalSongs.any { localSong ->
-                                    localSong.id == onlineSong.id ||
-                                    (localSong.song.title.equals(onlineSong.title, ignoreCase = true) &&
-                                     localSong.artists.any { artist ->
-                                         onlineSong.artists.any {
-                                             it.name.equals(artist.name, ignoreCase = true)
-                                         }
-                                     })
+                        val onlineResults = withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                            YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG)
+                                .getOrNull()
+                                ?.items
+                                ?.filterIsInstance<SongItem>()
+                                ?.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                                ?.filterVideoSongs(context.dataStore.get(HideVideoSongsKey, false))
+                                ?.filter { onlineSong ->
+                                    !allLocalSongs.any { localSong ->
+                                        localSong.id == onlineSong.id ||
+                                        (localSong.song.title.equals(onlineSong.title, ignoreCase = true) &&
+                                         localSong.artists.any { artist ->
+                                             onlineSong.artists.any {
+                                                 it.name.equals(artist.name, ignoreCase = true)
+                                             }
+                                         })
+                                    }
                                 }
-                            } ?: emptyList()
+                        } ?: emptyList()
 
                         onlineResults.forEach { songItem ->
                             try {
@@ -755,7 +792,9 @@ constructor(
 
     private suspend fun youtubePlaylistMediaItem(playlistId: String): MediaItem =
         try {
-            YouTube.playlist(playlistId).getOrNull()?.playlist?.toBrowsableMediaItem()
+            withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                YouTube.playlist(playlistId).getOrNull()?.playlist?.toBrowsableMediaItem()
+            }
         } catch (e: Exception) {
             reportException(e)
             null
@@ -773,9 +812,11 @@ constructor(
         songId: String,
     ): MediaItem? =
         try {
-            YouTube.playlist(playlistId).getOrNull()?.songs
-                ?.firstOrNull { it.id == songId }
-                ?.toMediaItem("${MusicService.YOUTUBE_PLAYLIST}/$playlistId")
+            withTimeoutOrNull(REMOTE_BROWSER_TIMEOUT_MS) {
+                YouTube.playlist(playlistId).getOrNull()?.songs
+                    ?.firstOrNull { it.id == songId }
+                    ?.toMediaItem("${MusicService.YOUTUBE_PLAYLIST}/$playlistId")
+            }
         } catch (e: Exception) {
             reportException(e)
             null
@@ -951,5 +992,9 @@ constructor(
         if (fromIndex >= size) return emptyList()
 
         return subList(fromIndex.toInt(), minOf(fromIndex.toInt() + pageSize, size))
+    }
+
+    private companion object {
+        const val REMOTE_BROWSER_TIMEOUT_MS = 8_000L
     }
 }

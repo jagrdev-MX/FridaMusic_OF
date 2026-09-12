@@ -383,7 +383,7 @@ fun MediaArtworkActionButton(
 ) {
     Surface(
         color = Color.Black.copy(alpha = 0.38f),
-        contentColor = MaterialTheme.colorScheme.primary,
+        contentColor = Color.White,
         shape = CircleShape,
         modifier = modifier
             .size(buttonSize)
@@ -406,6 +406,8 @@ fun MediaPlaybackIndicator(
     modifier: Modifier = Modifier,
     buttonSize: Dp = 44.dp,
     indicatorSize: Dp = 25.dp,
+    indicatorColor: Color = Color.White,
+    pausedIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     Surface(
         color = Color.Black.copy(alpha = 0.38f),
@@ -416,11 +418,19 @@ fun MediaPlaybackIndicator(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            LocalPlayingBars(
-                active = isPlaying,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(indicatorSize),
-            )
+            if (isPlaying || pausedIcon == null) {
+                LocalPlayingBars(
+                    active = isPlaying,
+                    color = indicatorColor,
+                    modifier = Modifier.size(indicatorSize),
+                )
+            } else {
+                Icon(
+                    imageVector = pausedIcon,
+                    contentDescription = stringResource(R.string.play),
+                    modifier = Modifier.size(indicatorSize),
+                )
+            }
         }
     }
 }

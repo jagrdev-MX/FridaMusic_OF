@@ -35,6 +35,10 @@
         android:usesCleartextTraffic="false"
         tools:replace="android:label">
 
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

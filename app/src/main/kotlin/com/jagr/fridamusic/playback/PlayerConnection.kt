@@ -59,6 +59,8 @@ class PlayerConnection(
 
     val service = binder.service
     private val playerReadinessFlow = service.isPlayerReady
+    val isCasting = service.castConnectionHandler?.isCasting ?: MutableStateFlow(false)
+    val castDeviceName = service.castConnectionHandler?.castDeviceName ?: MutableStateFlow(null)
     
     
     private fun getPlayerSafe(): ExoPlayer {
@@ -126,7 +128,7 @@ class PlayerConnection(
     
     val isEffectivelyPlaying = combine(
         isPlaying,
-        service.castConnectionHandler?.isCasting ?: MutableStateFlow(false),
+        isCasting,
         service.castConnectionHandler?.castIsPlaying ?: MutableStateFlow(false)
     ) { localPlaying, isCasting, castPlaying ->
         if (isCasting) castPlaying else localPlaying
@@ -544,8 +546,15 @@ class PlayerConnection(
     }
 
     private fun updatePlaybackClock(currentPlayer: Player) {
-        playbackPositionMs.value = currentPlayer.currentPosition
-        playbackDurationMs.value = currentPlayer.validDurationMs()
+        val castHandler = service.castConnectionHandler
+        if (castHandler?.isCasting?.value == true) {
+            playbackPositionMs.value = castHandler.castPosition.value
+            playbackDurationMs.value = castHandler.castDuration.value
+                .takeIf { it > 0L } ?: C.TIME_UNSET
+        } else {
+            playbackPositionMs.value = currentPlayer.currentPosition
+            playbackDurationMs.value = currentPlayer.validDurationMs()
+        }
     }
 
     private fun Player.validDurationMs(): Long =

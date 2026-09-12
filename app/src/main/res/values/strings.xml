@@ -112,7 +112,9 @@
     <string name="add_all_to_library">Add all to library</string>
     <string name="remove_from_library">Remove from library</string>
     <string name="remove_all_from_library">Remove all from library</string>
-    <string name="action_download">Synchronize</string>
+    <string name="action_download">Sync song</string>
+    <string name="sync_song_ad_title">Sync song</string>
+    <string name="sync_song_ad_message">A short ad may be shown before syncing this song. This helps keep FridaMusic available.</string>
     <string name="downloading">Synchronizing</string>
     <string name="downloading_ellipsis">Synchronizing…</string>
     <string name="loading">Loading</string>
@@ -1037,6 +1039,7 @@
     <string name="audio_offload_description">Use the offload audio path for audio playback. Disabling this may increase power usage but can be useful if you experience issues with audio playback or post processing</string>
     <string name="audio_offload_disabled_by_crossfade">Disabled because Crossfade is active</string>
     <string name="google_cast">Google Cast</string>
+    <string name="chromecast">Chromecast</string>
     <string name="google_cast_description">Enable casting audio to Chromecast and other Cast-enabled devices</string>
     <string name="lyrics_romanize_macedonian">Romanize Macedonian lyrics</string>
     <string name="lyrics_romanize_as_main">Show romanized lyrics as main</string>
@@ -1210,6 +1213,12 @@
     <string name="found_in_settings_content">Found in Settings &gt; Content</string>
     <string name="plays">plays</string>
     <string name="casting_to">Casting to %s</string>
+    <string name="cast_select_device">Select a Cast device</string>
+    <string name="cast_connecting">Connecting…</string>
+    <string name="cast_connection_failed">Couldn’t connect to the Cast device</string>
+    <string name="cast_media_load_failed">Couldn’t play this song on the Cast device</string>
+    <string name="cast_retrying_media">Refreshing the stream and trying once more…</string>
+    <string name="cast_local_media_unsupported">Local files can’t be cast yet; playback remains on this device</string>
     <string name="progress_percent">Progress %s%%</string>
     <string name="listening_to_echomusic">Listening on FridaMusic</string>
     <string name="listen_on_youtube_music">Open original source</string>
