@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -25,10 +26,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyHorizontalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -39,6 +43,7 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -60,13 +65,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -82,6 +90,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import coil3.compose.rememberAsyncImagePainter
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
@@ -96,7 +105,9 @@ import com.jagr.fridamusic.presentation.components.CastDrawerItem
 import com.jagr.fridamusic.presentation.components.HomeContentType
 import com.jagr.fridamusic.presentation.components.HomeMediaCard
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
+import com.jagr.fridamusic.presentation.components.MediaArtworkActionButton
 import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
+import com.jagr.fridamusic.presentation.components.SongOptionsButton
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SupportCenterSheet
 import com.jagr.fridamusic.presentation.components.YTContentCard
@@ -389,7 +400,7 @@ fun HomeScreen(
                 onItemMore = { remoteMenuItem = it },
             )
 
-            localItemSection(
+            keepListeningSection(
                 key = "keep_listening",
                 title = keepListeningTitle,
                 items = keepListeningItems.take(HOME_SECTION_PREVIEW_LIMIT),
@@ -422,22 +433,52 @@ fun HomeScreen(
             )
 
             echoBrainPlaylistItems.forEachIndexed { index, playlist ->
-                ytSection(
-                    key = "echo_brain_${index}_${playlist.playlist.id}",
-                    title = playlist.playlist.title,
-                    items = playlist.songs.take(HOME_SECTION_PREVIEW_LIMIT),
-                    isLowEnd = isLowEnd,
-                    onItemClick = onItemClick,
-                    onPlayItem = onPlayItem,
-                    currentMediaId = currentMediaMetadata?.id,
-                    currentAlbumId = currentMediaMetadata?.album?.id,
-                    currentQueueTitle = currentQueueTitle,
-                    isPlaying = currentIsPlaying,
-                    onSeeAll = {
-                        onCollectionClick(HomeCollectionKind.ECHO_BRAIN, index, playlist.playlist.title)
-                    },
-                    onItemMore = { remoteMenuItem = it },
-                )
+                if (playlist.playlist.id == ECHO_BRAIN_MADE_FOR_YOU_ID) {
+                    madeForYouHomeSection(
+                        key = "echo_brain_${index}_${playlist.playlist.id}",
+                        title = playlist.playlist.title,
+                        subtitle = null,
+                        thumbnail = null,
+                        circularThumbnail = false,
+                        items = playlist.songs.take(HOME_SECTION_PREVIEW_LIMIT),
+                        isLowEnd = isLowEnd,
+                        onItemClick = onItemClick,
+                        onPlayItem = onPlayItem,
+                        currentMediaId = currentMediaMetadata?.id,
+                        currentAlbumId = currentMediaMetadata?.album?.id,
+                        currentQueueTitle = currentQueueTitle,
+                        isPlaying = currentIsPlaying,
+                        onSeeAll = {
+                            onCollectionClick(
+                                HomeCollectionKind.ECHO_BRAIN,
+                                index,
+                                playlist.playlist.title,
+                            )
+                        },
+                        onItemMore = { remoteMenuItem = it },
+                    )
+                } else {
+                    ytSection(
+                        key = "echo_brain_${index}_${playlist.playlist.id}",
+                        title = playlist.playlist.title,
+                        items = playlist.songs.take(HOME_SECTION_PREVIEW_LIMIT),
+                        isLowEnd = isLowEnd,
+                        onItemClick = onItemClick,
+                        onPlayItem = onPlayItem,
+                        currentMediaId = currentMediaMetadata?.id,
+                        currentAlbumId = currentMediaMetadata?.album?.id,
+                        currentQueueTitle = currentQueueTitle,
+                        isPlaying = currentIsPlaying,
+                        onSeeAll = {
+                            onCollectionClick(
+                                HomeCollectionKind.ECHO_BRAIN,
+                                index,
+                                playlist.playlist.title,
+                            )
+                        },
+                        onItemMore = { remoteMenuItem = it },
+                    )
+                }
             }
         }
 
@@ -1491,6 +1532,7 @@ private fun MoodChipsRow(
 private const val HOME_SECTION_PREVIEW_LIMIT = 10
 private const val MOOD_AND_GENRES_PREVIEW_LIMIT = 3
 private const val MOOD_AND_GENRES_BROWSE_ID = "FEmusic_moods_and_genres"
+private const val ECHO_BRAIN_MADE_FOR_YOU_ID = "echo_brain_mix_local"
 private val DAILY_DISCOVERY_TERM = Regex(
     """\b(?:discover|discovery|discoveries|descubrimiento|descubrimientos)\b""",
 )
@@ -1609,6 +1651,279 @@ private fun LazyListScope.localSongSection(
                     onMoreClick = { onSongMore(song) },
                     isLocal = song.song.isLocal,
                 )
+            }
+        }
+    }
+}
+
+private val KEEP_LISTENING_CARD_MIN_WIDTH = 160.dp
+private val KEEP_LISTENING_CARD_MAX_WIDTH = 176.dp
+private val KEEP_LISTENING_CARD_MIN_HEIGHT = 225.dp
+private val KEEP_LISTENING_CARD_MAX_HEIGHT = 245.dp
+
+private fun LazyListScope.keepListeningSection(
+    key: String,
+    title: String,
+    items: List<LocalItem>,
+    isLowEnd: Boolean,
+    onSongClick: (Song, List<Song>) -> Unit,
+    onItemClick: (YTItem) -> Unit,
+    onPlayItem: (YTItem) -> Unit,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    isPlaying: Boolean,
+    onSongMore: (Song) -> Unit,
+    onItemMore: (YTItem) -> Unit,
+    onSeeAll: (() -> Unit)? = null,
+) {
+    if (items.isEmpty()) return
+    val songQueue = items.filterIsInstance<Song>()
+
+    item(key = "${key}_header") {
+        HomeSectionHeader(title = title, onSeeAll = onSeeAll)
+    }
+    item(key = "${key}_row") {
+        LazyRow(
+            modifier = Modifier.padding(bottom = 18.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            itemsIndexed(
+                items = items,
+                key = { index, localItem -> "${key}_${localItem.id}_$index" },
+            ) { _, localItem ->
+                val subtitle = when (localItem) {
+                    is Song -> localItem.artists.joinToString(", ") { it.name }
+                    is LocalAlbum -> localItem.artists.joinToString(", ") { it.name }
+                    is LocalArtist -> stringResource(R.string.artists)
+                    is LocalPlaylist -> stringResource(R.string.playlists)
+                }
+                val type = when (localItem) {
+                    is Song -> HomeContentType.SONG
+                    is LocalAlbum -> HomeContentType.ALBUM
+                    is LocalArtist -> HomeContentType.ARTIST
+                    is LocalPlaylist -> HomeContentType.PLAYLIST
+                }
+                val remoteItem = localItem.toYTItemOrNull()
+                KeepListeningCard(
+                    type = type,
+                    title = localItem.title,
+                    subtitle = subtitle,
+                    imageUrl = localItem.thumbnailUrl.orEmpty()
+                        .resize(width = if (isLowEnd) 320 else 480),
+                    isActive = when (localItem) {
+                        is Song -> localItem.id == currentMediaId
+                        is LocalAlbum -> localItem.id == currentAlbumId
+                        else -> false
+                    },
+                    isPlaying = isPlaying,
+                    onClick = {
+                        when (localItem) {
+                            is Song -> onSongClick(localItem, songQueue)
+                            else -> remoteItem?.let(onItemClick)
+                        }
+                    },
+                    onPlay = when {
+                        localItem is Song -> ({ onSongClick(localItem, songQueue) })
+                        remoteItem is AlbumItem && remoteItem.playlistId.isNotBlank() ->
+                            ({ onPlayItem(remoteItem) })
+                        else -> null
+                    },
+                    onMoreClick = when {
+                        localItem is Song -> ({ onSongMore(localItem) })
+                        remoteItem != null -> ({ onItemMore(remoteItem) })
+                        else -> null
+                    },
+                    isLocal = when (localItem) {
+                        is Song -> localItem.song.isLocal
+                        is LocalAlbum -> localItem.album.isLocal
+                        is LocalArtist -> localItem.artist.isLocal
+                        is LocalPlaylist -> localItem.playlist.isLocal
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeepListeningCard(
+    type: HomeContentType,
+    title: String,
+    subtitle: String?,
+    imageUrl: String,
+    isActive: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onPlay: (() -> Unit)?,
+    onMoreClick: (() -> Unit)?,
+    isLocal: Boolean,
+) {
+    val playerConnection = LocalPlayerConnection.current
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val cardWidth = ((screenWidth - 50.dp) / 2f).coerceIn(
+        KEEP_LISTENING_CARD_MIN_WIDTH,
+        KEEP_LISTENING_CARD_MAX_WIDTH,
+    )
+    val cardHeight = (cardWidth * 1.4f).coerceIn(
+        KEEP_LISTENING_CARD_MIN_HEIGHT,
+        KEEP_LISTENING_CARD_MAX_HEIGHT,
+    )
+    val dedicatedAction = if (isActive && playerConnection != null) {
+        playerConnection::togglePlayPause
+    } else {
+        onPlay
+    }
+    val isArtist = type == HomeContentType.ARTIST
+
+    Surface(
+        modifier = Modifier
+            .size(
+                width = cardWidth,
+                height = cardHeight,
+            )
+            .universalMediaClickable(
+                onClick = onClick,
+                onLongClick = onMoreClick,
+            ),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.12f),
+                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.9f),
+                            ),
+                        ),
+                    ),
+            )
+
+            if (onMoreClick != null && !isArtist) {
+                SongOptionsButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    iconColor = Color.White,
+                    containerColor = Color.Black.copy(alpha = 0.38f),
+                )
+            }
+
+            if (isLocal) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(7.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Smartphone,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Text(
+                            text = stringResource(R.string.filter_local),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+
+            when (type) {
+                HomeContentType.SONG -> {
+                    if (isActive) {
+                        MediaPlaybackIndicator(
+                            isPlaying = isPlaying,
+                            onClick = dedicatedAction,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    } else if (dedicatedAction != null) {
+                        MediaArtworkActionButton(
+                            icon = Icons.Rounded.PlayArrow,
+                            contentDescription = stringResource(R.string.play),
+                            onClick = dedicatedAction,
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+                }
+
+                HomeContentType.ALBUM -> {
+                    if (isActive) {
+                        MediaPlaybackIndicator(
+                            isPlaying = isPlaying,
+                            onClick = dedicatedAction,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(7.dp),
+                        )
+                    } else if (dedicatedAction != null) {
+                        MediaArtworkActionButton(
+                            icon = Icons.Rounded.Album,
+                            contentDescription = stringResource(R.string.play),
+                            onClick = dedicatedAction,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(7.dp),
+                        )
+                    }
+                }
+
+                HomeContentType.PLAYLIST -> {
+                    MediaArtworkActionButton(
+                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                        contentDescription = stringResource(R.string.playlists),
+                        onClick = dedicatedAction,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(8.dp),
+                    )
+                }
+
+                HomeContentType.ARTIST -> Unit
+            }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isActive) MaterialTheme.colorScheme.primary else Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.78f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -1836,16 +2151,15 @@ private fun HomeDailyDiscoverCard(
     onLongClick: () -> Unit,
 ) {
     val imageUrl = item.thumbnail.resize(width = if (isLowEnd) 720 else 1200)
+    val artworkPainter = rememberAsyncImagePainter(model = imageUrl)
     val artists = item.artists.joinToString(", ") { artist -> artist.name }
-    val recommendationReason = reason
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
+    val bottomCaption = artists.takeIf(String::isNotBlank)
+        ?: reason?.trim()?.takeIf(String::isNotEmpty)
     val zoomProgress = remember(item.id) { Animatable(0f) }
-    val artworkScale = 1f + (0.09f * zoomProgress.value)
+    val artworkScale = 1f + (0.16f * zoomProgress.value)
     val artworkTranslationY = with(LocalDensity.current) {
-        (-10).dp.toPx()
+        (-16).dp.toPx()
     } * zoomProgress.value
-    val reasonAlpha = ((zoomProgress.value - 0.58f) / 0.42f).coerceIn(0f, 1f)
 
     LaunchedEffect(item.id, isFocused) {
         zoomProgress.snapTo(0f)
@@ -1854,7 +2168,7 @@ private fun HomeDailyDiscoverCard(
             zoomProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(
-                    durationMillis = 6_000,
+                    durationMillis = 15_000,
                     easing = FastOutSlowInEasing,
                 ),
             )
@@ -1871,8 +2185,8 @@ private fun HomeDailyDiscoverCard(
                 onLongClick = onLongClick,
             ),
     ) {
-        AsyncImage(
-            model = imageUrl,
+        Image(
+            painter = artworkPainter,
             contentDescription = item.title,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -1885,8 +2199,8 @@ private fun HomeDailyDiscoverCard(
         )
 
         if (!isLowEnd) {
-            AsyncImage(
-                model = imageUrl,
+            Image(
+                painter = artworkPainter,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -1897,65 +2211,31 @@ private fun HomeDailyDiscoverCard(
                         translationY = artworkTranslationY
                     }
                     .dailyDiscoverEdgeFade(isTop = true)
-                    .blur(6.dp),
+                    .blur(12.dp),
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.10f)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to Color.Black.copy(alpha = 0.48f),
-                            0.62f to Color.Black.copy(alpha = 0.12f),
-                            1f to Color.Transparent,
-                        ),
-                    ),
-                ),
-        )
-
-        Column(
+        Text(
+            text = item.title,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopStart)
                 .padding(horizontal = 18.dp, vertical = 17.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleLarge,
-                autoSize = TextAutoSize.StepBased(
-                    minFontSize = 12.sp,
-                    maxFontSize = 22.sp,
-                    stepSize = 0.5.sp,
-                ),
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Clip,
-            )
-            if (artists.isNotBlank()) {
-                Text(
-                    text = artists,
-                    style = MaterialTheme.typography.bodyMedium,
-                    autoSize = TextAutoSize.StepBased(
-                        minFontSize = 10.sp,
-                        maxFontSize = 14.sp,
-                        stepSize = 0.5.sp,
-                    ),
-                    color = Color.White.copy(alpha = 0.78f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Clip,
-                )
-            }
-        }
+            style = MaterialTheme.typography.titleLarge,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 12.sp,
+                maxFontSize = 22.sp,
+                stepSize = 0.5.sp,
+            ),
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Clip,
+        )
 
         if (!isLowEnd) {
-            AsyncImage(
-                model = imageUrl,
+            Image(
+                painter = artworkPainter,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -1966,41 +2246,24 @@ private fun HomeDailyDiscoverCard(
                         translationY = artworkTranslationY
                     }
                     .dailyDiscoverEdgeFade(isTop = false)
-                    .blur(6.dp),
+                    .blur(12.dp),
             )
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.10f)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0f to Color.Transparent,
-                            0.58f to Color.Black.copy(alpha = 0.14f),
-                            1f to Color.Black.copy(alpha = 0.56f),
-                        ),
-                    ),
-                ),
-        )
-
-        if (recommendationReason != null) {
+        if (bottomCaption != null) {
             Text(
-                text = recommendationReason,
+                text = bottomCaption,
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomStart)
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
-                    .graphicsLayer { alpha = reasonAlpha },
-                style = MaterialTheme.typography.bodyMedium,
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                style = MaterialTheme.typography.bodyLarge,
                 autoSize = TextAutoSize.StepBased(
-                    minFontSize = 9.sp,
-                    maxFontSize = 14.sp,
+                    minFontSize = 11.sp,
+                    maxFontSize = 16.sp,
                     stepSize = 0.5.sp,
                 ),
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.86f),
                 maxLines = 3,
                 overflow = TextOverflow.Clip,
             )
@@ -2025,22 +2288,242 @@ private fun Modifier.dailyDiscoverEdgeFade(isTop: Boolean): Modifier =
             drawRect(
                 brush = if (isTop) {
                     Brush.verticalGradient(
-                        0f to Color.Black,
-                        0.05f to Color.Black.copy(alpha = 0.72f),
-                        0.10f to Color.Transparent,
+                        0f to Color.White,
+                        0.15f to Color.White.copy(alpha = 0.90f),
+                        0.30f to Color.Transparent,
                         1f to Color.Transparent,
                     )
                 } else {
                     Brush.verticalGradient(
                         0f to Color.Transparent,
-                        0.90f to Color.Transparent,
-                        0.95f to Color.Black.copy(alpha = 0.72f),
-                        1f to Color.Black,
+                        0.70f to Color.Transparent,
+                        0.85f to Color.White.copy(alpha = 0.90f),
+                        1f to Color.White,
                     )
                 },
                 blendMode = BlendMode.DstIn,
             )
         }
+
+private val MADE_FOR_YOU_CARD_MIN_WIDTH = 216.dp
+private val MADE_FOR_YOU_CARD_MAX_WIDTH = 318.dp
+private val MADE_FOR_YOU_CARD_HEIGHT = 72.dp
+private val MADE_FOR_YOU_ARTWORK_SIZE = 60.dp
+private val MADE_FOR_YOU_ROW_SPACING = 10.dp
+
+private fun LazyListScope.madeForYouHomeSection(
+    key: String,
+    title: String,
+    subtitle: String?,
+    thumbnail: String?,
+    circularThumbnail: Boolean,
+    items: List<YTItem>,
+    isLowEnd: Boolean,
+    onItemClick: (YTItem) -> Unit,
+    onPlayItem: (YTItem) -> Unit,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    currentQueueTitle: String?,
+    isPlaying: Boolean,
+    onSeeAll: (() -> Unit)?,
+    onItemMore: (YTItem) -> Unit,
+) {
+    if (items.isEmpty()) return
+
+    item(key = "${key}_made_for_you_header") {
+        HomeSectionHeader(
+            title = title,
+            subtitle = subtitle,
+            thumbnail = thumbnail,
+            circularThumbnail = circularThumbnail,
+            onSeeAll = onSeeAll,
+        )
+    }
+    item(key = "${key}_made_for_you_grid") {
+        LazyHorizontalStaggeredGrid(
+            rows = StaggeredGridCells.Fixed(2),
+            modifier = Modifier
+                .height(
+                    (MADE_FOR_YOU_CARD_HEIGHT * 2) +
+                        MADE_FOR_YOU_ROW_SPACING +
+                        18.dp,
+                )
+                .padding(bottom = 18.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalItemSpacing = 10.dp,
+            verticalArrangement = Arrangement.spacedBy(MADE_FOR_YOU_ROW_SPACING),
+        ) {
+            items(
+                count = items.size,
+                key = { index -> "${key}_${items[index].madeForYouStableKey()}" },
+            ) { index ->
+                val item = items[index]
+                MadeForYouCompactCard(
+                    item = item,
+                    isLowEnd = isLowEnd,
+                    currentMediaId = currentMediaId,
+                    currentAlbumId = currentAlbumId,
+                    currentQueueTitle = currentQueueTitle,
+                    isPlaying = isPlaying,
+                    onClick = { onItemClick(item) },
+                    onPlay = item.homePlayAction(onPlayItem),
+                    onMore = { onItemMore(item) },
+                )
+            }
+        }
+    }
+}
+
+private fun YTItem.madeForYouStableKey(): String = when (this) {
+    is SongItem -> "song:$id"
+    is AlbumItem -> "album:$id"
+    is PlaylistItem -> "playlist:$id"
+    is ArtistItem -> "artist:$id"
+}
+
+@Composable
+private fun MadeForYouCompactCard(
+    item: YTItem,
+    isLowEnd: Boolean,
+    currentMediaId: String?,
+    currentAlbumId: String?,
+    currentQueueTitle: String?,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onPlay: (() -> Unit)?,
+    onMore: () -> Unit,
+) {
+    val playerConnection = LocalPlayerConnection.current
+    val metadata = when (item) {
+        is SongItem -> item.artists.joinToString(", ") { artist -> artist.name }
+        is AlbumItem -> buildList {
+            item.artists
+                ?.joinToString(", ") { artist -> artist.name }
+                ?.takeIf(String::isNotBlank)
+                ?.let(::add)
+            item.year?.toString()?.let(::add)
+        }.joinToString(" • ").ifBlank { stringResource(R.string.album_text) }
+        is PlaylistItem -> item.author?.name ?: stringResource(R.string.playlists)
+        is ArtistItem -> stringResource(R.string.artists)
+    }
+    val isActive = when (item) {
+        is SongItem -> item.id == currentMediaId
+        is AlbumItem -> item.browseId == currentAlbumId
+        is PlaylistItem -> currentMediaId != null && item.title == currentQueueTitle
+        is ArtistItem -> false
+    }
+    val primaryAction = if (isActive && playerConnection != null) {
+        playerConnection::togglePlayPause
+    } else {
+        onPlay
+    }
+    val cardClickAction = if (item is SongItem && isActive) {
+        primaryAction ?: onClick
+    } else {
+        onClick
+    }
+    val titleStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+    val metadataStyle = MaterialTheme.typography.bodySmall
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val measuredTextWidth = with(density) {
+        maxOf(
+            textMeasurer.measure(
+                text = AnnotatedString(item.title),
+                style = titleStyle,
+                softWrap = false,
+                maxLines = 1,
+            ).size.width,
+            textMeasurer.measure(
+                text = AnnotatedString(metadata),
+                style = metadataStyle,
+                softWrap = false,
+                maxLines = 1,
+            ).size.width,
+        ).toDp()
+    }
+    val fixedContentWidth = 80.dp + if (primaryAction != null) 40.dp else 0.dp
+    val cardWidth = (fixedContentWidth + measuredTextWidth)
+        .coerceIn(MADE_FOR_YOU_CARD_MIN_WIDTH, MADE_FOR_YOU_CARD_MAX_WIDTH)
+    val artworkShape = if (item is ArtistItem) CircleShape else RoundedCornerShape(13.dp)
+
+    Surface(
+        modifier = Modifier
+            .width(cardWidth)
+            .height(MADE_FOR_YOU_CARD_HEIGHT)
+            .universalMediaClickable(
+                onClick = cardClickAction,
+                onLongClick = onMore,
+            ),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AsyncImage(
+                model = item.thumbnail?.resize(width = if (isLowEnd) 160 else 240).orEmpty(),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(MADE_FOR_YOU_ARTWORK_SIZE)
+                    .clip(artworkShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = item.title,
+                    style = titleStyle,
+                    color = if (isActive) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = metadata,
+                    style = metadataStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (primaryAction != null) {
+                if (isActive) {
+                    MediaPlaybackIndicator(
+                        isPlaying = isPlaying,
+                        onClick = primaryAction,
+                        buttonSize = 32.dp,
+                        indicatorSize = 18.dp,
+                        indicatorColor = Color.White,
+                        pausedIcon = Icons.Rounded.PlayArrow,
+                    )
+                } else {
+                    MediaArtworkActionButton(
+                        icon = when (item) {
+                            is AlbumItem -> Icons.Rounded.Album
+                            is PlaylistItem -> Icons.AutoMirrored.Rounded.QueueMusic
+                            else -> Icons.Rounded.PlayArrow
+                        },
+                        contentDescription = stringResource(R.string.play),
+                        onClick = primaryAction,
+                        buttonSize = 32.dp,
+                        iconSize = 18.dp,
+                    )
+                }
+            }
+        }
+    }
+}
 
 private fun LazyListScope.ytSection(
     key: String,

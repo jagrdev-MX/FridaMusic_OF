@@ -1,6 +1,7 @@
 package com.jagr.fridamusic.presentation.theme
 
 import android.app.Activity
+import android.util.LruCache
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -26,6 +27,9 @@ import com.materialkolor.ktx.themeColor
 import com.materialkolor.rememberDynamicColorScheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private const val ARTWORK_SEED_SIZE_PX = 96
+private val artworkSeedColorCache = LruCache<String, Color>(24)
 
 private val DarkColorScheme = darkColorScheme(
     primary = FridaPink,
@@ -150,11 +154,16 @@ private fun rememberArtworkSeedColor(
             return@LaunchedEffect
         }
 
-        seedColor = withContext(Dispatchers.IO) {
+        artworkSeedColorCache.get(artworkUrl)?.let { cachedColor ->
+            seedColor = cachedColor
+            return@LaunchedEffect
+        }
+
+        val extractedColor = withContext(Dispatchers.IO) {
             runCatching {
                 val request = ImageRequest.Builder(context)
                     .data(artworkUrl)
-                    .size(192)
+                    .size(ARTWORK_SEED_SIZE_PX)
                     .allowHardware(false)
                     .build()
                 context.imageLoader.execute(request).image
@@ -163,6 +172,8 @@ private fun rememberArtworkSeedColor(
                     ?.themeColor(fallback = FridaPink)
             }.getOrNull()
         } ?: FridaPink
+        artworkSeedColorCache.put(artworkUrl, extractedColor)
+        seedColor = extractedColor
     }
 
     return seedColor

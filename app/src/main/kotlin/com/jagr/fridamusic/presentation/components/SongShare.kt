@@ -234,21 +234,34 @@ private fun FridaShareCardDialogContent(
                 !uri.host.isNullOrBlank()
         }?.url ?: FridaAppLinks.DEEP_LINK_HOME
     }
-    val appQrImage = remember(snapshot.appCtaUrl) {
-        runCatching { FridaQrCodeGenerator.create(snapshot.appCtaUrl).asImageBitmap() }.getOrNull()
-    }
+    var appQrImage by remember(snapshot.appCtaUrl) { mutableStateOf<ImageBitmap?>(null) }
     var selectedTheme by remember(snapshot.song.mediaId) { mutableStateOf(FridaShareCardTheme.ARTWORK) }
     var artworkBitmap by remember(snapshot.song.artworkUrl) { mutableStateOf<Bitmap?>(null) }
+    var exportArtworkBitmap by remember(snapshot.song.artworkUrl) { mutableStateOf<Bitmap?>(null) }
     val artworkImage = remember(artworkBitmap) { artworkBitmap?.asImageBitmap() }
     var dominantColor by remember(snapshot.song.artworkUrl) { mutableStateOf(FridaPink) }
     var isBusy by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     var pendingLegacySave by remember { mutableStateOf(false) }
 
+    LaunchedEffect(snapshot.appCtaUrl) {
+        appQrImage = withContext(Dispatchers.Default) {
+            runCatching { FridaQrCodeGenerator.create(snapshot.appCtaUrl).asImageBitmap() }.getOrNull()
+        }
+    }
     LaunchedEffect(snapshot.song.artworkUrl) {
-        val preview = loadArtworkPreview(androidContext, snapshot.song.artworkUrl)
-        artworkBitmap = preview.bitmap
-        dominantColor = preview.dominantColor
+        val previewBitmap = loadArtworkBitmap(
+            context = androidContext,
+            artworkUrl = snapshot.song.artworkUrl,
+            size = PREVIEW_ARTWORK_SIZE_PX,
+        )
+        artworkBitmap = previewBitmap
+        dominantColor = previewBitmap?.let { extractArtworkDominantColor(it) } ?: FridaPink
+        exportArtworkBitmap = loadArtworkBitmap(
+            context = androidContext,
+            artworkUrl = snapshot.song.artworkUrl,
+            size = EXPORT_ARTWORK_SIZE_PX,
+        )
     }
     LaunchedEffect(Unit) { cleanupOldShareCards(androidContext) }
 
@@ -257,16 +270,25 @@ private fun FridaShareCardDialogContent(
         isBusy = true
         scope.launch {
             runCatching {
-                val exportArtwork = loadArtworkBitmap(
-                    context = androidContext,
-                    artworkUrl = snapshot.song.artworkUrl,
-                    size = EXPORT_ARTWORK_SIZE_PX,
-                ) ?: artworkBitmap
+                if (exportArtworkBitmap == null) {
+                    exportArtworkBitmap = loadArtworkBitmap(
+                        context = androidContext,
+                        artworkUrl = snapshot.song.artworkUrl,
+                        size = EXPORT_ARTWORK_SIZE_PX,
+                    )
+                }
+                if (appQrImage == null) {
+                    appQrImage = withContext(Dispatchers.Default) {
+                        runCatching {
+                            FridaQrCodeGenerator.create(snapshot.appCtaUrl).asImageBitmap()
+                        }.getOrNull()
+                    }
+                }
                 renderShareCardBitmap(
                     context = androidContext,
                     snapshot = snapshot,
                     theme = selectedTheme,
-                    artwork = exportArtwork,
+                    artwork = exportArtworkBitmap ?: artworkBitmap,
                     qrBitmap = appQrImage,
                     dominantColor = dominantColor,
                     colorScheme = colorScheme,
@@ -767,34 +789,25 @@ private fun ShareQuickAction(
     }
 }
 
-private data class ArtworkPreview(
-    val bitmap: Bitmap?,
-    val dominantColor: Color,
-)
-
-private suspend fun loadArtworkPreview(context: Context, artworkUrl: String?): ArtworkPreview =
-    withContext(Dispatchers.IO) {
-        val bitmap = loadArtworkBitmap(context, artworkUrl, PREVIEW_ARTWORK_SIZE_PX)
-        val dominantColor = bitmap?.let { source ->
-            val sample = if (source.width > DOMINANT_COLOR_SAMPLE_SIZE_PX ||
-                source.height > DOMINANT_COLOR_SAMPLE_SIZE_PX
-            ) {
-                Bitmap.createScaledBitmap(
-                    source,
-                    DOMINANT_COLOR_SAMPLE_SIZE_PX,
-                    DOMINANT_COLOR_SAMPLE_SIZE_PX,
-                    true,
-                )
-            } else {
-                source
-            }
-            try {
-                sample.asImageBitmap().themeColor(fallback = FridaPink)
-            } finally {
-                if (sample !== source) sample.recycle()
-            }
-        } ?: FridaPink
-        ArtworkPreview(bitmap, dominantColor)
+private suspend fun extractArtworkDominantColor(source: Bitmap): Color =
+    withContext(Dispatchers.Default) {
+        val sample = if (source.width > DOMINANT_COLOR_SAMPLE_SIZE_PX ||
+            source.height > DOMINANT_COLOR_SAMPLE_SIZE_PX
+        ) {
+            Bitmap.createScaledBitmap(
+                source,
+                DOMINANT_COLOR_SAMPLE_SIZE_PX,
+                DOMINANT_COLOR_SAMPLE_SIZE_PX,
+                true,
+            )
+        } else {
+            source
+        }
+        try {
+            sample.asImageBitmap().themeColor(fallback = FridaPink)
+        } finally {
+            if (sample !== source) sample.recycle()
+        }
     }
 
 private suspend fun loadArtworkBitmap(
@@ -816,7 +829,7 @@ private suspend fun loadArtworkBitmap(
 }
 
 private const val PREVIEW_ARTWORK_SIZE_PX = 512
-private const val DOMINANT_COLOR_SAMPLE_SIZE_PX = 192
+private const val DOMINANT_COLOR_SAMPLE_SIZE_PX = 96
 private const val EXPORT_ARTWORK_SIZE_PX = 1080
 
 private suspend fun renderShareCardBitmap(
