@@ -6,11 +6,17 @@ import android.content.ContextWrapper
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.ColorDrawable
 import android.view.WindowManager
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.BarChart
@@ -31,6 +38,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -42,8 +50,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -58,6 +69,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -77,19 +89,23 @@ import com.jagr.fridamusic.db.entities.Artist as LocalArtist
 import com.jagr.fridamusic.db.entities.LocalItem
 import com.jagr.fridamusic.db.entities.Playlist as LocalPlaylist
 import com.jagr.fridamusic.db.entities.Song
+import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
 import com.jagr.fridamusic.presentation.components.CastDrawerItem
 import com.jagr.fridamusic.presentation.components.HomeContentType
 import com.jagr.fridamusic.presentation.components.HomeMediaCard
 import com.jagr.fridamusic.presentation.components.HomeSectionHeader
+import com.jagr.fridamusic.presentation.components.MediaPlaybackIndicator
 import com.jagr.fridamusic.presentation.components.SongActionContext
 import com.jagr.fridamusic.presentation.components.SupportCenterSheet
 import com.jagr.fridamusic.presentation.components.YTContentCard
 import com.jagr.fridamusic.presentation.components.UniversalSongActionsHost
 import com.jagr.fridamusic.presentation.components.UniversalYTItemActionsHost
 import com.jagr.fridamusic.presentation.components.toSongActionContext
+import com.jagr.fridamusic.presentation.components.universalMediaClickable
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
+import com.jagr.fridamusic.playback.queues.ListQueue
 import com.jagr.fridamusic.support.SupportBillingManager
 import com.jagr.fridamusic.utils.MemoryDiagnostics
 import com.jagr.fridamusic.utils.rememberIsLowEndDevice
@@ -105,10 +121,14 @@ import com.music.innertube.models.SongItem
 import com.music.innertube.models.YTItem
 import com.music.innertube.pages.HomePage
 import com.music.innertube.pages.MoodAndGenres
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.text.Normalizer
+import java.util.Locale
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -427,29 +447,58 @@ fun HomeScreen(
                     ?.takeIf { candidate -> candidate.browseId.isNotBlank() }
                 val opensWrongMoodCollection = endpoint?.browseId == MOOD_AND_GENRES_BROWSE_ID &&
                     section.items.any { it is PlaylistItem }
-                ytSection(
-                    key = "youtube_${index}_${section.title}",
-                    title = section.title,
-                    subtitle = section.label,
-                    thumbnail = section.thumbnail,
-                    circularThumbnail = section.endpoint?.isArtistEndpoint == true,
-                    items = section.items.take(HOME_SECTION_PREVIEW_LIMIT),
-                    isLowEnd = isLowEnd,
-                    onItemClick = onItemClick,
-                    onPlayItem = onPlayItem,
-                    currentMediaId = currentMediaMetadata?.id,
-                    currentAlbumId = currentMediaMetadata?.album?.id,
-                    currentQueueTitle = currentQueueTitle,
-                    isPlaying = currentIsPlaying,
-                    onSeeAll = when {
-                        opensWrongMoodCollection -> ({
-                            onCollectionClick(HomeCollectionKind.REMOTE_SECTION, index, section.title)
-                        })
-                        endpoint != null -> ({ onBrowseClick(endpoint, section.title) })
-                        else -> null
-                    },
-                    onItemMore = { remoteMenuItem = it },
-                )
+                if (isDailyDiscoverHomeSection(section, dailyDiscoverTitle)) {
+                    dailyDiscoverHomeSection(
+                        key = "youtube_${index}_${section.title}",
+                        title = section.title,
+                        label = section.label,
+                        items = section.items,
+                        isLowEnd = isLowEnd,
+                        currentMediaId = currentMediaMetadata?.id,
+                        isPlaying = currentIsPlaying,
+                        onPlayItem = { item -> onPlayItem(item) },
+                        onTogglePlayPause = { playerConnection?.togglePlayPause() },
+                        onPlayAll = { songs ->
+                            if (songs.isNotEmpty()) {
+                                playerConnection?.playQueue(
+                                    ListQueue(
+                                        title = section.title,
+                                        items = songs.map { it.toMediaItem() },
+                                    ),
+                                )
+                            }
+                        },
+                        onItemMore = { item -> remoteMenuItem = item },
+                    )
+                } else {
+                    ytSection(
+                        key = "youtube_${index}_${section.title}",
+                        title = section.title,
+                        subtitle = section.label,
+                        thumbnail = section.thumbnail,
+                        circularThumbnail = section.endpoint?.isArtistEndpoint == true,
+                        items = section.items.take(HOME_SECTION_PREVIEW_LIMIT),
+                        isLowEnd = isLowEnd,
+                        onItemClick = onItemClick,
+                        onPlayItem = onPlayItem,
+                        currentMediaId = currentMediaMetadata?.id,
+                        currentAlbumId = currentMediaMetadata?.album?.id,
+                        currentQueueTitle = currentQueueTitle,
+                        isPlaying = currentIsPlaying,
+                        onSeeAll = when {
+                            opensWrongMoodCollection -> ({
+                                onCollectionClick(
+                                    HomeCollectionKind.REMOTE_SECTION,
+                                    index,
+                                    section.title,
+                                )
+                            })
+                            endpoint != null -> ({ onBrowseClick(endpoint, section.title) })
+                            else -> null
+                        },
+                        onItemMore = { remoteMenuItem = it },
+                    )
+                }
             }
         }
 
@@ -1442,6 +1491,31 @@ private fun MoodChipsRow(
 private const val HOME_SECTION_PREVIEW_LIMIT = 10
 private const val MOOD_AND_GENRES_PREVIEW_LIMIT = 3
 private const val MOOD_AND_GENRES_BROWSE_ID = "FEmusic_moods_and_genres"
+private val DAILY_DISCOVERY_TERM = Regex(
+    """\b(?:discover|discovery|discoveries|descubrimiento|descubrimientos)\b""",
+)
+private val DAILY_CADENCE_TERM = Regex(
+    """\b(?:daily|diario|diaria|diarios|diarias|hoy)\b|\b(?:cada|del)\s+dia\b""",
+)
+
+private fun isDailyDiscoverHomeSection(
+    section: HomePage.Section,
+    localizedDailyDiscoverTitle: String,
+): Boolean {
+    fun String.normalizedForDailyDiscoverMatch(): String = Normalizer
+        .normalize(this, Normalizer.Form.NFD)
+        .replace("\\p{M}+".toRegex(), "")
+        .lowercase(Locale.ROOT)
+        .trim()
+
+    val normalizedTitle = section.title.normalizedForDailyDiscoverMatch()
+    val normalizedLocalizedTitle = localizedDailyDiscoverTitle.normalizedForDailyDiscoverMatch()
+    if (normalizedTitle == normalizedLocalizedTitle) return true
+
+    val mentionsDiscovery = DAILY_DISCOVERY_TERM.containsMatchIn(normalizedTitle)
+    val mentionsDailyCadence = DAILY_CADENCE_TERM.containsMatchIn(normalizedTitle)
+    return mentionsDiscovery && mentionsDailyCadence
+}
 
 private fun LazyListScope.moodAndGenresSection(
     title: String,
@@ -1624,6 +1698,349 @@ private fun LazyListScope.localItemSection(
         }
     }
 }
+
+private fun LazyListScope.dailyDiscoverHomeSection(
+    key: String,
+    title: String,
+    label: String?,
+    items: List<YTItem>,
+    isLowEnd: Boolean,
+    currentMediaId: String?,
+    isPlaying: Boolean,
+    onPlayItem: (SongItem) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onPlayAll: (List<SongItem>) -> Unit,
+    onItemMore: (SongItem) -> Unit,
+) {
+    val songs = items
+        .filterIsInstance<SongItem>()
+        .distinctBy { item -> item.id }
+    if (songs.isEmpty()) return
+
+    item(key = "${key}_daily_discover_header") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, top = 14.dp, end = 16.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 15.sp,
+                    maxFontSize = 22.sp,
+                    stepSize = 0.5.sp,
+                ),
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 2,
+                overflow = TextOverflow.Clip,
+            )
+            OutlinedButton(
+                onClick = { onPlayAll(songs) },
+                enabled = songs.isNotEmpty(),
+                modifier = Modifier.height(36.dp),
+                shape = CircleShape,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                ),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                    disabledContainerColor = Color.Transparent,
+                    disabledContentColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.38f),
+                ),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.play_all),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+    item(key = "${key}_daily_discover_row") {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val cardWidth = (maxWidth - 48.dp)
+                .coerceAtMost(344.dp)
+                .coerceAtLeast(280.dp)
+            val sidePadding = ((maxWidth - cardWidth) / 2).coerceAtLeast(20.dp)
+            val rowState = rememberLazyListState()
+            val focusedIndex by remember(rowState) {
+                derivedStateOf {
+                    val layoutInfo = rowState.layoutInfo
+                    val viewportCenter =
+                        (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                    layoutInfo.visibleItemsInfo.minByOrNull { visibleItem ->
+                        abs((visibleItem.offset + visibleItem.size / 2) - viewportCenter)
+                    }?.index ?: 0
+                }
+            }
+            val rowIsSettled by remember(rowState) {
+                derivedStateOf { !rowState.isScrollInProgress }
+            }
+            val snapFlingBehavior = rememberSnapFlingBehavior(
+                lazyListState = rowState,
+                snapPosition = SnapPosition.Center,
+            )
+
+            LazyRow(
+                state = rowState,
+                flingBehavior = snapFlingBehavior,
+                modifier = Modifier.padding(bottom = 22.dp),
+                contentPadding = PaddingValues(horizontal = sidePadding),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(
+                    items = songs.take(HOME_SECTION_PREVIEW_LIMIT),
+                    key = { _, item -> "${item::class.qualifiedName}:${item.id}" },
+                ) { index, item ->
+                    val isCurrent = item.id == currentMediaId
+                    val primaryAction = if (isCurrent) {
+                        onTogglePlayPause
+                    } else {
+                        { onPlayItem(item) }
+                    }
+                    HomeDailyDiscoverCard(
+                        item = item,
+                        reason = label,
+                        cardWidth = cardWidth,
+                        isLowEnd = isLowEnd,
+                        isFocused = rowIsSettled && index == focusedIndex,
+                        isCurrent = isCurrent,
+                        isPlaying = isPlaying,
+                        primaryAction = primaryAction,
+                        onLongClick = { onItemMore(item) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeDailyDiscoverCard(
+    item: SongItem,
+    reason: String?,
+    cardWidth: Dp,
+    isLowEnd: Boolean,
+    isFocused: Boolean,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    primaryAction: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val imageUrl = item.thumbnail.resize(width = if (isLowEnd) 720 else 1200)
+    val artists = item.artists.joinToString(", ") { artist -> artist.name }
+    val recommendationReason = reason
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+    val zoomProgress = remember(item.id) { Animatable(0f) }
+    val artworkScale = 1f + (0.09f * zoomProgress.value)
+    val artworkTranslationY = with(LocalDensity.current) {
+        (-10).dp.toPx()
+    } * zoomProgress.value
+    val reasonAlpha = ((zoomProgress.value - 0.58f) / 0.42f).coerceIn(0f, 1f)
+
+    LaunchedEffect(item.id, isFocused) {
+        zoomProgress.snapTo(0f)
+        if (isFocused) {
+            delay(700)
+            zoomProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 6_000,
+                    easing = FastOutSlowInEasing,
+                ),
+            )
+        }
+    }
+    Box(
+        modifier = Modifier
+            .width(cardWidth)
+            .aspectRatio(0.94f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .universalMediaClickable(
+                onClick = primaryAction,
+                onLongClick = onLongClick,
+            ),
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = item.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    scaleX = artworkScale
+                    scaleY = artworkScale
+                    translationY = artworkTranslationY
+                },
+        )
+
+        if (!isLowEnd) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = artworkScale
+                        scaleY = artworkScale
+                        translationY = artworkTranslationY
+                    }
+                    .dailyDiscoverEdgeFade(isTop = true)
+                    .blur(6.dp),
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.10f)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Black.copy(alpha = 0.48f),
+                            0.62f to Color.Black.copy(alpha = 0.12f),
+                            1f to Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopStart)
+                .padding(horizontal = 18.dp, vertical = 17.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleLarge,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 12.sp,
+                    maxFontSize = 22.sp,
+                    stepSize = 0.5.sp,
+                ),
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Clip,
+            )
+            if (artists.isNotBlank()) {
+                Text(
+                    text = artists,
+                    style = MaterialTheme.typography.bodyMedium,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 10.sp,
+                        maxFontSize = 14.sp,
+                        stepSize = 0.5.sp,
+                    ),
+                    color = Color.White.copy(alpha = 0.78f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
+                )
+            }
+        }
+
+        if (!isLowEnd) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = artworkScale
+                        scaleY = artworkScale
+                        translationY = artworkTranslationY
+                    }
+                    .dailyDiscoverEdgeFade(isTop = false)
+                    .blur(6.dp),
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.10f)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0f to Color.Transparent,
+                            0.58f to Color.Black.copy(alpha = 0.14f),
+                            1f to Color.Black.copy(alpha = 0.56f),
+                        ),
+                    ),
+                ),
+        )
+
+        if (recommendationReason != null) {
+            Text(
+                text = recommendationReason,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+                    .graphicsLayer { alpha = reasonAlpha },
+                style = MaterialTheme.typography.bodyMedium,
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = 9.sp,
+                    maxFontSize = 14.sp,
+                    stepSize = 0.5.sp,
+                ),
+                color = Color.White,
+                maxLines = 3,
+                overflow = TextOverflow.Clip,
+            )
+        }
+
+        if (isCurrent) {
+            MediaPlaybackIndicator(
+                isPlaying = isPlaying,
+                onClick = primaryAction,
+                modifier = Modifier.align(Alignment.Center),
+                indicatorColor = Color.White,
+                pausedIcon = Icons.Rounded.PlayArrow,
+            )
+        }
+    }
+}
+
+private fun Modifier.dailyDiscoverEdgeFade(isTop: Boolean): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                brush = if (isTop) {
+                    Brush.verticalGradient(
+                        0f to Color.Black,
+                        0.05f to Color.Black.copy(alpha = 0.72f),
+                        0.10f to Color.Transparent,
+                        1f to Color.Transparent,
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.90f to Color.Transparent,
+                        0.95f to Color.Black.copy(alpha = 0.72f),
+                        1f to Color.Black,
+                    )
+                },
+                blendMode = BlendMode.DstIn,
+            )
+        }
 
 private fun LazyListScope.ytSection(
     key: String,
