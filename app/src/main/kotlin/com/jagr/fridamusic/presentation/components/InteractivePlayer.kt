@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.util.UnstableApi
+import com.jagr.fridamusic.ads.AdFrequencyGate
 import com.jagr.fridamusic.playback.PlayerConnection
 import com.jagr.fridamusic.presentation.screens.NowPlayingScreen
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
@@ -55,7 +56,7 @@ fun InteractivePlayer(
     modifier: Modifier = Modifier,
 ) {
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    if (mediaMetadata == null) return
+    val mediaId = mediaMetadata?.id ?: return
 
     val scope = rememberCoroutineScope()
     val state = rememberPlayerSheetState(scope)
@@ -69,6 +70,14 @@ fun InteractivePlayer(
     var containerHeightPx by remember { mutableFloatStateOf(0f) }
     var miniPlayerHeightPx by remember { mutableFloatStateOf(0f) }
     var metadataNavigationPending by remember { mutableStateOf(false) }
+    var pendingTrackAdCycle by remember {
+        mutableStateOf(AdFrequencyGate.pendingNowPlayingAdCycle())
+    }
+
+    LaunchedEffect(mediaId) {
+        AdFrequencyGate.onMediaIdObserved(mediaId)
+        pendingTrackAdCycle = AdFrequencyGate.pendingNowPlayingAdCycle()
+    }
 
     LaunchedEffect(containerHeightPx, miniPlayerHeightPx, bottomBarHeightPx) {
         if (containerHeightPx > 0f && miniPlayerHeightPx > 0f && bottomBarHeightPx > 0) {
@@ -127,6 +136,14 @@ fun InteractivePlayer(
                 onBack = ::collapse,
                 onNavigateFromPlayer = ::collapseAndNavigate,
                 playlistsViewModel = playlistsViewModel,
+                showNativeAd = pendingTrackAdCycle != null && state.isExpanded,
+                nativeAdPresentationCycleKey = pendingTrackAdCycle?.let { cycle ->
+                    "now_playing_${cycle}_${com.jagr.fridamusic.ads.NativeAdPlacement.NOW_PLAYING_LARGE.name}"
+                },
+                onNativeAdConsumed = {
+                    AdFrequencyGate.consumeNowPlayingAd()
+                    pendingTrackAdCycle = null
+                },
                 modifier = Modifier.graphicsLayer {
                     alpha = ((state.progress - 0.08f) / 0.92f).coerceIn(0f, 1f)
                     val scale = 0.96f + state.progress * 0.04f

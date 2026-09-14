@@ -13,4 +13,13 @@
         name="admob_song_sync_interstitial_ad_unit_id"
         translatable="false">ca-app-pub-4175362947670909/8324263401</string>
 
+    <string name="admob_native_home_1_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/9461552429</string>
+    <string name="admob_native_home_2_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/3221033979</string>
+    <string name="admob_native_home_3_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/1952184332</string>
+    <string name="admob_native_home_4_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/8337629287</string>
+    <string name="admob_native_home_filter_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/8687526806</string>
+    <string name="admob_native_search_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/9519683165</string>
+    <string name="admob_native_library_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/8326020993</string>
+    <string name="admob_native_now_playing_ad_unit_id" translatable="false">ca-app-pub-4175362947670909/8206601495</string>
+
 </resources>
