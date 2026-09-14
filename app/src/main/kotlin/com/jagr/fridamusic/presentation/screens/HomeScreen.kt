@@ -93,10 +93,6 @@ import coil3.compose.AsyncImage
 import coil3.compose.rememberAsyncImagePainter
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.ads.InterstitialAdManager
-import com.jagr.fridamusic.ads.NativeAdPlacement
-import com.jagr.fridamusic.ads.NativeAdSlot
-import com.jagr.fridamusic.ads.rememberNativeAdSlotState
-import com.jagr.fridamusic.ads.rememberNativeAdVisitToken
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
 import com.jagr.fridamusic.db.entities.Artist as LocalArtist
 import com.jagr.fridamusic.db.entities.LocalItem
@@ -214,32 +210,6 @@ fun HomeScreen(
     val echoBrainPlaylistItems = echoBrainPlaylists.orEmpty()
     val moodAndGenreItems = explorePage?.moodAndGenres.orEmpty()
     val remoteSections = homePage?.sections.orEmpty()
-    val homeVisitToken = rememberNativeAdVisitToken()
-    val home1CycleKey = "home_${homeVisitToken}_${NativeAdPlacement.HOME_1.name}"
-    val home2CycleKey = "home_${homeVisitToken}_${NativeAdPlacement.HOME_2.name}"
-    val home3CycleKey = "home_${homeVisitToken}_${NativeAdPlacement.HOME_3.name}"
-    val home4CycleKey = "home_${homeVisitToken}_${NativeAdPlacement.HOME_4.name}"
-    val home1AdState = rememberNativeAdSlotState(NativeAdPlacement.HOME_1, home1CycleKey)
-    val home2AdState = rememberNativeAdSlotState(NativeAdPlacement.HOME_2, home2CycleKey)
-    val home3AdState = rememberNativeAdSlotState(NativeAdPlacement.HOME_3, home3CycleKey)
-    val home4AdState = rememberNativeAdSlotState(NativeAdPlacement.HOME_4, home4CycleKey)
-    val filterStableId = when {
-        pinnedSelected -> "pinned"
-        selectedChip != null -> selectedChip?.endpoint?.browseId
-            ?: normalizeHomeSectionTitle(selectedChip?.title.orEmpty())
-        else -> "none"
-    }
-    val homeFilterCycleKey = "home_filter_${homeVisitToken}_$filterStableId"
-    val homeFilterAdState = rememberNativeAdSlotState(
-        NativeAdPlacement.HOME_FILTER_TOP,
-        homeFilterCycleKey,
-    )
-    val librarySectionIndex = remoteSections.indexOfFirst { section ->
-        normalizeHomeSectionTitle(section.title) in HOME_LIBRARY_SECTION_TITLES
-    }
-    val personalizedMixesSectionIndex = remoteSections.indexOfFirst { section ->
-        normalizeHomeSectionTitle(section.title) in HOME_PERSONALIZED_MIXES_SECTION_TITLES
-    }
     val quickPicksTitle = stringResource(R.string.quick_picks)
     val quickPicksSubtitle = stringResource(R.string.quick_picks_subtitle)
     val dailyDiscoverTitle = stringResource(R.string.your_daily_discover)
@@ -382,19 +352,6 @@ fun HomeScreen(
                     ),
                 ) {
 
-        if ((pinnedSelected && pinnedItems.isNotEmpty()) ||
-            (selectedChip != null && remoteSections.isNotEmpty())
-        ) {
-            item(key = "home_filter_native_ad") {
-                NativeAdSlot(
-                    placement = NativeAdPlacement.HOME_FILTER_TOP,
-                    presentationCycleKey = homeFilterCycleKey,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    state = homeFilterAdState,
-                )
-            }
-        }
-
         if (pinnedSelected) {
             ytSection(
                 key = "pinned_items",
@@ -478,16 +435,6 @@ fun HomeScreen(
 
             echoBrainPlaylistItems.forEachIndexed { index, playlist ->
                 if (playlist.playlist.id == ECHO_BRAIN_MADE_FOR_YOU_ID) {
-                    if (keepListeningItems.isNotEmpty() && playlist.songs.isNotEmpty()) {
-                        item(key = "home_native_ad_1") {
-                            NativeAdSlot(
-                                placement = NativeAdPlacement.HOME_1,
-                                presentationCycleKey = home1CycleKey,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                                state = home1AdState,
-                            )
-                        }
-                    }
                     madeForYouHomeSection(
                         key = "echo_brain_${index}_${playlist.playlist.id}",
                         title = playlist.playlist.title,
@@ -594,19 +541,6 @@ fun HomeScreen(
                         onItemMore = { remoteMenuItem = it },
                     )
                 }
-                if (selectedChip == null &&
-                    index == librarySectionIndex &&
-                    personalizedMixesSectionIndex > librarySectionIndex
-                ) {
-                    item(key = "home_native_ad_2") {
-                        NativeAdSlot(
-                            placement = NativeAdPlacement.HOME_2,
-                            presentationCycleKey = home2CycleKey,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            state = home2AdState,
-                        )
-                    }
-                }
             }
         }
 
@@ -652,17 +586,6 @@ fun HomeScreen(
                 onItemMore = { remoteMenuItem = it },
             )
 
-            if (newReleaseItems.isNotEmpty() && moodAndGenreItems.isNotEmpty()) {
-                item(key = "home_native_ad_3") {
-                    NativeAdSlot(
-                        placement = NativeAdPlacement.HOME_3,
-                        presentationCycleKey = home3CycleKey,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        state = home3AdState,
-                    )
-                }
-            }
-
             moodAndGenresSection(
                 title = moodAndGenresTitle,
                 items = moodAndGenreItems.take(MOOD_AND_GENRES_PREVIEW_LIMIT),
@@ -691,17 +614,6 @@ fun HomeScreen(
                     },
                     onItemMore = { remoteMenuItem = it },
                 )
-            }
-
-            if (communityPlaylistItems.isNotEmpty()) {
-                item(key = "home_native_ad_4") {
-                    NativeAdSlot(
-                        placement = NativeAdPlacement.HOME_4,
-                        presentationCycleKey = home4CycleKey,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        state = home4AdState,
-                    )
-                }
             }
 
             ytSection(
@@ -1622,20 +1534,12 @@ private const val HOME_SECTION_PREVIEW_LIMIT = 10
 private const val MOOD_AND_GENRES_PREVIEW_LIMIT = 3
 private const val MOOD_AND_GENRES_BROWSE_ID = "FEmusic_moods_and_genres"
 private const val ECHO_BRAIN_MADE_FOR_YOU_ID = "echo_brain_mix_local"
-private val HOME_LIBRARY_SECTION_TITLES = setOf("de tu biblioteca", "from your library")
-private val HOME_PERSONALIZED_MIXES_SECTION_TITLES = setOf("mixes personalizados", "personalized mixes")
 private val DAILY_DISCOVERY_TERM = Regex(
     """\b(?:discover|discovery|discoveries|descubrimiento|descubrimientos)\b""",
 )
 private val DAILY_CADENCE_TERM = Regex(
     """\b(?:daily|diario|diaria|diarios|diarias|hoy)\b|\b(?:cada|del)\s+dia\b""",
 )
-
-private fun normalizeHomeSectionTitle(title: String): String = Normalizer
-    .normalize(title, Normalizer.Form.NFD)
-    .replace("\\p{M}+".toRegex(), "")
-    .lowercase(Locale.ROOT)
-    .trim()
 
 private fun isDailyDiscoverHomeSection(
     section: HomePage.Section,

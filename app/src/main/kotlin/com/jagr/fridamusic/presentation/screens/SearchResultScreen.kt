@@ -49,8 +49,6 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
-import com.jagr.fridamusic.ads.NativeAdPlacement
-import com.jagr.fridamusic.ads.NativeAdSlot
 import com.jagr.fridamusic.presentation.LocalPlayerConnection
 import com.jagr.fridamusic.presentation.components.FridaLoadingDefaults
 import com.jagr.fridamusic.presentation.components.FridaLoadingIndicator
@@ -61,7 +59,6 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.YTItem
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.util.Locale
 import kotlin.math.abs
 
 private data class SearchTab(
@@ -326,7 +323,6 @@ private fun SearchCategoryPager(
                     currentMediaId = currentMediaId,
                     isPlaying = isPlaying,
                     onTogglePlayPause = onTogglePlayPause,
-                    isActivePage = page == pagerState.settledPage,
                 )
             } else {
                 SearchFilteredContent(
@@ -338,7 +334,6 @@ private fun SearchCategoryPager(
                     currentMediaId = currentMediaId,
                     isPlaying = isPlaying,
                     onTogglePlayPause = onTogglePlayPause,
-                    isActivePage = page == pagerState.settledPage,
                 )
             }
         }
@@ -463,7 +458,6 @@ private fun SearchSummaryContent(
     currentMediaId: String?,
     isPlaying: Boolean,
     onTogglePlayPause: () -> Unit,
-    isActivePage: Boolean,
 ) {
     val summaryPage = viewModel.summaryPage
 
@@ -490,15 +484,6 @@ private fun SearchSummaryContent(
         contentPadding = PaddingValues(top = topPadding, bottom = 140.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item(key = "search_summary_native_ad") {
-            NativeAdSlot(
-                placement = NativeAdPlacement.SEARCH_TOP,
-                presentationCycleKey =
-                    "search_${viewModel.query.trim().lowercase(Locale.ROOT)}_summary",
-                enabled = isActivePage,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-        }
         summaryPage.summaries.forEach { summary ->
             item(key = summary.title) {
                 Text(
@@ -532,7 +517,6 @@ private fun SearchFilteredContent(
     currentMediaId: String?,
     isPlaying: Boolean,
     onTogglePlayPause: () -> Unit,
-    isActivePage: Boolean,
 ) {
     val viewState = viewModel.viewStateMap[filterValue]
 
@@ -559,15 +543,6 @@ private fun SearchFilteredContent(
         contentPadding = PaddingValues(top = topPadding, bottom = 140.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item(key = "search_${filterValue}_native_ad") {
-            NativeAdSlot(
-                placement = NativeAdPlacement.SEARCH_TOP,
-                presentationCycleKey =
-                    "search_${viewModel.query.trim().lowercase(Locale.ROOT)}_$filterValue",
-                enabled = isActivePage,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-        }
         items(viewState.items, key = { it.id }) { item ->
             YTItemRow(
                 item = item,
