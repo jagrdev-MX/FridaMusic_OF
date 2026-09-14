@@ -99,9 +99,6 @@ import coil3.toBitmap
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
-import com.jagr.fridamusic.ads.NativeAdPlacement
-import com.jagr.fridamusic.ads.NativeAdSlot
-import com.jagr.fridamusic.ads.NativeAdStyle
 import com.jagr.fridamusic.constants.AutoLoadMoreKey
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.extensions.metadata
@@ -143,9 +140,6 @@ fun NowPlayingScreen(
     modifier: Modifier = Modifier,
     collapseDragModifier: Modifier = Modifier,
     playlistsViewModel: PlaylistsViewModel? = null,
-    showNativeAd: Boolean = false,
-    nativeAdPresentationCycleKey: String? = null,
-    onNativeAdConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     DisposableEffect(Unit) {
@@ -996,87 +990,6 @@ fun NowPlayingScreen(
         )
     }
 
-    if (showNativeAd && nativeAdPresentationCycleKey != null) {
-        NowPlayingNativeAdDialog(
-            presentationCycleKey = nativeAdPresentationCycleKey,
-            onConsumed = onNativeAdConsumed,
-        )
-    }
-}
-
-@Composable
-private fun NowPlayingNativeAdDialog(
-    presentationCycleKey: String,
-    onConsumed: () -> Unit,
-) {
-    var adLoaded by remember(presentationCycleKey) { mutableStateOf(false) }
-    val blockerInteractionSource = remember { MutableInteractionSource() }
-
-    Box(
-        modifier = if (adLoaded) {
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.58f))
-                .clickable(
-                    interactionSource = blockerInteractionSource,
-                    indication = null,
-                    onClick = {},
-                )
-        } else {
-            Modifier
-        },
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            modifier = if (adLoaded) {
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-            } else {
-                Modifier
-            },
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (adLoaded) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 20.dp, top = 8.dp, end = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Anuncio",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        IconButton(onClick = onConsumed) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.close),
-                            )
-                        }
-                    }
-                }
-                NativeAdSlot(
-                    placement = NativeAdPlacement.NOW_PLAYING_LARGE,
-                    presentationCycleKey = presentationCycleKey,
-                    style = NativeAdStyle.LARGE,
-                    modifier = Modifier.padding(
-                        start = 12.dp,
-                        end = 12.dp,
-                        bottom = if (adLoaded) 12.dp else 0.dp,
-                    ),
-                    onLoadFinished = { loaded ->
-                        if (loaded) adLoaded = true else onConsumed()
-                    },
-                )
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

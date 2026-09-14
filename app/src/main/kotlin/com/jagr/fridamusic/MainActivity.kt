@@ -35,6 +35,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
 import androidx.fragment.app.FragmentActivity
+import com.jagr.fridamusic.ads.StartupAppOpenAdManager
 import com.jagr.fridamusic.constants.DisableScreenshotKey
 import com.jagr.fridamusic.constants.DynamicThemeKey
 import com.jagr.fridamusic.constants.KeepScreenOn
@@ -95,6 +96,7 @@ class MainActivity : FragmentActivity() {
     private var discordCallbackJob: Job? = null
     private var pendingDeepLink by mutableStateOf<Uri?>(null)
     private lateinit var appUpdateController: AppUpdateController
+    private var startupAppOpenAdManager: StartupAppOpenAdManager? = null
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -132,6 +134,7 @@ class MainActivity : FragmentActivity() {
         observeWindowPreferences()
         enqueueExternalAudio(intent)
         handleDiscordRedirect(intent)
+        startupAppOpenAdManager = StartupAppOpenAdManager(this).also { it.start() }
 
         setContent {
             val dynamicTheme by remember {
@@ -502,6 +505,8 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        startupAppOpenAdManager?.release()
+        startupAppOpenAdManager = null
         appUpdateController.close()
         super.onDestroy()
     }
