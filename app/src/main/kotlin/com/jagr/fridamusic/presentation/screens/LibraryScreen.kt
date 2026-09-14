@@ -73,6 +73,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.ads.AdFrequencyGate
+import com.jagr.fridamusic.ads.NativeAdPlacement
+import com.jagr.fridamusic.ads.NativeAdSlot
+import com.jagr.fridamusic.ads.NativeAdStyle
+import com.jagr.fridamusic.ads.rememberNativeAdVisitToken
 import com.jagr.fridamusic.constants.MiniPlayerBottomSpacing
 import com.jagr.fridamusic.constants.MiniPlayerHeight
 import com.jagr.fridamusic.constants.NavigationBarHeight
@@ -212,6 +217,11 @@ fun LibraryScreen(
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val resources = LocalResources.current
+    val libraryVisitToken = rememberNativeAdVisitToken()
+    val showLibraryNativeAd = remember(libraryVisitToken) {
+        AdFrequencyGate.shouldShowLibraryAdThisVisit()
+    }
+    val libraryAdCycleKey = "library_${libraryVisitToken}_${NativeAdPlacement.LIBRARY_LARGE.name}"
     val currentFilter = filters[pagerState.currentPage]
     var songMode by rememberSaveable { mutableStateOf(LibrarySongMode.FAVORITES) }
     var showLocalBlacklist by rememberSaveable { mutableStateOf(false) }
@@ -441,7 +451,9 @@ fun LibraryScreen(
                         },
                         playlistsViewModel = playlistsViewModel,
                         reselectToken = reselectToken,
-                        isActive = page == pagerState.currentPage,
+                        isActive = page == pagerState.settledPage,
+                        showNativeAd = showLibraryNativeAd,
+                        nativeAdPresentationCycleKey = libraryAdCycleKey,
                     )
                     LibraryFilter.PLAYLISTS -> PlaylistsTab(
                         onLocalItemClick = onLocalItemClick,
@@ -593,6 +605,8 @@ private fun LibraryMixTab(
     onSongCollectionSelected: (LibrarySongMode) -> Unit,
     reselectToken: Int,
     isActive: Boolean,
+    showNativeAd: Boolean,
+    nativeAdPresentationCycleKey: String,
     playlistsViewModel: LibraryPlaylistsViewModel = hiltViewModel(),
     artistsViewModel: LibraryArtistsViewModel = hiltViewModel(),
     songsViewModel: LibrarySongsViewModel = hiltViewModel(),
@@ -606,6 +620,11 @@ private fun LibraryMixTab(
     val downloadedSongs by cacheViewModel.downloadedSongs.collectAsStateWithLifecycle()
     val cachedSongs by cacheViewModel.cachedSongs.collectAsStateWithLifecycle()
     val blacklistedSongs by localSongsViewModel.blacklistedSongs.collectAsStateWithLifecycle()
+    val hasLibraryContent = playlists.isNotEmpty() ||
+        artists.isNotEmpty() ||
+        likedSongsCount > 0 ||
+        downloadedSongs.isNotEmpty() ||
+        cachedSongs.isNotEmpty()
     val listState = rememberLazyListState()
     var collectionMenu by remember { mutableStateOf<LocalCollectionActionContext?>(null) }
     var artistMenuItem by remember { mutableStateOf<ArtistItem?>(null) }
@@ -627,15 +646,25 @@ private fun LibraryMixTab(
     ) {
         item(key = "shortcuts") {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                NativeAdSlot(
+                    placement = NativeAdPlacement.LIBRARY_LARGE,
+                    presentationCycleKey = nativeAdPresentationCycleKey,
+                    style = NativeAdStyle.LARGE,
+                    enabled = showNativeAd && isActive && hasLibraryContent,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                     ShortcutCard(
                         title = "Canciones favoritas",
                         countText = "$likedSongsCount pistas",
@@ -703,6 +732,7 @@ private fun LibraryMixTab(
                         modifier = Modifier.weight(1f),
                         onClick = onBlacklistSelected,
                     )
+                    }
                 }
             }
         }

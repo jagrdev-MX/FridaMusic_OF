@@ -5,7 +5,6 @@ import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import com.jagr.fridamusic.R
@@ -149,22 +148,15 @@ class InterstitialAdManager(
         if (isInitializing) return
 
         isInitializing = true
-        try {
-            MobileAds.initialize(currentActivity.applicationContext) { initializationStatus ->
-                isInitializing = false
-                if (!isReleased) {
-                    isInitialized = true
-                    Timber.tag(TAG).d(
-                        "Mobile Ads initialized with %d adapters",
-                        initializationStatus.adapterStatusMap.size,
-                    )
-                    load()
-                }
-            }
-        } catch (error: Exception) {
+        MobileAdsInitializationGate.initialize(currentActivity.applicationContext) { initialized ->
             isInitializing = false
-            Timber.tag(TAG).w(error, "Mobile Ads initialization failed")
-            finishPendingShow()
+            if (isReleased) return@initialize
+            if (initialized) {
+                isInitialized = true
+                load()
+            } else {
+                finishPendingShow()
+            }
         }
     }
 
