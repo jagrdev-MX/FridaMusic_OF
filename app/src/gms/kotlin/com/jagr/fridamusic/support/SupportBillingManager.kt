@@ -65,6 +65,7 @@ class SupportBillingManager(context: Context) :
     private var realProducts: List<SupportProduct> = emptyList()
     private var pendingProductId: String? = null
     private var connecting = false
+    private var started = false
     private var closed = false
     private var debugPreviewActive = false
     private var activeInstanceRegistered = false
@@ -88,6 +89,7 @@ class SupportBillingManager(context: Context) :
 
     override fun start() {
         if (!capabilities.googlePlayBilling || closed) return
+        started = true
         registerActiveInstanceIfNeeded()
         logInfo(
             "start instance=%d buildType=%s flavor=%s applicationId=%s ready=%s",
@@ -113,7 +115,7 @@ class SupportBillingManager(context: Context) :
     }
 
     override fun onResume() {
-        if (!capabilities.googlePlayBilling || closed) return
+        if (!capabilities.googlePlayBilling || closed || !started) return
         logDebug("foreground instance=%d ready=%s", instanceId, billingClient.isReady)
         if (billingClient.isReady) {
             queryOwnedPurchases()
@@ -128,6 +130,7 @@ class SupportBillingManager(context: Context) :
             debugController?.onMockProductClick(product.id)
             return
         }
+        if (!started) start()
 
         val lifecycleState = activity.lifecycleState()
         logInfo(
@@ -334,7 +337,7 @@ class SupportBillingManager(context: Context) :
         pendingProductId = null
         productDetails.clear()
         consumingTokens.clear()
-        billingClient.endConnection()
+        if (started) billingClient.endConnection()
         managerScope.cancel()
         unregisterActiveInstanceIfNeeded()
         logInfo("closed instance=%d", instanceId)
@@ -350,6 +353,10 @@ class SupportBillingManager(context: Context) :
         if (closed) return
         debugPreviewActive = false
         _state.update { it.catalogLoading().clearTransientPurchase() }
+        if (!started) {
+            start()
+            return
+        }
         if (billingClient.isReady) {
             queryProducts()
         } else {
