@@ -87,7 +87,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -120,16 +119,13 @@ import com.jagr.fridamusic.utils.rememberPreference
 import com.jagr.fridamusic.utils.resize
 import com.jagr.fridamusic.viewmodels.PlaylistsViewModel
 import com.jagr.fridamusic.viewmodels.LyricsMenuViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
 import kotlin.math.pow
-import kotlin.time.Duration.Companion.milliseconds
 
 @UnstableApi
 @Composable
@@ -151,6 +147,7 @@ fun NowPlayingScreen(
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    val liveAudioFormat by playerConnection.liveAudioFormat.collectAsState()
     val playbackError by playerConnection.error.collectAsState()
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
@@ -224,29 +221,6 @@ fun NowPlayingScreen(
     val titleInteractionSource = remember(song.id) { MutableInteractionSource() }
     val artistInteractionSource = remember(song.id) { MutableInteractionSource() }
     var showArtistPicker by remember(song.id) { mutableStateOf(false) }
-
-    var positionMs by remember { mutableLongStateOf(playerConnection.player.currentPosition) }
-    var durationMs by remember { mutableLongStateOf(playerConnection.player.duration.coerceAtLeast(0L)) }
-    var isDragging by remember { mutableStateOf(false) }
-    var dragPosition by remember { mutableFloatStateOf(0f) }
-    var liveAudioFormat by remember(song.id) { mutableStateOf<Format?>(null) }
-
-    LaunchedEffect(song.id) {
-        while (isActive) {
-            liveAudioFormat = playerConnection.player.audioFormat
-            if (!isDragging) {
-                val castHandler = playerConnection.service.castConnectionHandler
-                if (castHandler?.isCasting?.value == true) {
-                    positionMs = castHandler.castPosition.value
-                    durationMs = castHandler.castDuration.value.coerceAtLeast(0L)
-                } else {
-                    positionMs = playerConnection.player.currentPosition
-                    durationMs = playerConnection.player.duration.coerceAtLeast(0L)
-                }
-            }
-            delay(500.milliseconds)
-        }
-    }
 
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var showAudioOutputSheet by remember { mutableStateOf(false) }
@@ -607,41 +581,10 @@ fun NowPlayingScreen(
                             .navigationBarsPadding()
                             .padding(bottom = 10.dp),
                     ) {
-                        Slider(
-                            value = if (isDragging) dragPosition else positionMs.toFloat() / durationMs.toFloat().coerceAtLeast(1f),
-                            onValueChange = { isDragging = true; dragPosition = it },
-                            onValueChangeFinished = { playerConnection.seekTo((dragPosition * durationMs).toLong()); isDragging = false },
-                            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White, inactiveTrackColor = Color.White.copy(alpha = 0.32f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 40.dp)
-                                .graphicsLayer { scaleY = 0.84f },
+                        NowPlayingProgressSlider(
+                            playerConnection = playerConnection,
+                            audioQualityLabel = audioQualityLabel,
                         )
-                        Box(
-                            modifier = Modifier.fillMaxWidth().offset(y = (-6).dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                formatMs(if (isDragging) (dragPosition * durationMs).toLong() else positionMs),
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.align(Alignment.CenterStart),
-                            )
-                            Surface(
-                                modifier = Modifier.align(Alignment.Center),
-                                color = Color.White.copy(alpha = 0.12f),
-                                shape = RoundedCornerShape(7.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
-                            ) {
-                                Text(audioQualityLabel, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
-                            }
-                            Text(
-                                formatMs(durationMs),
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.align(Alignment.CenterEnd),
-                            )
-                        }
                         Spacer(Modifier.weight(1f).heightIn(min = 16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -896,7 +839,6 @@ fun NowPlayingScreen(
                                         mediaMetadata = song,
                                         lyricsEntity = currentLyrics,
                                         lyrics = currentLyrics?.lyrics.orEmpty(),
-                                        durationMs = durationMs,
                                         lyricsOffsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
                                         isPlaying = isPlaying,
                                         onSeekTo = { playerConnection.player.seekTo(it) },
@@ -1065,6 +1007,78 @@ private fun NowPlayingArtistPickerSheet(
 
 private fun isNavigableAlbumId(id: String): Boolean =
     id.startsWith("MPREb_") || id.startsWith("LOCAL_ALBUM_")
+
+@Composable
+private fun NowPlayingProgressSlider(
+    playerConnection: PlayerConnection,
+    audioQualityLabel: String,
+) {
+    val playbackPositionMs by playerConnection.playbackPositionMs.collectAsState()
+    val playbackDurationMs by playerConnection.playbackDurationMs.collectAsState()
+    val durationMs = playbackDurationMs.coerceAtLeast(0L)
+    var isDragging by remember { mutableStateOf(false) }
+    var dragPosition by remember { mutableFloatStateOf(0f) }
+
+    Slider(
+        value = if (isDragging) {
+            dragPosition
+        } else {
+            playbackPositionMs.toFloat() / durationMs.toFloat().coerceAtLeast(1f)
+        },
+        onValueChange = {
+            isDragging = true
+            dragPosition = it
+        },
+        onValueChangeFinished = {
+            playerConnection.seekTo((dragPosition * durationMs).toLong())
+            isDragging = false
+        },
+        colors = SliderDefaults.colors(
+            thumbColor = Color.White,
+            activeTrackColor = Color.White,
+            inactiveTrackColor = Color.White.copy(alpha = 0.32f),
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 40.dp)
+            .graphicsLayer { scaleY = 0.84f },
+    )
+    Box(
+        modifier = Modifier.fillMaxWidth().offset(y = (-6).dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            formatMs(
+                if (isDragging) (dragPosition * durationMs).toLong() else playbackPositionMs,
+            ),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.align(Alignment.CenterStart),
+        )
+        Surface(
+            modifier = Modifier.align(Alignment.Center),
+            color = Color.White.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(7.dp),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                Color.White.copy(alpha = 0.18f),
+            ),
+        ) {
+            Text(
+                audioQualityLabel,
+                color = Color.White.copy(alpha = 0.78f),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp),
+            )
+        }
+        Text(
+            formatMs(durationMs),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
+    }
+}
 
 private enum class PlayerPanel {
     Queue,
@@ -1408,7 +1422,6 @@ private fun KaraokeLyricsOnly(
     mediaMetadata: MediaMetadata,
     lyricsEntity: LyricsEntity?,
     lyrics: String,
-    durationMs: Long,
     lyricsOffsetMs: Long,
     isPlaying: Boolean,
     onSeekTo: (Long) -> Unit,
@@ -1416,6 +1429,8 @@ private fun KaraokeLyricsOnly(
     closeDragModifier: Modifier,
 ) {
     val view = LocalView.current
+    val playbackDurationMs by playerConnection.playbackDurationMs.collectAsState()
+    val durationMs = playbackDurationMs.coerceAtLeast(0L)
     DisposableEffect(Unit) {
         val window = (view.context as? android.app.Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

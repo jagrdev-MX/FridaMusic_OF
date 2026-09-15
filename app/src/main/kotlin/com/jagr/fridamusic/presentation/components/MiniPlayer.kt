@@ -48,14 +48,7 @@ fun MiniPlayer(
     val playbackState by playerConnection.playbackState.collectAsState()
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
-    val playbackPositionMs by playerConnection.playbackPositionMs.collectAsState()
-    val playbackDurationMs by playerConnection.playbackDurationMs.collectAsState()
     val song = mediaMetadata ?: return
-    val progress = if (playbackDurationMs != C.TIME_UNSET && playbackDurationMs > 0L) {
-        (playbackPositionMs.toFloat() / playbackDurationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
 
     Row(
         modifier = modifier
@@ -70,10 +63,10 @@ fun MiniPlayer(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        CircularArtwork(
+        MiniPlayerProgressArtwork(
+            playerConnection = playerConnection,
             imageUrl = song.thumbnailUrl?.resize(width = 96),
             contentDescription = song.title,
-            progress = progress,
             isPlaying = isPlaying,
             isBuffering = playbackState == Player.STATE_BUFFERING,
             modifier = Modifier.size(56.dp)
@@ -144,6 +137,33 @@ fun MiniPlayer(
             }
         }
     }
+}
+
+@Composable
+private fun MiniPlayerProgressArtwork(
+    playerConnection: PlayerConnection,
+    imageUrl: String?,
+    contentDescription: String?,
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val playbackPositionMs by playerConnection.playbackPositionMs.collectAsState()
+    val playbackDurationMs by playerConnection.playbackDurationMs.collectAsState()
+    val progress = if (playbackDurationMs != C.TIME_UNSET && playbackDurationMs > 0L) {
+        (playbackPositionMs.toFloat() / playbackDurationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    CircularArtwork(
+        imageUrl = imageUrl,
+        contentDescription = contentDescription,
+        progress = progress,
+        isPlaying = isPlaying,
+        isBuffering = isBuffering,
+        modifier = modifier,
+    )
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

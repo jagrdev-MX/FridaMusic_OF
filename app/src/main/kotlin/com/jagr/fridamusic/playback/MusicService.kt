@@ -174,12 +174,15 @@ import com.jagr.fridamusic.widget.MusicWidgetReceiver
 import dagger.hilt.android.AndroidEntryPoint
 import com.jagr.fridamusic.utils.isLocalMediaId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -199,6 +202,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import com.jagr.fridamusic.utils.ForegroundServiceLaunch
@@ -206,12 +210,44 @@ import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
-import kotlin.time.Duration.Companion.seconds
 
 private const val INSTANT_SILENCE_SKIP_STEP_MS = 15_000L
 private const val INSTANT_SILENCE_SKIP_SETTLE_MS = 350L
+private const val PERSISTENT_QUEUE_PLAYING_SAVE_INTERVAL_MS = 10_000L
+private const val PERSISTENT_QUEUE_MUTATION_DEBOUNCE_MS = 750L
+private const val PERSISTENT_QUEUE_DRAIN_TIMEOUT_MS = 3_000L
+private const val PLAYER_STATE_DIRTY = 1
+private const val QUEUE_DIRTY = 1 shl 1
+private const val AUTOMIX_DIRTY = 1 shl 2
+private const val ALL_PERSISTENCE_DIRTY = PLAYER_STATE_DIRTY or QUEUE_DIRTY or AUTOMIX_DIRTY
+
+private data class PlaybackHotPreferences(
+    val persistentQueueEnabled: Boolean,
+    val preventDuplicateTracksInQueue: Boolean,
+    val hideExplicit: Boolean,
+    val hideVideoSongs: Boolean,
+)
+
+private data class PersistentQueueSnapshot(
+    val queue: PersistQueue? = null,
+    val automix: PersistQueue? = null,
+    val playerState: PersistPlayerState? = null,
+) {
+    fun mergeWith(newer: PersistentQueueSnapshot) = PersistentQueueSnapshot(
+        queue = newer.queue ?: queue,
+        automix = newer.automix ?: automix,
+        playerState = newer.playerState ?: playerState,
+    )
+}
+
+private sealed interface QueuePersistenceRequest {
+    data object Save : QueuePersistenceRequest
+    data class Clear(val completion: CompletableDeferred<Unit>) : QueuePersistenceRequest
+}
 
 private data class AudioOutputRouteKey(
     val transportFamily: String,
@@ -371,6 +407,53 @@ class MusicService :
     }
 
     private var scope = CoroutineScope(Dispatchers.Main) + Job()
+    private val queuePersistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val queuePersistenceRequests = Channel<QueuePersistenceRequest>(Channel.CONFLATED)
+    private val pendingQueuePersistenceSnapshot = AtomicReference<PersistentQueueSnapshot?>(null)
+    private val queuePersistenceWriterJob = queuePersistenceScope.launch {
+        for (request in queuePersistenceRequests) {
+            when (request) {
+                QueuePersistenceRequest.Save -> {
+                    while (true) {
+                        val snapshot = pendingQueuePersistenceSnapshot.getAndSet(null) ?: break
+                        writeQueueSnapshot(snapshot)
+                    }
+                }
+                is QueuePersistenceRequest.Clear -> {
+                    pendingQueuePersistenceSnapshot.set(null)
+                    deletePersistedQueueFiles()
+                    request.completion.complete(Unit)
+                }
+            }
+        }
+    }.also { writerJob ->
+        val persistenceScope = queuePersistenceScope
+        writerJob.invokeOnCompletion { error ->
+            if (error == null) {
+                Timber.tag(TAG).d("Persistence writer drained and stopped")
+            } else {
+                Timber.tag(TAG).w(error, "Persistence writer stopped before a clean drain")
+            }
+            persistenceScope.cancel()
+        }
+    }
+    private var queueSaveTickerJob: Job? = null
+    private var queueSaveDebounceJob: Job? = null
+    private val queuePersistenceFinishing = AtomicBoolean(false)
+    private var queuePersistenceClosed = false
+    private var queuePersistenceDirtyState = 0
+
+    @Volatile
+    private var persistentQueueEnabled = true
+
+    @Volatile
+    private var preventDuplicateTracksInQueue = false
+
+    @Volatile
+    private var hideExplicitTracks = false
+
+    @Volatile
+    private var hideVideoSongs = false
 
     private val binder = MusicBinder()
 
@@ -606,6 +689,56 @@ class MusicService :
             ::mediaSession.isInitialized &&
             mediaSession === session
 
+    private fun initializePlaybackHotPreferences() {
+        val initialPreferences = runBlocking(Dispatchers.IO) {
+            dataStore.data.first().let { preferences ->
+                PlaybackHotPreferences(
+                    persistentQueueEnabled = preferences[PersistentQueueKey] ?: true,
+                    preventDuplicateTracksInQueue =
+                        preferences[PreventDuplicateTracksInQueueKey] ?: false,
+                    hideExplicit = preferences[HideExplicitKey] ?: false,
+                    hideVideoSongs = preferences[HideVideoSongsKey] ?: false,
+                )
+            }
+        }
+        applyPlaybackHotPreferences(initialPreferences)
+
+        scope.launch {
+            dataStore.data
+                .map { preferences ->
+                    PlaybackHotPreferences(
+                        persistentQueueEnabled = preferences[PersistentQueueKey] ?: true,
+                        preventDuplicateTracksInQueue =
+                            preferences[PreventDuplicateTracksInQueueKey] ?: false,
+                        hideExplicit = preferences[HideExplicitKey] ?: false,
+                        hideVideoSongs = preferences[HideVideoSongsKey] ?: false,
+                    )
+                }
+                .distinctUntilChanged()
+                .collect(::applyPlaybackHotPreferences)
+        }
+    }
+
+    private fun applyPlaybackHotPreferences(preferences: PlaybackHotPreferences) {
+        val wasPersistentQueueEnabled = persistentQueueEnabled
+        persistentQueueEnabled = preferences.persistentQueueEnabled
+        preventDuplicateTracksInQueue = preferences.preventDuplicateTracksInQueue
+        hideExplicitTracks = preferences.hideExplicit
+        hideVideoSongs = preferences.hideVideoSongs
+
+        if (!persistentQueueEnabled) {
+            stopPersistentQueueSaveTicker()
+            queueSaveDebounceJob?.cancel()
+            queueSaveDebounceJob = null
+        } else {
+            if (!wasPersistentQueueEnabled && ::player.isInitialized && player.mediaItemCount > 0) {
+                markQueuePersistenceDirty(ALL_PERSISTENCE_DIRTY)
+                enqueueDirtyQueuePersistence(ALL_PERSISTENCE_DIRTY)
+            }
+            updatePersistentQueueSaveTicker()
+        }
+    }
+
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (!isActiveMediaSession(session)) {
             Timber.tag(TAG).d("Ignoring notification update for inactive media session")
@@ -644,6 +777,7 @@ class MusicService :
         serviceDestroyed = false
         taskRemovalShutdownRequested = false
         isRunning = true
+        initializePlaybackHotPreferences()
 
 
         // Workaround for ForegroundServiceStartNotAllowedException
@@ -1004,13 +1138,15 @@ class MusicService :
             }
 
 
-        if (dataStore.get(PersistentQueueKey, true)) {
+        if (persistentQueueEnabled) {
             val queueFile = filesDir.resolve(PERSISTENT_QUEUE_FILE)
             if (queueFile.exists()) {
                 runCatching {
-                    queueFile.inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
+                    runBlocking(Dispatchers.IO) {
+                        queueFile.inputStream().use { fis ->
+                            ObjectInputStream(fis).use { oos ->
+                                oos.readObject() as PersistQueue
+                            }
                         }
                     }
                 }.onSuccess { queue ->
@@ -1040,9 +1176,11 @@ class MusicService :
             val automixFile = filesDir.resolve(PERSISTENT_AUTOMIX_FILE)
             if (automixFile.exists()) {
                 runCatching {
-                    automixFile.inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistQueue
+                    runBlocking(Dispatchers.IO) {
+                        automixFile.inputStream().use { fis ->
+                            ObjectInputStream(fis).use { oos ->
+                                oos.readObject() as PersistQueue
+                            }
                         }
                     }
                 }.onSuccess { queue ->
@@ -1062,9 +1200,11 @@ class MusicService :
             val playerStateFile = filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE)
             if (playerStateFile.exists()) {
                 runCatching {
-                    playerStateFile.inputStream().use { fis ->
-                        ObjectInputStream(fis).use { oos ->
-                            oos.readObject() as PersistPlayerState
+                    runBlocking(Dispatchers.IO) {
+                        playerStateFile.inputStream().use { fis ->
+                            ObjectInputStream(fis).use { oos ->
+                                oos.readObject() as PersistPlayerState
+                            }
                         }
                     }
                 }.onSuccess { playerState ->
@@ -1089,26 +1229,7 @@ class MusicService :
                 }
             }
         }
-
-
-        scope.launch {
-            while (isActive) {
-                delay(30.seconds)
-                if (dataStore.get(PersistentQueueKey, true)) {
-                    saveQueueToDisk()
-                }
-            }
-        }
-
-
-        scope.launch {
-            while (isActive) {
-                delay(10.seconds)
-                if (dataStore.get(PersistentQueueKey, true) && player.isPlaying) {
-                    saveQueueToDisk()
-                }
-            }
-        }
+        updatePersistentQueueSaveTicker()
     }
 
     private fun createExoPlayer(): ExoPlayer {
@@ -1386,6 +1507,30 @@ class MusicService :
     }
 
     private fun clearPersistedQueueFiles() {
+        queuePersistenceDirtyState = 0
+        pendingQueuePersistenceSnapshot.set(null)
+        val completion = CompletableDeferred<Unit>()
+        if (!queuePersistenceClosed && queuePersistenceRequests
+                .trySend(QueuePersistenceRequest.Clear(completion))
+                .isSuccess
+        ) {
+            val cleared = runBlocking {
+                withTimeoutOrNull(PERSISTENT_QUEUE_DRAIN_TIMEOUT_MS) {
+                    completion.await()
+                    true
+                } ?: false
+            }
+            if (!cleared) {
+                Timber.tag(TAG).w("Timed out waiting for persisted queue files to be cleared")
+            }
+            return
+        }
+        runBlocking(Dispatchers.IO) {
+            deletePersistedQueueFiles()
+        }
+    }
+
+    private fun deletePersistedQueueFiles() {
         runCatching { filesDir.resolve(PERSISTENT_QUEUE_FILE).delete() }
         runCatching { filesDir.resolve(PERSISTENT_AUTOMIX_FILE).delete() }
         runCatching { filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).delete() }
@@ -1603,8 +1748,8 @@ class MusicService :
             val initialStatus =
                 withContext(Dispatchers.IO) {
                     queue.getInitialStatus()
-                        .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterExplicit(hideExplicitTracks)
+                        .filterVideoSongs(hideVideoSongs)
                 }
             if (queue.preloadItem != null && player.playbackState == STATE_IDLE) return@launch
             if (initialStatus.title != null) {
@@ -1671,8 +1816,8 @@ class MusicService :
             try {
                 val initialStatus = withContext(Dispatchers.IO) {
                     radioQueue.getInitialStatus()
-                        .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterExplicit(hideExplicitTracks)
+                        .filterVideoSongs(hideVideoSongs)
                 }
 
                 if (initialStatus.title != null) {
@@ -1713,8 +1858,8 @@ class MusicService :
                             val radioItems = songs
                                 .filter { it.id != currentMediaId }
                                 .map { it.toMediaItem() }
-                                .filterExplicit(dataStore.get(HideExplicitKey, false))
-                                .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                                .filterExplicit(hideExplicitTracks)
+                                .filterVideoSongs(hideVideoSongs)
 
                             if (radioItems.isNotEmpty()) {
                                 val itemCount = player.mediaItemCount
@@ -1756,16 +1901,16 @@ class MusicService :
                         .onSuccess { firstResult ->
                             YouTube.next(WatchEndpoint(playlistId = firstResult.endpoint.playlistId))
                                 .onSuccess { secondResult ->
-                                    automixItems.value = secondResult.items.map { song ->
+                                    updateAutomixItems(secondResult.items.map { song ->
                                         song.toMediaItem()
-                                    }
+                                    })
                                 }
                                 .onFailure {
 
                                     if (firstResult.items.isNotEmpty()) {
-                                        automixItems.value = firstResult.items.map { song ->
+                                        updateAutomixItems(firstResult.items.map { song ->
                                             song.toMediaItem()
-                                        }
+                                        })
                                     }
                                 }
                         }
@@ -1781,7 +1926,7 @@ class MusicService :
                                         .filter { it.id != currentSong.id }
                                         .map { it.toMediaItem() }
                                     if (filteredItems.isNotEmpty()) {
-                                        automixItems.value = filteredItems
+                                        updateAutomixItems(filteredItems)
                                     }
                                 }.onFailure {
 
@@ -1791,7 +1936,7 @@ class MusicService :
                                                 .filter { it.id != currentSong.id }
                                                 .map { it.toMediaItem() }
                                             if (relatedItems.isNotEmpty()) {
-                                                automixItems.value = relatedItems
+                                                updateAutomixItems(relatedItems)
 
                                             }
                                         }
@@ -1810,10 +1955,11 @@ class MusicService :
         item: MediaItem,
         position: Int,
     ) {
-        automixItems.value =
+        updateAutomixItems(
             automixItems.value.toMutableList().apply {
                 removeAt(position)
-            }
+            },
+        )
         addToQueue(listOf(item))
     }
 
@@ -1821,15 +1967,24 @@ class MusicService :
         item: MediaItem,
         position: Int,
     ) {
-        automixItems.value =
+        updateAutomixItems(
             automixItems.value.toMutableList().apply {
                 removeAt(position)
-            }
+            },
+        )
         playNext(listOf(item))
     }
 
     fun clearAutomix() {
-        automixItems.value = emptyList()
+        updateAutomixItems(emptyList())
+    }
+
+    private fun updateAutomixItems(items: List<MediaItem>, persistChange: Boolean = true) {
+        val changed = automixItems.value != items
+        automixItems.value = items
+        if (changed && persistChange) {
+            scheduleQueueSaveDebounced(AUTOMIX_DIRTY or PLAYER_STATE_DIRTY)
+        }
     }
 
     fun stopAndClearPlayback() {
@@ -1856,7 +2011,7 @@ class MusicService :
         consecutivePlaybackErr = 0
         currentQueue = EmptyQueue
         queueTitle = null
-        clearAutomix()
+        updateAutomixItems(emptyList(), persistChange = false)
         currentMediaMetadata.value = null
 
         player.playWhenReady = false
@@ -1880,7 +2035,7 @@ class MusicService :
         }
 
 
-        if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
+        if (preventDuplicateTracksInQueue) {
             val itemIds = items.map { it.mediaId }.toSet()
             val indicesToRemove = mutableListOf<Int>()
             val currentIndex = player.currentMediaItemIndex
@@ -1960,7 +2115,7 @@ class MusicService :
 
     fun addToQueue(items: List<MediaItem>) {
 
-        if (dataStore.get(PreventDuplicateTracksInQueueKey, false)) {
+        if (preventDuplicateTracksInQueue) {
             val itemIds = items.map { it.mediaId }.toSet()
             val indicesToRemove = mutableListOf<Int>()
             val currentIndex = player.currentMediaItemIndex
@@ -2222,8 +2377,8 @@ class MusicService :
             scope.launch(SilentHandler) {
                 val mediaItems = withContext(Dispatchers.IO) {
                     currentQueue.nextPage()
-                        .filterExplicit(dataStore.get(HideExplicitKey, false))
-                        .filterVideoSongs(dataStore.get(HideVideoSongsKey, false))
+                        .filterExplicit(hideExplicitTracks)
+                        .filterVideoSongs(hideVideoSongs)
                 }
                 if (player.playbackState != STATE_IDLE && mediaItems.isNotEmpty()) {
                     player.addMediaItems(mediaItems)
@@ -2236,9 +2391,7 @@ class MusicService :
         }
 
 
-        if (dataStore.get(PersistentQueueKey, true)) {
-            saveQueueToDisk()
-        }
+        scheduleQueueSaveDebounced(PLAYER_STATE_DIRTY)
     }
 
     override fun onPlaybackStateChanged(
@@ -2253,12 +2406,6 @@ class MusicService :
                 player.play()
             }
         }
-
-
-        if (dataStore.get(PersistentQueueKey, true) && !isSilenceSkipping) {
-            saveQueueToDisk()
-        }
-
         if (playbackState == Player.STATE_READY) {
             Log.i(
                 "RemotePlayback",
@@ -2278,6 +2425,8 @@ class MusicService :
         }
 
         if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
+            stopPersistentQueueSaveTicker()
+            scheduleQueueSaveDebounced(PLAYER_STATE_DIRTY)
             scrobbleManager?.onSongStop()
             checkAndSubmitListenBrainzFinished()
         }
@@ -2312,6 +2461,11 @@ class MusicService :
 
         if (playWhenReady) {
             setupLoudnessEnhancer()
+            updatePersistentQueueSaveTicker()
+        } else {
+            stopPersistentQueueSaveTicker()
+            markQueuePersistenceDirty(PLAYER_STATE_DIRTY)
+            enqueueDirtyQueuePersistence(PLAYER_STATE_DIRTY)
         }
     }
 
@@ -2338,11 +2492,18 @@ class MusicService :
         }
         if (events.containsAny(EVENT_TIMELINE_CHANGED, EVENT_POSITION_DISCONTINUITY)) {
             currentMediaMetadata.value = player.currentMetadata
+            updatePersistentQueueSaveTicker()
+            if (events.contains(EVENT_TIMELINE_CHANGED)) {
+                scheduleQueueSaveDebounced(QUEUE_DIRTY or PLAYER_STATE_DIRTY)
+            } else {
+                scheduleQueueSaveDebounced(PLAYER_STATE_DIRTY)
+            }
         }
 
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
             updateWidgetUI(player.isPlaying)
+            updatePersistentQueueSaveTicker()
             if (player.isPlaying) {
                 startWidgetUpdates()
             } else {
@@ -2389,11 +2550,7 @@ class MusicService :
                 }
             }
         }
-
-
-        if (dataStore.get(PersistentQueueKey, true)) {
-            saveQueueToDisk()
-        }
+        scheduleQueueSaveDebounced(PLAYER_STATE_DIRTY)
         castConnectionHandler?.syncQueueModes(rebuildQueue = true)
     }
 
@@ -2404,11 +2561,7 @@ class MusicService :
                 settings[RepeatModeKey] = repeatMode
             }
         }
-
-
-        if (dataStore.get(PersistentQueueKey, true)) {
-            saveQueueToDisk()
-        }
+        scheduleQueueSaveDebounced(PLAYER_STATE_DIRTY)
         castConnectionHandler?.syncQueueModes(rebuildQueue = false)
     }
 
@@ -3367,45 +3520,127 @@ class MusicService :
         }
     }
 
-    private fun saveQueueToDisk() {
-        if (player.mediaItemCount == 0) {
-            Timber.tag(TAG).d("Skipping queue save - no media items")
+    private fun updatePersistentQueueSaveTicker() {
+        val shouldRun = persistentQueueEnabled &&
+            !queuePersistenceClosed &&
+            ::player.isInitialized &&
+            player.isPlaying &&
+            player.mediaItemCount > 0
+        if (!shouldRun) {
+            stopPersistentQueueSaveTicker()
             return
         }
+        if (queueSaveTickerJob?.isActive == true) return
 
-        try {
+        queueSaveTickerJob = scope.launch {
+            while (isActive && persistentQueueEnabled && player.isPlaying && player.mediaItemCount > 0) {
+                delay(PERSISTENT_QUEUE_PLAYING_SAVE_INTERVAL_MS)
+                if (isActive && persistentQueueEnabled && player.isPlaying && player.mediaItemCount > 0) {
+                    markQueuePersistenceDirty(PLAYER_STATE_DIRTY)
+                    enqueueDirtyQueuePersistence(PLAYER_STATE_DIRTY)
+                }
+            }
+        }
+    }
 
-            val persistQueue = currentQueue.toPersistQueue(
-                title = queueTitle,
-                items = player.mediaItems.mapNotNull { it.metadata },
-                mediaItemIndex = player.currentMediaItemIndex,
-                position = player.currentPosition
+    private fun stopPersistentQueueSaveTicker() {
+        queueSaveTickerJob?.cancel()
+        queueSaveTickerJob = null
+    }
+
+    private fun scheduleQueueSaveDebounced(dirtyState: Int) {
+        if (!persistentQueueEnabled || queuePersistenceClosed || isSilenceSkipping ||
+            !::player.isInitialized || player.mediaItemCount == 0
+        ) {
+            return
+        }
+        markQueuePersistenceDirty(dirtyState)
+        queueSaveDebounceJob?.cancel()
+        queueSaveDebounceJob = scope.launch {
+            delay(PERSISTENT_QUEUE_MUTATION_DEBOUNCE_MS)
+            queueSaveDebounceJob = null
+            enqueueDirtyQueuePersistence(ALL_PERSISTENCE_DIRTY)
+        }
+    }
+
+    private fun markQueuePersistenceDirty(dirtyState: Int) {
+        queuePersistenceDirtyState = queuePersistenceDirtyState or dirtyState
+    }
+
+    /** Captures only the requested ExoPlayer-backed fields on Main before handing immutable data to IO. */
+    private fun capturePersistentQueueSnapshot(dirtyState: Int): PersistentQueueSnapshot? {
+        if (!persistentQueueEnabled || queuePersistenceClosed ||
+            dirtyState == 0 || !::player.isInitialized || player.mediaItemCount == 0
+        ) {
+            return null
+        }
+
+        return try {
+            PersistentQueueSnapshot(
+                queue = if (dirtyState and QUEUE_DIRTY != 0) {
+                    currentQueue.toPersistQueue(
+                        title = queueTitle,
+                        items = player.mediaItems.mapNotNull { it.metadata }.toList(),
+                        mediaItemIndex = player.currentMediaItemIndex,
+                        position = player.currentPosition,
+                    )
+                } else {
+                    null
+                },
+                automix = if (dirtyState and AUTOMIX_DIRTY != 0) {
+                    PersistQueue(
+                        title = "automix",
+                        items = automixItems.value.mapNotNull { it.metadata }.toList(),
+                        mediaItemIndex = 0,
+                        position = 0,
+                    )
+                } else {
+                    null
+                },
+                playerState = if (dirtyState and PLAYER_STATE_DIRTY != 0) {
+                    PersistPlayerState(
+                        playWhenReady = player.playWhenReady,
+                        repeatMode = player.repeatMode,
+                        shuffleModeEnabled = player.shuffleModeEnabled,
+                        // Persist the stable gain. player.volume may contain a transient mute/duck/fade.
+                        volume = playerVolume.value.audibleVolumeOrDefault(),
+                        currentPosition = player.currentPosition,
+                        currentMediaItemIndex = player.currentMediaItemIndex,
+                        playbackState = player.playbackState,
+                    )
+                } else {
+                    null
+                },
             )
+        } catch (error: Exception) {
+            Timber.tag(TAG).e(error, "Error capturing queue snapshot")
+            reportException(error)
+            null
+        }
+    }
 
-            val persistAutomix =
-                PersistQueue(
-                    title = "automix",
-                    items = automixItems.value.mapNotNull { it.metadata },
-                    mediaItemIndex = 0,
-                    position = 0,
-                )
+    private fun enqueueDirtyQueuePersistence(requestedDirtyState: Int) {
+        val dirtyState = queuePersistenceDirtyState and requestedDirtyState
+        val snapshot = capturePersistentQueueSnapshot(dirtyState) ?: return
+        queuePersistenceDirtyState = queuePersistenceDirtyState and dirtyState.inv()
 
+        while (true) {
+            val pendingSnapshot = pendingQueuePersistenceSnapshot.get()
+            val mergedSnapshot = pendingSnapshot?.mergeWith(snapshot) ?: snapshot
+            if (pendingQueuePersistenceSnapshot.compareAndSet(pendingSnapshot, mergedSnapshot)) break
+        }
 
-            val persistPlayerState = PersistPlayerState(
-                playWhenReady = player.playWhenReady,
-                repeatMode = player.repeatMode,
-                shuffleModeEnabled = player.shuffleModeEnabled,
-                // Persist the stable gain. player.volume may contain a transient mute/duck/fade.
-                volume = playerVolume.value.audibleVolumeOrDefault(),
-                currentPosition = player.currentPosition,
-                currentMediaItemIndex = player.currentMediaItemIndex,
-                playbackState = player.playbackState
-            )
+        if (queuePersistenceRequests.trySend(QueuePersistenceRequest.Save).isFailure) {
+            Timber.tag(TAG).w("Skipping queue save because persistence writer is closed")
+        }
+    }
 
+    private fun writeQueueSnapshot(snapshot: PersistentQueueSnapshot) {
+        snapshot.queue?.let { queue ->
             runCatching {
                 filesDir.resolve(PERSISTENT_QUEUE_FILE).outputStream().use { fos ->
                     ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistQueue)
+                        oos.writeObject(queue)
                     }
                 }
                 Timber.tag(TAG).d("Queue saved successfully")
@@ -3413,11 +3648,13 @@ class MusicService :
                 Timber.tag(TAG).e(it, "Failed to save queue")
                 reportException(it)
             }
+        }
 
+        snapshot.automix?.let { automix ->
             runCatching {
                 filesDir.resolve(PERSISTENT_AUTOMIX_FILE).outputStream().use { fos ->
                     ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistAutomix)
+                        oos.writeObject(automix)
                     }
                 }
                 Timber.tag(TAG).d("Automix saved successfully")
@@ -3425,11 +3662,13 @@ class MusicService :
                 Timber.tag(TAG).e(it, "Failed to save automix")
                 reportException(it)
             }
+        }
 
+        snapshot.playerState?.let { playerState ->
             runCatching {
                 filesDir.resolve(PERSISTENT_PLAYER_STATE_FILE).outputStream().use { fos ->
                     ObjectOutputStream(fos).use { oos ->
-                        oos.writeObject(persistPlayerState)
+                        oos.writeObject(playerState)
                     }
                 }
                 Timber.tag(TAG).d("Player state saved successfully")
@@ -3437,10 +3676,22 @@ class MusicService :
                 Timber.tag(TAG).e(it, "Failed to save player state")
                 reportException(it)
             }
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Error during queue save operation")
-            reportException(e)
         }
+    }
+
+    private fun finishQueuePersistence() {
+        if (!queuePersistenceFinishing.compareAndSet(false, true)) return
+        stopPersistentQueueSaveTicker()
+        queueSaveDebounceJob?.cancel()
+        queueSaveDebounceJob = null
+
+        if (::player.isInitialized && player.mediaItemCount > 0) {
+            markQueuePersistenceDirty(ALL_PERSISTENCE_DIRTY)
+            enqueueDirtyQueuePersistence(ALL_PERSISTENCE_DIRTY)
+        }
+
+        queuePersistenceClosed = true
+        queuePersistenceRequests.close()
     }
 
     override fun onDestroy() {
@@ -3449,15 +3700,13 @@ class MusicService :
         playerInitialized.value = false
         guardedMediaNotificationProvider?.release()
         guardedMediaNotificationProvider = null
+        finishQueuePersistence()
         scope.cancel()
 
         cancelAudioFocusTransitions()
         audioManager.unregisterAudioPlaybackCallback(audioPlaybackCallback)
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         castConnectionHandler?.release()
-        if (dataStore.get(PersistentQueueKey, true)) {
-            saveQueueToDisk()
-        }
         connectivityObserver.unregister()
         abandonAudioFocus()
         releaseLoudnessEnhancer()
@@ -3482,9 +3731,7 @@ class MusicService :
 
         if (taskRemovalShutdownRequested) return
 
-        if (dataStore.get(PersistentQueueKey, true) && ::player.isInitialized) {
-            saveQueueToDisk()
-        }
+        finishQueuePersistence()
 
         taskRemovalShutdownRequested = true
         super.onTaskRemoved(rootIntent)

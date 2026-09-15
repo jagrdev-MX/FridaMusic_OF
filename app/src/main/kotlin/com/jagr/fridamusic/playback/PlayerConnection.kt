@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,6 +16,7 @@ import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
 import androidx.media3.common.Player.REPEAT_MODE_OFF
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
@@ -166,6 +168,7 @@ class PlayerConnection(
     /** Playback clock for consumers that need sub-second synchronization, such as karaoke lyrics. */
     val playbackPositionMs = MutableStateFlow(player.currentPosition)
     val playbackDurationMs = MutableStateFlow(player.validDurationMs())
+    val liveAudioFormat = MutableStateFlow<Format?>(player.audioFormat)
     val isMuted = service.isMuted
 
     val waitingForNetworkConnection = service.waitingForNetworkConnection
@@ -243,6 +246,7 @@ class PlayerConnection(
         currentMediaItemIndex.value = newPlayer.currentMediaItemIndex
         shuffleModeEnabled.value = newPlayer.shuffleModeEnabled
         repeatMode.value = newPlayer.repeatMode
+        liveAudioFormat.value = (newPlayer as? ExoPlayer)?.audioFormat
         
         Timber.tag(TAG).d("Attached to new player instance: $newPlayer")
         
@@ -512,6 +516,9 @@ class PlayerConnection(
     override fun onPlaybackStateChanged(state: Int) {
         playbackState.value = state
         updatePlaybackClock(player)
+        if (state == Player.STATE_READY) {
+            liveAudioFormat.value = player.audioFormat
+        }
         error.value = player.playerError
     }
 
@@ -527,6 +534,7 @@ class PlayerConnection(
         reason: Int,
     ) {
         mediaMetadata.value = mediaItem?.metadata
+        liveAudioFormat.value = null
         updatePlaybackClock(player)
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
@@ -543,6 +551,10 @@ class PlayerConnection(
         currentMediaItemIndex.value = player.currentMediaItemIndex
         currentWindowIndex.value = player.getCurrentQueueIndex()
         updateCanSkipPreviousAndNext()
+    }
+
+    override fun onTracksChanged(tracks: Tracks) {
+        liveAudioFormat.value = player.audioFormat
     }
 
     private fun updatePlaybackClock(currentPlayer: Player) {

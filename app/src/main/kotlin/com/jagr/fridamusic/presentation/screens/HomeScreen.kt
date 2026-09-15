@@ -55,11 +55,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -265,15 +267,17 @@ fun HomeScreen(
 
     DisposableEffect(interstitialAdManager, supportBillingManager) {
         MemoryDiagnostics.log("Home entered")
-        supportBillingManager.start()
         onDispose {
             interstitialAdManager.release()
             supportBillingManager.close()
         }
     }
 
-    LaunchedEffect(showSupportDialog, interstitialAdManager) {
-        if (showSupportDialog) interstitialAdManager.load()
+    LaunchedEffect(showSupportDialog, interstitialAdManager, supportBillingManager) {
+        if (showSupportDialog) {
+            supportBillingManager.start()
+            interstitialAdManager.load()
+        }
     }
 
     LaunchedEffect(isLoading, hasGeneralContent) {
@@ -2151,7 +2155,13 @@ private fun HomeDailyDiscoverCard(
     primaryAction: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val imageUrl = item.thumbnail.resize(width = if (isLowEnd) 720 else 1200)
+    val density = LocalDensity.current
+    val thumbnailWidthPx = remember(cardWidth, density.density, isLowEnd) {
+        with(density) { cardWidth.roundToPx() }
+            .coerceAtMost(if (isLowEnd) 720 else 1024)
+            .coerceAtLeast(1)
+    }
+    val imageUrl = item.thumbnail.resize(width = thumbnailWidthPx)
     val artworkPainter = rememberAsyncImagePainter(model = imageUrl)
     val artists = item.artists.joinToString(", ") { artist -> artist.name }
     val bottomCaption = artists.takeIf(String::isNotBlank)
@@ -2200,20 +2210,33 @@ private fun HomeDailyDiscoverCard(
         )
 
         if (!isLowEnd) {
-            Image(
-                painter = artworkPainter,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        scaleX = artworkScale
-                        scaleY = artworkScale
-                        translationY = artworkTranslationY
-                    }
-                    .dailyDiscoverEdgeFade(isTop = true)
-                    .blur(12.dp),
-            )
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(DAILY_DISCOVER_TOP_BLUR_FRACTION)
+                    .clipToBounds(),
+            ) {
+                Image(
+                    painter = artworkPainter,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            scaleX = artworkScale
+                            scaleY = artworkScale
+                            translationY = artworkTranslationY
+                            transformOrigin = TransformOrigin(
+                                pivotFractionX = 0.5f,
+                                pivotFractionY = 0.5f / DAILY_DISCOVER_TOP_BLUR_FRACTION,
+                            )
+                        }
+                        .dailyDiscoverEdgeFade(isTop = true)
+                        .blur(12.dp),
+                )
+            }
         }
 
         Text(
@@ -2235,20 +2258,34 @@ private fun HomeDailyDiscoverCard(
         )
 
         if (!isLowEnd) {
-            Image(
-                painter = artworkPainter,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer {
-                        scaleX = artworkScale
-                        scaleY = artworkScale
-                        translationY = artworkTranslationY
-                    }
-                    .dailyDiscoverEdgeFade(isTop = false)
-                    .blur(12.dp),
-            )
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(DAILY_DISCOVER_BOTTOM_BLUR_FRACTION)
+                    .clipToBounds(),
+            ) {
+                Image(
+                    painter = artworkPainter,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.BottomCenter,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            scaleX = artworkScale
+                            scaleY = artworkScale
+                            translationY = artworkTranslationY
+                            transformOrigin = TransformOrigin(
+                                pivotFractionX = 0.5f,
+                                pivotFractionY = 1f -
+                                    (0.5f / DAILY_DISCOVER_BOTTOM_BLUR_FRACTION),
+                            )
+                        }
+                        .dailyDiscoverEdgeFade(isTop = false)
+                        .blur(12.dp),
+                )
+            }
         }
 
         if (bottomCaption != null) {
@@ -2282,6 +2319,9 @@ private fun HomeDailyDiscoverCard(
     }
 }
 
+private const val DAILY_DISCOVER_TOP_BLUR_FRACTION = 0.30f
+private const val DAILY_DISCOVER_BOTTOM_BLUR_FRACTION = 0.34f
+
 private fun Modifier.dailyDiscoverEdgeFade(isTop: Boolean): Modifier =
     graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent {
@@ -2290,15 +2330,14 @@ private fun Modifier.dailyDiscoverEdgeFade(isTop: Boolean): Modifier =
                 brush = if (isTop) {
                     Brush.verticalGradient(
                         0f to Color.White,
-                        0.15f to Color.White.copy(alpha = 0.90f),
-                        0.30f to Color.Transparent,
+                        0.5f to Color.White.copy(alpha = 0.90f),
                         1f to Color.Transparent,
                     )
                 } else {
                     Brush.verticalGradient(
                         0f to Color.Transparent,
-                        0.70f to Color.Transparent,
-                        0.85f to Color.White.copy(alpha = 0.90f),
+                        0.12f to Color.Transparent,
+                        0.56f to Color.White.copy(alpha = 0.90f),
                         1f to Color.White,
                     )
                 },
