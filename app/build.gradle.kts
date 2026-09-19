@@ -57,8 +57,8 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "2.0.0.20"
+        versionCode = 26
+        versionName = "2.1.1.20"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

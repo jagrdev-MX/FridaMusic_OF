@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
@@ -46,6 +47,7 @@ import kotlin.math.roundToInt
 fun InteractivePlayer(
     playerConnection: PlayerConnection,
     bottomBarHeightPx: Int,
+    onMiniPlayerHeightChanged: (Int) -> Unit = {},
     routeExpanded: Boolean,
     playlistsViewModel: PlaylistsViewModel?,
     onExpanded: () -> Unit,
@@ -65,10 +67,21 @@ fun InteractivePlayer(
     val currentOnCollapseStarted by rememberUpdatedState(onCollapseStarted)
     val currentOnCollapsed by rememberUpdatedState(onCollapsed)
     val currentOnDismissed by rememberUpdatedState(onDismissed)
+    val currentOnMiniPlayerHeightChanged by rememberUpdatedState(onMiniPlayerHeightChanged)
+
+    DisposableEffect(Unit) {
+        onDispose { currentOnMiniPlayerHeightChanged(0) }
+    }
 
     var containerHeightPx by remember { mutableFloatStateOf(0f) }
     var miniPlayerHeightPx by remember { mutableFloatStateOf(0f) }
     var metadataNavigationPending by remember { mutableStateOf(false) }
+    val miniPlayerVisible = !state.isExpanded && !state.isDismissed
+    LaunchedEffect(miniPlayerVisible, miniPlayerHeightPx) {
+        currentOnMiniPlayerHeightChanged(
+            if (miniPlayerVisible) miniPlayerHeightPx.roundToInt() else 0,
+        )
+    }
     LaunchedEffect(containerHeightPx, miniPlayerHeightPx, bottomBarHeightPx) {
         if (containerHeightPx > 0f && miniPlayerHeightPx > 0f && bottomBarHeightPx > 0) {
             state.updateOffsets(
@@ -149,7 +162,9 @@ fun InteractivePlayer(
                 playerConnection = playerConnection,
                 onClick = { state.expand { settle(PlayerSheetTarget.Expanded) } },
                 modifier = Modifier
-                    .onSizeChanged { miniPlayerHeightPx = it.height.toFloat() }
+                    .onSizeChanged {
+                        miniPlayerHeightPx = it.height.toFloat()
+                    }
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
                     .padding(bottom = 4.dp)

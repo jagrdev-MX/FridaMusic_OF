@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.view.WindowManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.NotificationsNone
@@ -94,6 +96,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.compose.rememberAsyncImagePainter
 import com.jagr.fridamusic.R
+import com.jagr.fridamusic.ads.FixedBannerAd
+import com.jagr.fridamusic.ads.FixedBannerPlacement
 import com.jagr.fridamusic.ads.InterstitialAdManager
 import com.jagr.fridamusic.db.entities.Album as LocalAlbum
 import com.jagr.fridamusic.db.entities.Artist as LocalArtist
@@ -156,6 +160,7 @@ fun HomeScreen(
     onSettingsClick: () -> Unit = {},
     onRecapClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
+    onHistoryClick: () -> Unit = {},
     onStatsClick: () -> Unit = {},
     onEqualizerClick: () -> Unit = {},
     onAboutClick: () -> Unit = {},
@@ -163,6 +168,7 @@ fun HomeScreen(
     onAlbumClick: (String) -> Unit = {},
     onArtistClick: (String) -> Unit = {},
     onSearchClick: (String) -> Unit = {},
+    bottomOverlayHeight: Dp = 0.dp,
     reselectToken: Int = 0,
     viewModel: HomeViewModel = hiltViewModel(),
     notificationHistoryViewModel: NotificationHistoryViewModel = hiltViewModel(),
@@ -244,6 +250,7 @@ fun HomeScreen(
     var showSupportDialog by remember { mutableStateOf(false) }
     var showDrawerOverlay by remember { mutableStateOf(false) }
     var pendingDrawerAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var drawerClosing by remember { mutableStateOf(false) }
     var menuContext by remember { mutableStateOf<SongActionContext?>(null) }
     var remoteMenuItem by remember { mutableStateOf<YTItem?>(null) }
     val context = LocalContext.current
@@ -259,6 +266,7 @@ fun HomeScreen(
     var handledReselectToken by remember { mutableIntStateOf(reselectToken) }
     val quickReturnState = rememberTopAppBarState()
     var quickReturnHeaderHeightPx by remember { mutableIntStateOf(0) }
+    var fixedBannerHeight by remember { mutableStateOf(0.dp) }
     val quickReturnHeaderHeight = with(LocalDensity.current) { quickReturnHeaderHeightPx.toDp() }
     val quickReturnConnection = rememberQuickReturnConnection(quickReturnState)
     val quickReturnTouchBlocker = remember { MutableInteractionSource() }
@@ -352,7 +360,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         top = quickReturnHeaderHeight,
-                        bottom = 140.dp,
+                        bottom = 140.dp + fixedBannerHeight,
                     ),
                 ) {
 
@@ -701,13 +709,36 @@ fun HomeScreen(
                     },
                 )
             }
+
+            if (bottomOverlayHeight > 0.dp) {
+                FixedBannerAd(
+                    placement = FixedBannerPlacement.HOME_FIXED,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = bottomOverlayHeight)
+                        .zIndex(1f),
+                    onVisibleHeightChanged = { height -> fixedBannerHeight = height },
+                )
+            }
         }
     }
 
     val closeDrawer = { onClosed: () -> Unit ->
-        if (pendingDrawerAction == null) {
+        if (!drawerClosing) {
+            drawerClosing = true
             pendingDrawerAction = onClosed
-            drawerScope.launch { drawerState.close() }
+            drawerScope.launch {
+                try {
+                    drawerState.close()
+                } finally {
+                    showDrawerOverlay = false
+                }
+                withFrameNanos { }
+                val action = pendingDrawerAction
+                pendingDrawerAction = null
+                drawerClosing = false
+                action?.invoke()
+            }
         }
     }
 
@@ -723,6 +754,7 @@ fun HomeScreen(
 
         Dialog(
             onDismissRequest = {
+                pendingDrawerAction = null
                 closeDrawer {}
             },
             properties = DialogProperties(
@@ -739,25 +771,26 @@ fun HomeScreen(
                     setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
                     clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                     setDimAmount(0f)
+                    navigationBarColor = AndroidColor.TRANSPARENT
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        isNavigationBarContrastEnforced = false
+                    }
                 }
             }
             LaunchedEffect(drawerState) {
                 var drawerBecameActive = false
                 snapshotFlow {
-                    Triple(
+                    Pair(
                         drawerState.currentValue,
                         drawerState.targetValue,
-                        pendingDrawerAction,
                     )
-                }.collect { (currentValue, targetValue, pendingAction) ->
+                }.collect { (currentValue, targetValue) ->
                     val isFullyClosed = currentValue == DrawerValue.Closed &&
                         targetValue == DrawerValue.Closed
                     if (!isFullyClosed) {
                         drawerBecameActive = true
-                    } else if (drawerBecameActive || pendingAction != null) {
-                        pendingDrawerAction = null
+                    } else if (drawerBecameActive) {
                         showDrawerOverlay = false
-                        pendingAction?.invoke()
                     }
                 }
             }
@@ -768,10 +801,10 @@ fun HomeScreen(
                 drawerState = drawerState,
                 scrimColor = DrawerDefaults.scrimColor,
                 drawerContent = {
-                    BoxWithConstraints {
-                        val drawerWidth = (maxWidth * 0.8f).coerceAtMost(420.dp)
-                        HomeNavigationDrawer(
-                            modifier = Modifier.width(drawerWidth),
+                    HomeNavigationDrawer(
+                            modifier = Modifier
+                                .fillMaxWidth(0.8f)
+                                .widthIn(max = 420.dp),
                             currentMediaMetadata = currentMediaMetadata,
                             currentArtistImageUrl = currentArtistImageUrl,
                             accountName = accountName,
@@ -830,6 +863,11 @@ fun HomeScreen(
                                     onNotificationsClick()
                                 }
                             },
+                            onHistoryClick = {
+                                closeDrawer {
+                                    onHistoryClick()
+                                }
+                            },
                             onStatsClick = {
                                 closeDrawer {
                                     onStatsClick()
@@ -851,10 +889,9 @@ fun HomeScreen(
                                 }
                             },
                         )
-                    }
                 },
             ) {
-                Box(modifier = Modifier.fillMaxSize())
+                Spacer(modifier = Modifier.fillMaxSize())
             }
         }
     }
@@ -912,6 +949,7 @@ private fun HomeNavigationDrawer(
     onArtistClick: () -> Unit,
     onRecapClick: () -> Unit,
     onNotificationsClick: () -> Unit,
+    onHistoryClick: () -> Unit,
     onStatsClick: () -> Unit,
     onEqualizerClick: () -> Unit,
     onAboutClick: () -> Unit,
@@ -933,13 +971,10 @@ private fun HomeNavigationDrawer(
         drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         windowInsets = WindowInsets(0, 0, 0, 0),
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Top,
-            ) {
-                item {
-                    Column {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Top,
+        ) {
                     DrawerContextHeader(
                         currentMediaMetadata = currentMediaMetadata,
                         currentArtistImageUrl = currentArtistImageUrl,
@@ -961,7 +996,7 @@ private fun HomeNavigationDrawer(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
                         label = { DrawerItemLabel(stringResource(R.string.notifications)) },
@@ -975,7 +1010,20 @@ private fun HomeNavigationDrawer(
                             )
                         },
                         badge = { DrawerCountBadge(unreadNotificationCount) },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    NavigationDrawerItem(
+                        label = { DrawerItemLabel(stringResource(R.string.history)) },
+                        selected = false,
+                        onClick = onHistoryClick,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Rounded.History,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     CastDrawerItem(
                         playerConnection = playerConnection,
@@ -991,7 +1039,7 @@ private fun HomeNavigationDrawer(
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp),
                         )
                     }
                     NavigationDrawerItem(
@@ -1006,7 +1054,7 @@ private fun HomeNavigationDrawer(
                             )
                         },
                         badge = { DrawerCountBadge(unreadRecapCount) },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
                         label = { DrawerItemLabel(stringResource(R.string.stats)) },
@@ -1019,7 +1067,7 @@ private fun HomeNavigationDrawer(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
                         label = { DrawerItemLabel(stringResource(R.string.equalizer)) },
@@ -1032,7 +1080,7 @@ private fun HomeNavigationDrawer(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
                     NavigationDrawerItem(
                         label = { DrawerItemLabel(stringResource(R.string.about)) },
@@ -1045,11 +1093,8 @@ private fun HomeNavigationDrawer(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                     )
-                }
-                }
-                item {
                     DrawerBrand(
                         onLogoClick = {
                             logoTapCount += 1
@@ -1068,18 +1113,15 @@ private fun HomeNavigationDrawer(
                         },
                         modifier = Modifier.padding(
                             start = 24.dp,
-                            top = 60.dp,
+                            top = 45.dp,
                             end = 24.dp,
-                            bottom = 32.dp,
                         ),
                     )
-                }
-            }
             SnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
             )
         }
     }
@@ -1113,7 +1155,7 @@ private fun DrawerBrand(
                 .clip(CircleShape)
                 .clickable(onClick = onLogoClick),
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = "FridaMusic",
             style = MaterialTheme.typography.titleLarge,

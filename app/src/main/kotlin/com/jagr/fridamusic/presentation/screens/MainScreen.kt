@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -116,6 +117,10 @@ fun MainScreen(
     val accountImageUrl by homeViewModel.accountImageUrl.collectAsStateWithLifecycle()
     val fabScope = rememberCoroutineScope()
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    var miniPlayerHeightPx by remember { mutableIntStateOf(0) }
+    val bottomOverlayHeight = with(LocalDensity.current) {
+        (bottomBarHeightPx + miniPlayerHeightPx).toDp()
+    }
     var shuffleJob by remember { mutableStateOf<Job?>(null) }
     val playRemoteItem: (YTItem) -> Unit = { item ->
         if (playerConnection?.playHomeItem(item) != true) {
@@ -207,6 +212,7 @@ fun MainScreen(
                     onSettingsClick = { navController.navigate("settings") },
                     onRecapClick = { navController.navigate("recap") },
                     onNotificationsClick = { navController.navigate("notifications") },
+                    onHistoryClick = { navController.navigate("history") },
                     onStatsClick = { navController.navigate("stats") },
                     onEqualizerClick = { navController.navigate("equalizer") },
                     onAboutClick = { navController.navigate("about") },
@@ -220,6 +226,7 @@ fun MainScreen(
                         navController.navigate("artist/${Uri.encode(id)}")
                     },
                     onSearchClick = navController::navigateToSearchResult,
+                    bottomOverlayHeight = bottomOverlayHeight,
                     reselectToken = homeReselectToken,
                     viewModel = homeViewModel,
                 )
@@ -709,6 +716,7 @@ fun MainScreen(
             InteractivePlayer(
                 playerConnection = playerConnection,
                 bottomBarHeightPx = bottomBarHeightPx,
+                onMiniPlayerHeightChanged = { miniPlayerHeightPx = it },
                 routeExpanded = currentRoute == "now_playing",
                 playlistsViewModel = playerPlaylistsViewModel,
                 onExpanded = {

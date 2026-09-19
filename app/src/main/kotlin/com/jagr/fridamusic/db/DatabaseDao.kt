@@ -1745,6 +1745,12 @@ interface DatabaseDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(event: Event)
 
+    @Query(
+        "UPDATE event SET playTime = MAX(playTime, :playTime) " +
+            "WHERE songId = :songId AND timestamp = :timestamp",
+    )
+    fun updateEventPlayTime(songId: String, timestamp: LocalDateTime, playTime: Long)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(map: RelatedSongMap)
 
