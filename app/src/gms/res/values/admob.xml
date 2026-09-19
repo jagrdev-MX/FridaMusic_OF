@@ -13,8 +13,4 @@
         name="admob_song_sync_interstitial_ad_unit_id"
         translatable="false">ca-app-pub-4175362947670909/8324263401</string>
 
-    <string
-        name="admob_startup_app_open_ad_unit_id"
-        translatable="false">ca-app-pub-4175362947670909/4959591249</string>
-
 </resources>

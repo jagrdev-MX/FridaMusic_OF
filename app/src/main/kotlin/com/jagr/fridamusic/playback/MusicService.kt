@@ -73,6 +73,7 @@ import com.google.common.util.concurrent.MoreExecutors
 import com.music.innertube.YouTube
 import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
+import com.jagr.fridamusic.BuildConfig
 import com.jagr.fridamusic.MainActivity
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.AudioNormalizationKey
@@ -151,6 +152,7 @@ import com.jagr.fridamusic.extensions.toMediaItem
 import com.jagr.fridamusic.extensions.toPersistQueue
 import com.jagr.fridamusic.extensions.toQueue
 import com.jagr.fridamusic.lyrics.LyricsHelper
+import com.jagr.fridamusic.models.MediaMetadata
 import com.jagr.fridamusic.models.PersistPlayerState
 import com.jagr.fridamusic.models.PersistQueue
 import com.jagr.fridamusic.models.toMediaMetadata
@@ -174,7 +176,6 @@ import com.jagr.fridamusic.widget.MusicWidgetReceiver
 import dagger.hilt.android.AndroidEntryPoint
 import com.jagr.fridamusic.utils.isLocalMediaId
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -202,7 +203,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import com.jagr.fridamusic.utils.ForegroundServiceLaunch
@@ -210,7 +210,9 @@ import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
@@ -219,7 +221,6 @@ private const val INSTANT_SILENCE_SKIP_STEP_MS = 15_000L
 private const val INSTANT_SILENCE_SKIP_SETTLE_MS = 350L
 private const val PERSISTENT_QUEUE_PLAYING_SAVE_INTERVAL_MS = 10_000L
 private const val PERSISTENT_QUEUE_MUTATION_DEBOUNCE_MS = 750L
-private const val PERSISTENT_QUEUE_DRAIN_TIMEOUT_MS = 3_000L
 private const val PLAYER_STATE_DIRTY = 1
 private const val QUEUE_DIRTY = 1 shl 1
 private const val AUTOMIX_DIRTY = 1 shl 2
@@ -233,11 +234,13 @@ private data class PlaybackHotPreferences(
 )
 
 private data class PersistentQueueSnapshot(
+    val generation: Long,
     val queue: PersistQueue? = null,
     val automix: PersistQueue? = null,
     val playerState: PersistPlayerState? = null,
 ) {
     fun mergeWith(newer: PersistentQueueSnapshot) = PersistentQueueSnapshot(
+        generation = newer.generation,
         queue = newer.queue ?: queue,
         automix = newer.automix ?: automix,
         playerState = newer.playerState ?: playerState,
@@ -245,8 +248,10 @@ private data class PersistentQueueSnapshot(
 }
 
 private sealed interface QueuePersistenceRequest {
-    data object Save : QueuePersistenceRequest
-    data class Clear(val completion: CompletableDeferred<Unit>) : QueuePersistenceRequest
+    val generation: Long
+
+    data class Save(override val generation: Long) : QueuePersistenceRequest
+    data class Clear(override val generation: Long) : QueuePersistenceRequest
 }
 
 private data class AudioOutputRouteKey(
@@ -396,6 +401,11 @@ class MusicService :
     private var crossfadeDuration = 5000f
     private var crossfadeGapless = true
     private var crossfadeTriggerJob: Job? = null
+    private var historyThresholdMediaId: String? = null
+    private var historyThresholdMetadata: MediaMetadata? = null
+    private var historyThresholdRecorded = false
+    private val thresholdHistoryEventTimestamps =
+        ConcurrentHashMap<String, ConcurrentLinkedQueue<LocalDateTime>>()
 
     private val secondaryPlayerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
@@ -410,25 +420,45 @@ class MusicService :
     private val queuePersistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val queuePersistenceRequests = Channel<QueuePersistenceRequest>(Channel.CONFLATED)
     private val pendingQueuePersistenceSnapshot = AtomicReference<PersistentQueueSnapshot?>(null)
+    private val queuePersistenceGeneration = AtomicLong(0L)
+    private val queuePersistenceClearedGeneration = AtomicLong(0L)
     private val queuePersistenceWriterJob = queuePersistenceScope.launch {
         for (request in queuePersistenceRequests) {
-            when (request) {
-                QueuePersistenceRequest.Save -> {
-                    while (true) {
-                        val snapshot = pendingQueuePersistenceSnapshot.getAndSet(null) ?: break
-                        writeQueueSnapshot(snapshot)
-                    }
-                }
-                is QueuePersistenceRequest.Clear -> {
-                    pendingQueuePersistenceSnapshot.set(null)
+            var signaledGeneration = request.generation
+            while (true) {
+                val currentGeneration = maxOf(signaledGeneration, queuePersistenceGeneration.get())
+                if (queuePersistenceClearedGeneration.get() < currentGeneration) {
                     deletePersistedQueueFiles()
-                    request.completion.complete(Unit)
+                    queuePersistenceClearedGeneration.set(currentGeneration)
                 }
+
+                val snapshot = pendingQueuePersistenceSnapshot.getAndSet(null) ?: break
+                val latestGenerationBeforeWrite = queuePersistenceGeneration.get()
+                if (snapshot.generation < latestGenerationBeforeWrite) continue
+
+                if (queuePersistenceClearedGeneration.get() < snapshot.generation) {
+                    deletePersistedQueueFiles()
+                    queuePersistenceClearedGeneration.set(snapshot.generation)
+                }
+                if (snapshot.generation != queuePersistenceGeneration.get()) continue
+
+                writeQueueSnapshot(snapshot)
+                val latestGenerationAfterWrite = queuePersistenceGeneration.get()
+                if (snapshot.generation < latestGenerationAfterWrite) {
+                    deletePersistedQueueFiles()
+                    queuePersistenceClearedGeneration.set(latestGenerationAfterWrite)
+                }
+                signaledGeneration = latestGenerationAfterWrite
             }
         }
     }.also { writerJob ->
         val persistenceScope = queuePersistenceScope
         writerJob.invokeOnCompletion { error ->
+            val finalGeneration = queuePersistenceGeneration.get()
+            if (queuePersistenceClearedGeneration.get() < finalGeneration) {
+                deletePersistedQueueFiles()
+                queuePersistenceClearedGeneration.set(finalGeneration)
+            }
             if (error == null) {
                 Timber.tag(TAG).d("Persistence writer drained and stopped")
             } else {
@@ -1509,25 +1539,15 @@ class MusicService :
     private fun clearPersistedQueueFiles() {
         queuePersistenceDirtyState = 0
         pendingQueuePersistenceSnapshot.set(null)
-        val completion = CompletableDeferred<Unit>()
-        if (!queuePersistenceClosed && queuePersistenceRequests
-                .trySend(QueuePersistenceRequest.Clear(completion))
-                .isSuccess
+        val clearGeneration = queuePersistenceGeneration.incrementAndGet()
+        if (!queuePersistenceClosed &&
+            queuePersistenceRequests.trySend(QueuePersistenceRequest.Clear(clearGeneration)).isSuccess
         ) {
-            val cleared = runBlocking {
-                withTimeoutOrNull(PERSISTENT_QUEUE_DRAIN_TIMEOUT_MS) {
-                    completion.await()
-                    true
-                } ?: false
-            }
-            if (!cleared) {
-                Timber.tag(TAG).w("Timed out waiting for persisted queue files to be cleared")
-            }
             return
         }
-        runBlocking(Dispatchers.IO) {
-            deletePersistedQueueFiles()
-        }
+        // finishQueuePersistence() may already have closed the channel. Its writer completion
+        // callback observes the generation after draining older writes, preserving CLEAR-after-WRITE.
+        Timber.tag(TAG).d("Persisted queue clear deferred until the writer finishes")
     }
 
     private fun deletePersistedQueueFiles() {
@@ -2319,6 +2339,7 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
+        updateHistoryThresholdTracking(mediaItem)
         activeQualityMediaId = mediaItem?.mediaId
         activeRequestedQuality = audioQuality
 
@@ -2492,6 +2513,9 @@ class MusicService :
         }
         if (events.containsAny(EVENT_TIMELINE_CHANGED, EVENT_POSITION_DISCONTINUITY)) {
             currentMediaMetadata.value = player.currentMetadata
+            if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
+                updateHistoryThresholdTracking(player.currentMediaItem)
+            }
             updatePersistentQueueSaveTicker()
             if (events.contains(EVENT_TIMELINE_CHANGED)) {
                 scheduleQueueSaveDebounced(QUEUE_DIRTY or PLAYER_STATE_DIRTY)
@@ -2502,6 +2526,7 @@ class MusicService :
 
 
         if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
+            updateHistoryThresholdTracking(player.currentMediaItem)
             updateWidgetUI(player.isPlaying)
             updatePersistentQueueSaveTicker()
             if (player.isPlaying) {
@@ -3480,27 +3505,136 @@ class MusicService :
                 ).build()
         }
 
+    private fun historyDurationMs(): Long =
+        (dataStore[HistoryDuration]?.times(1000f) ?: 30000f).toLong().coerceAtLeast(0L)
+
+    private fun updateHistoryThresholdTracking(
+        mediaItem: MediaItem?,
+        positionMs: Long = player.currentPosition,
+    ) {
+        val mediaId = mediaItem?.mediaId
+        if (historyThresholdMediaId != mediaId) {
+            historyThresholdMediaId = mediaId
+            historyThresholdMetadata = mediaItem?.metadata
+            historyThresholdRecorded = false
+        }
+
+        if (mediaId == null || historyThresholdRecorded ||
+            dataStore.get(PauseListenHistoryKey, false)
+        ) {
+            return
+        }
+
+        if (!player.isPlaying) return
+
+        historyThresholdRecorded = true
+        persistThresholdHistoryEvent(
+            mediaId = mediaId,
+            mediaMetadata = historyThresholdMetadata,
+            playTimeMs = positionMs.coerceAtLeast(0L),
+        )
+    }
+
+    private fun persistThresholdHistoryEvent(
+        mediaId: String,
+        mediaMetadata: MediaMetadata?,
+        playTimeMs: Long,
+    ) {
+        val timestamp = LocalDateTime.now()
+        val pendingEvents = thresholdHistoryEventTimestamps
+            .computeIfAbsent(mediaId) { ConcurrentLinkedQueue() }
+        pendingEvents.add(timestamp)
+        database.query {
+            try {
+                if (getSongByIdBlocking(mediaId) == null) {
+                    if (mediaMetadata == null) {
+                        pendingEvents.remove(timestamp)
+                        if (pendingEvents.isEmpty()) {
+                            thresholdHistoryEventTimestamps.remove(mediaId, pendingEvents)
+                        }
+                        logHistoryInsertFailure(mediaId, "MissingMediaMetadata")
+                        return@query
+                    }
+                    insert(mediaMetadata)
+                }
+                insert(
+                    Event(
+                        songId = mediaId,
+                        timestamp = timestamp,
+                        playTime = playTimeMs,
+                    ),
+                )
+            } catch (error: SQLException) {
+                pendingEvents.remove(timestamp)
+                if (pendingEvents.isEmpty()) {
+                    thresholdHistoryEventTimestamps.remove(mediaId, pendingEvents)
+                }
+                logHistoryInsertFailure(mediaId, error::class.java.simpleName, error)
+            }
+        }
+    }
+
+    private fun logHistoryInsertFailure(
+        mediaId: String,
+        errorType: String,
+        error: SQLException? = null,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        Timber.tag("History").e(
+            error,
+            "EVENT_INSERT_FAIL songId=%s exception=%s",
+            mediaId,
+            errorType,
+        )
+    }
+
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
         playbackStats: PlaybackStats,
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
-        val historyDurationMs = dataStore[HistoryDuration]?.times(1000f) ?: 30000f
+        val mediaMetadata = mediaItem.metadata
+        val historyDurationMs = historyDurationMs()
+        val pendingEvents = thresholdHistoryEventTimestamps[mediaItem.mediaId]
+        val thresholdEventTimestamp = pendingEvents?.poll()
+        if (pendingEvents?.isEmpty() == true) {
+            thresholdHistoryEventTimestamps.remove(mediaItem.mediaId, pendingEvents)
+        }
 
-        if (playbackStats.totalPlayTimeMs >= historyDurationMs &&
+        if ((playbackStats.totalPlayTimeMs >= historyDurationMs || thresholdEventTimestamp != null) &&
             !dataStore.get(PauseListenHistoryKey, false)
         ) {
             database.query {
-                incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)
                 try {
-                    insert(
-                        Event(
-                            songId = mediaItem.mediaId,
-                            timestamp = LocalDateTime.now(),
-                            playTime = playbackStats.totalPlayTimeMs,
-                        ),
+                    if (getSongByIdBlocking(mediaItem.mediaId) == null) {
+                        if (mediaMetadata == null) {
+                            logHistoryInsertFailure(mediaItem.mediaId, "MissingMediaMetadata")
+                            return@query
+                        }
+                        insert(mediaMetadata)
+                    }
+                    incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)
+                    if (thresholdEventTimestamp != null) {
+                        updateEventPlayTime(
+                            mediaItem.mediaId,
+                            thresholdEventTimestamp,
+                            playbackStats.totalPlayTimeMs,
+                        )
+                    } else {
+                        insert(
+                            Event(
+                                songId = mediaItem.mediaId,
+                                timestamp = LocalDateTime.now(),
+                                playTime = playbackStats.totalPlayTimeMs,
+                            ),
+                        )
+                    }
+                } catch (error: SQLException) {
+                    logHistoryInsertFailure(
+                        mediaItem.mediaId,
+                        error::class.java.simpleName,
+                        error,
                     )
-                } catch (_: SQLException) {
                 }
             }
         }
@@ -3577,6 +3711,7 @@ class MusicService :
 
         return try {
             PersistentQueueSnapshot(
+                generation = queuePersistenceGeneration.get(),
                 queue = if (dirtyState and QUEUE_DIRTY != 0) {
                     currentQueue.toPersistQueue(
                         title = queueTitle,
@@ -3626,11 +3761,16 @@ class MusicService :
 
         while (true) {
             val pendingSnapshot = pendingQueuePersistenceSnapshot.get()
-            val mergedSnapshot = pendingSnapshot?.mergeWith(snapshot) ?: snapshot
+            if (pendingSnapshot != null && pendingSnapshot.generation > snapshot.generation) break
+            val mergedSnapshot = if (pendingSnapshot?.generation == snapshot.generation) {
+                pendingSnapshot.mergeWith(snapshot)
+            } else {
+                snapshot
+            }
             if (pendingQueuePersistenceSnapshot.compareAndSet(pendingSnapshot, mergedSnapshot)) break
         }
 
-        if (queuePersistenceRequests.trySend(QueuePersistenceRequest.Save).isFailure) {
+        if (queuePersistenceRequests.trySend(QueuePersistenceRequest.Save(snapshot.generation)).isFailure) {
             Timber.tag(TAG).w("Skipping queue save because persistence writer is closed")
         }
     }
@@ -3893,6 +4033,10 @@ class MusicService :
         newPosition: Player.PositionInfo,
         reason: Int
     ) {
+        updateHistoryThresholdTracking(
+            mediaItem = player.currentMediaItem,
+            positionMs = newPosition.positionMs,
+        )
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {
             scheduleCrossfade()
         }
@@ -4013,6 +4157,7 @@ class MusicService :
         nextPlayer.removeListener(secondaryPlayerListener)
         nextPlayer.addListener(this)
         nextPlayer.addListener(sleepTimer)
+        updateHistoryThresholdTracking(nextPlayer.currentMediaItem)
 
         sleepTimer.player = player
 
