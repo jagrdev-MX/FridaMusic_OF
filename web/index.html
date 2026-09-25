@@ -1028,10 +1028,10 @@
     <section class="glass-card download-card" id="descargas">
       <div class="download-kicker" data-i18n="downloads.kicker">Descargas</div>
       <h2 class="section-title" data-i18n="downloads.title">Instala FridaMusic</h2>
-      <p class="download-copy" data-i18n="downloads.copy">La disponibilidad se obtiene desde las releases públicas del repositorio para evitar versiones inventadas o enlaces obsoletos.</p>
+      <p class="download-copy" data-i18n="downloads.copy">Elige la edición oficial para Android o Desktop, o consulta el código fuente del proyecto.</p>
 
       <div class="download-grid">
-        <article class="platform-card" tabindex="0">
+        <article class="platform-card download-option-card" tabindex="0">
           <div class="platform-topline">
             <span class="release-chip" data-i18n="downloads.platform">Plataforma</span>
             <span class="platform-status" data-i18n="downloads.available">Disponible</span>
@@ -1044,26 +1044,66 @@
             </li>
             <li>
               <span data-i18n="downloads.distribution">Distribución</span>
-              <strong data-i18n="downloads.distributionValue">APK de release</strong>
+              <strong data-i18n="downloads.distributionValue">Google Play</strong>
             </li>
           </ul>
-        </article>
-
-        <article class="release-panel">
-          <div class="release-meta">
+          <div class="release-meta option-release-meta">
             <span class="release-chip" data-i18n="downloads.versionLabel">Versión actual</span>
             <strong data-release-version>—</strong>
             <span class="release-chip" data-release-date>—</span>
           </div>
-          <h3 class="release-title">GitHub Releases</h3>
-          <p class="release-status" data-release-status data-i18n="downloads.loading">Consultando la última release pública...</p>
+          <p class="release-status" data-release-status data-i18n="downloads.loading">Consultando la última release Android pública...</p>
           <div class="download-actions">
-            <a class="btn download-action primary" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" data-download-button aria-disabled="true">APK no disponible</a>
+            <a class="btn download-action primary" href="https://play.google.com/store/apps/details?id=com.jagr.fridamusic" target="_blank" rel="noopener" data-i18n="downloads.googlePlay">Google Play</a>
+            <a class="btn download-action" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" target="_blank" rel="noopener" data-i18n="downloads.androidReleases">GitHub Releases Android</a>
           </div>
           <div class="release-links">
-            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" target="_blank" rel="noopener" data-release-link data-i18n="downloads.releases">Ver releases</a>
+            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" target="_blank" rel="noopener" data-release-link data-i18n="downloads.latestRelease">Ver última release</a>
             <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic_OF/blob/master/web/release/CHANGELOG.md" target="_blank" rel="noopener" data-changelog-link data-i18n="downloads.changelog">Ver changelog</a>
-            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" target="_blank" rel="noopener" data-previous-link data-i18n="downloads.previous">Versiones anteriores</a>
+            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic_OF/releases" target="_blank" rel="noopener" data-previous-link data-i18n="downloads.viewAllVersions">Ver todas las versiones</a>
+          </div>
+        </article>
+
+        <article class="platform-card download-option-card download-option-desktop" tabindex="0">
+          <div class="platform-topline">
+            <span class="release-chip" data-i18n="downloads.platform">Plataforma</span>
+            <span class="platform-status" data-i18n="downloads.available">Disponible</span>
+          </div>
+          <h3 class="platform-name" data-i18n="downloads.desktop">FridaMusic Desktop</h3>
+          <ul class="platform-list">
+            <li>
+              <span data-i18n="downloads.platforms">Plataformas</span>
+              <strong class="platform-badges">
+                <span data-i18n="downloads.windows">Windows</span>
+                <span data-i18n="downloads.macos">macOS</span>
+                <span data-i18n="downloads.linux">Linux</span>
+              </strong>
+            </li>
+          </ul>
+          <div class="release-meta option-release-meta">
+            <span class="release-chip" data-i18n="downloads.versionLabel">Versión actual</span>
+            <strong data-desktop-release-version>—</strong>
+            <span class="release-chip" data-desktop-release-date>—</span>
+          </div>
+          <p class="release-status" data-desktop-release-status data-i18n="downloads.desktopLoading">Consultando la última release Desktop pública...</p>
+          <div class="download-actions">
+            <a class="btn download-action primary" href="https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases" target="_blank" rel="noopener" data-desktop-download-button data-i18n="downloads.downloadDesktop">Descargar FridaMusic Desktop</a>
+          </div>
+          <div class="release-links">
+            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases" target="_blank" rel="noopener" data-desktop-release-link data-i18n="downloads.latestRelease">Ver última release</a>
+            <a class="release-link" href="https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases" target="_blank" rel="noopener" data-desktop-all-releases-link data-i18n="downloads.viewAllVersions">Ver todas las versiones</a>
+          </div>
+        </article>
+
+        <article class="platform-card download-option-card download-option-source" tabindex="0">
+          <div class="platform-topline">
+            <span class="release-chip" data-i18n="downloads.github">GitHub</span>
+            <span class="platform-status" data-i18n="downloads.openSource">Open Source</span>
+          </div>
+          <h3 class="platform-name" data-i18n="downloads.sourceCode">Código fuente</h3>
+          <p class="release-status source-description" data-i18n="downloads.sourceCopy">Explora el proyecto, revisa el código y sigue su desarrollo público en GitHub.</p>
+          <div class="download-actions">
+            <a class="btn download-action primary" href="https://github.com/jagrdev-MX/FridaMusic_OF" target="_blank" rel="noopener" data-i18n="downloads.viewSource">Ver código en GitHub</a>
           </div>
         </article>
       </div>
