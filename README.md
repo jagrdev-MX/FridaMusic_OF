@@ -30,6 +30,8 @@
   &nbsp;&nbsp;•&nbsp;&nbsp;
   <a href="https://github.com/jagrdev-MX/FridaMusic_OF/releases"><strong>⬇ GitHub Releases</strong></a>
   &nbsp;&nbsp;•&nbsp;&nbsp;
+  <a href="https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases"><strong>🖥️ FridaMusic Desktop</strong></a>
+  &nbsp;&nbsp;•&nbsp;&nbsp;
   <a href="https://play.google.com/apps/testing/com.jagr.fridamusic"><strong>🧪 Beta abierta</strong></a>
   &nbsp;&nbsp;•&nbsp;&nbsp;
   <a href="https://frida-music-of.vercel.app/"><strong>🌐 Sitio oficial</strong></a>
@@ -118,11 +120,18 @@ Las siguientes imágenes son recursos visuales originales proporcionados para la
 | --- | --- |
 | [Google Play](https://play.google.com/store/apps/details?id=com.jagr.fridamusic) | Distribución oficial mediante Google Play |
 | [GitHub Releases](https://github.com/jagrdev-MX/FridaMusic_OF/releases) | APKs y releases públicos del proyecto |
+| [FridaMusic Desktop](https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases) | Aplicación oficial para Windows, macOS y Linux |
 | [Beta abierta](https://play.google.com/apps/testing/com.jagr.fridamusic) | Acceso a versiones de prueba disponibles mediante Google Play |
 | [Sitio oficial](https://frida-music-of.vercel.app/) | Información, enlaces y recursos públicos |
 
 > [!IMPORTANT]
 > Descarga FridaMusic únicamente desde canales oficiales publicados por Frida Labs.
+
+### 🖥️ ¿Buscas FridaMusic para computadora?
+
+La edición de escritorio de FridaMusic se distribuye por separado para **Windows, macOS y Linux**, con su propio ciclo de releases y sistema de actualizaciones.
+
+**[Ver FridaMusic Desktop →](https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases)**
 
 ---
 
@@ -261,7 +270,8 @@ https://paypal.me/JAGRDEVELOPER?locale.x=es_XC&country.x=MX
 
 - 🌐 **Sitio oficial:** https://frida-music-of.vercel.app/
 - 🔐 **Política de privacidad:** https://frida-music-of.vercel.app/privacy
-- 📦 **Releases oficiales:** https://github.com/jagrdev-MX/FridaMusic_OF/releases
+- 📦 **Releases Android:** https://github.com/jagrdev-MX/FridaMusic_OF/releases
+- 🖥️ **FridaMusic Desktop:** https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases
 - 🐛 **Reportes y sugerencias:** https://github.com/jagrdev-MX/FridaMusic_OF/issues
 
 Para soporte comunitario también puedes utilizar Telegram, Discord o WhatsApp desde los enlaces anteriores.
