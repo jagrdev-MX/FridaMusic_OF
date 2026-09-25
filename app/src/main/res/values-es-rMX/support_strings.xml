@@ -19,6 +19,8 @@
     <string name="support_level_1000">Apoyo increíble</string>
     <string name="support_paypal_title">Apoyar con PayPal</string>
     <string name="support_paypal_description">Aporta directamente mediante PayPal.</string>
+    <string name="support_kofi_title">Apoyar con Ko-fi</string>
+    <string name="support_kofi_description">Aporta directamente mediante Ko-fi.</string>
     <string name="support_watch_ad_title">Ver anuncio y apoyar</string>
     <string name="support_watch_ad_description">Un anuncio breve también ayuda.</string>
     <string name="support_other_ways">Otras formas de ayudar</string>
@@ -26,9 +28,9 @@
     <string name="support_rate_description">Una reseña también ayuda mucho.</string>
     <string name="support_free">GRATIS</string>
     <string name="support_legal_no_benefits">Las aportaciones son voluntarias y no desbloquean funciones, contenido exclusivo ni ventajas dentro de FridaMusic.</string>
-    <string name="support_legal_processors">Las compras realizadas mediante Google Play son procesadas por Google Play. Las aportaciones mediante PayPal se procesan externamente por PayPal.</string>
+    <string name="support_legal_processors">Las compras realizadas mediante Google Play son procesadas por Google Play. Las aportaciones mediante PayPal y Ko-fi se procesan externamente por sus respectivos proveedores.</string>
     <string name="support_legal_processor_google_play">Las compras realizadas mediante Google Play son procesadas por Google Play.</string>
-    <string name="support_legal_processor_paypal">Las aportaciones mediante PayPal se procesan externamente por PayPal.</string>
+    <string name="support_legal_processor_paypal">Las aportaciones mediante PayPal y Ko-fi se procesan externamente por sus respectivos proveedores.</string>
     <string name="support_billing_loading">Conectando con Google Play…</string>
     <string name="support_purchase_started">Abriendo compra en Google Play…</string>
     <string name="support_purchase_pending">Aportación pendiente en Google Play.</string>
@@ -40,6 +42,7 @@
     <string name="support_billing_disconnected">Se perdió la conexión con Google Play.</string>
     <string name="support_consumption_error">Pago confirmado; procesamiento incompleto. Reintenta para finalizar.</string>
     <string name="support_paypal_opened">PayPal abierto correctamente.</string>
+    <string name="support_kofi_opened">Ko-fi abierto correctamente.</string>
     <string name="support_play_store_opened">Google Play abierto correctamente.</string>
     <string name="support_browser_opened">El enlace se abrió en el navegador.</string>
     <string name="support_no_compatible_app">No se encontró una aplicación compatible.</string>

@@ -15,6 +15,7 @@ class SupportBillingManager(context: Context) : SupportBilling {
     override val capabilities = SupportCapabilities(
         googlePlayBilling = false,
         paypal = true,
+        kofi = false,
         googlePlayRating = false,
     )
     override val debugController: SupportBillingDebugController? = null

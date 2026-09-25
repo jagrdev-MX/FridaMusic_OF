@@ -7,10 +7,12 @@ import android.net.Uri
 
 const val SUPPORT_PAYPAL_URL =
     "https://paypal.me/JAGRDEVELOPER?locale.x=es_XC&country.x=MX"
+const val SUPPORT_KOFI_URL = "https://ko-fi.com/frida_labs"
 const val FRIDAMUSIC_PLAY_PACKAGE = "com.jagr.fridamusic"
 
 enum class SupportLinkResult {
     PAYPAL_OPENED,
+    KOFI_OPENED,
     PLAY_STORE_OPENED,
     BROWSER_OPENED,
     UNAVAILABLE,
@@ -19,6 +21,11 @@ enum class SupportLinkResult {
 fun openSupportPayPal(context: Context): SupportLinkResult {
     val opened = context.tryOpenUri(Uri.parse(SUPPORT_PAYPAL_URL))
     return if (opened) SupportLinkResult.PAYPAL_OPENED else SupportLinkResult.UNAVAILABLE
+}
+
+fun openSupportKoFi(context: Context): SupportLinkResult {
+    val opened = context.tryOpenUri(Uri.parse(SUPPORT_KOFI_URL))
+    return if (opened) SupportLinkResult.KOFI_OPENED else SupportLinkResult.UNAVAILABLE
 }
 
 fun openFridaMusicPlayStore(

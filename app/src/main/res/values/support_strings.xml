@@ -19,6 +19,8 @@
     <string name="support_level_1000">Incredible support</string>
     <string name="support_paypal_title">Support with PayPal</string>
     <string name="support_paypal_description">Contribute directly through PayPal.</string>
+    <string name="support_kofi_title">Support with Ko-fi</string>
+    <string name="support_kofi_description">Contribute directly through Ko-fi.</string>
     <string name="support_watch_ad_title">Watch an ad and support</string>
     <string name="support_watch_ad_description">A short ad also helps.</string>
     <string name="support_other_ways">Other ways to help</string>
@@ -26,9 +28,9 @@
     <string name="support_rate_description">A review also helps a lot.</string>
     <string name="support_free">FREE</string>
     <string name="support_legal_no_benefits">Contributions are voluntary and do not unlock features, exclusive content, or benefits within FridaMusic.</string>
-    <string name="support_legal_processors">Purchases made through Google Play are processed by Google Play. Contributions through PayPal are processed externally by PayPal.</string>
+    <string name="support_legal_processors">Purchases made through Google Play are processed by Google Play. Contributions through PayPal and Ko-fi are processed externally by their respective providers.</string>
     <string name="support_legal_processor_google_play">Purchases made through Google Play are processed by Google Play.</string>
-    <string name="support_legal_processor_paypal">Contributions through PayPal are processed externally by PayPal.</string>
+    <string name="support_legal_processor_paypal">Contributions through PayPal and Ko-fi are processed externally by their respective providers.</string>
     <string name="support_billing_loading">Connecting to Google Play…</string>
     <string name="support_purchase_started">Opening Google Play checkout…</string>
     <string name="support_purchase_pending">Contribution pending in Google Play.</string>
@@ -40,6 +42,7 @@
     <string name="support_billing_disconnected">Disconnected from Google Play.</string>
     <string name="support_consumption_error">Payment confirmed; processing incomplete. Retry to finish.</string>
     <string name="support_paypal_opened">PayPal opened successfully.</string>
+    <string name="support_kofi_opened">Ko-fi opened successfully.</string>
     <string name="support_play_store_opened">Google Play opened successfully.</string>
     <string name="support_browser_opened">The link opened in the browser.</string>
     <string name="support_no_compatible_app">No compatible application was found.</string>
