@@ -57,6 +57,7 @@ class SupportBillingManager(context: Context) :
     override val capabilities = SupportCapabilities(
         googlePlayBilling = BuildConfig.SUPPORT_GOOGLE_PLAY_ENABLED,
         paypal = BuildConfig.SUPPORT_PAYPAL_ENABLED,
+        kofi = BuildConfig.SUPPORT_KOFI_ENABLED,
         googlePlayRating = BuildConfig.SUPPORT_GOOGLE_PLAY_ENABLED,
     )
 

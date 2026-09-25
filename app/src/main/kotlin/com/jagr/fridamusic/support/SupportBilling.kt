@@ -23,6 +23,7 @@ data class SupportProduct(
 data class SupportCapabilities(
     val googlePlayBilling: Boolean,
     val paypal: Boolean,
+    val kofi: Boolean,
     val googlePlayRating: Boolean,
 )
 

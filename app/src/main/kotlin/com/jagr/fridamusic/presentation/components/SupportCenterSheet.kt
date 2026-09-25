@@ -84,6 +84,7 @@ import com.jagr.fridamusic.support.SupportPurchaseState
 import com.jagr.fridamusic.support.isBusy
 import com.jagr.fridamusic.support.isTransientTerminal
 import com.jagr.fridamusic.support.openFridaMusicPlayStore
+import com.jagr.fridamusic.support.openSupportKoFi
 import com.jagr.fridamusic.support.openSupportPayPal
 import kotlinx.coroutines.delay
 
@@ -209,6 +210,21 @@ fun SupportCenterSheet(
                         prominent = !capabilities.googlePlayBilling,
                         onClick = {
                             linkMessage = supportLinkMessage(openSupportPayPal(context))
+                        },
+                    )
+                }
+            }
+
+            if (capabilities.kofi) {
+                item {
+                    SupportActionCard(
+                        icon = Icons.Rounded.Coffee,
+                        title = stringResource(R.string.support_kofi_title),
+                        description = stringResource(R.string.support_kofi_description),
+                        trailing = Icons.AutoMirrored.Rounded.OpenInNew,
+                        prominent = !capabilities.googlePlayBilling,
+                        onClick = {
+                            linkMessage = supportLinkMessage(openSupportKoFi(context))
                         },
                     )
                 }
@@ -699,6 +715,7 @@ private fun billingIssueMessage(issue: SupportBillingIssue): Int = when (issue) 
 @StringRes
 private fun supportLinkMessage(result: SupportLinkResult): Int = when (result) {
     SupportLinkResult.PAYPAL_OPENED -> R.string.support_paypal_opened
+    SupportLinkResult.KOFI_OPENED -> R.string.support_kofi_opened
     SupportLinkResult.PLAY_STORE_OPENED -> R.string.support_play_store_opened
     SupportLinkResult.BROWSER_OPENED -> R.string.support_browser_opened
     SupportLinkResult.UNAVAILABLE -> R.string.support_no_compatible_app

@@ -188,6 +188,7 @@ android {
             buildConfigField("String", "ARCHITECTURE", "\"release\"")
             buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "true")
             buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "false")
+            buildConfigField("Boolean", "SUPPORT_KOFI_ENABLED", "false")
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -195,6 +196,7 @@ android {
             buildConfigField("String", "ARCHITECTURE", "\"debug\"")
             buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "true")
             buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "true")
+            buildConfigField("Boolean", "SUPPORT_KOFI_ENABLED", "true")
         }
         create("github") {
             initWith(getByName("release"))
@@ -203,6 +205,7 @@ android {
             buildConfigField("String", "ARCHITECTURE", "\"github\"")
             buildConfigField("Boolean", "SUPPORT_GOOGLE_PLAY_ENABLED", "false")
             buildConfigField("Boolean", "SUPPORT_PAYPAL_ENABLED", "true")
+            buildConfigField("Boolean", "SUPPORT_KOFI_ENABLED", "true")
         }
     }
 
