@@ -1,6 +1,8 @@
 const RELEASE_ENDPOINT = 'https://api.github.com/repos/jagrdev-MX/FridaMusic_OF/releases?per_page=30';
 const RELEASES_URL = 'https://github.com/jagrdev-MX/FridaMusic_OF/releases';
 const CHANGELOG_URL = 'https://github.com/jagrdev-MX/FridaMusic_OF/blob/master/web/release/CHANGELOG.md';
+const DESKTOP_RELEASE_ENDPOINT = 'https://api.github.com/repos/jagrdev-MX/FridaMusic-Desktop-Releases/releases?per_page=10';
+const DESKTOP_RELEASES_URL = 'https://github.com/jagrdev-MX/FridaMusic-Desktop-Releases/releases';
 
 const translations = {
   es: {
@@ -67,14 +69,22 @@ const translations = {
     'interface.slide6.alt': 'Cartel de descarga gratuita de FridaMusic con accesos a Google Play y GitHub',
     'downloads.kicker': 'Descargas',
     'downloads.title': 'Instala FridaMusic',
-    'downloads.copy': 'La disponibilidad se obtiene desde las releases Android públicas del repositorio para evitar versiones inventadas o enlaces obsoletos.',
+    'downloads.copy': 'Elige la edición oficial para Android o Desktop, o consulta el código fuente del proyecto.',
     'downloads.platform': 'Plataforma',
     'downloads.android': 'Android',
+    'downloads.desktop': 'FridaMusic Desktop',
     'downloads.available': 'Disponible',
+    'downloads.openSource': 'Open Source',
     'downloads.requirements': 'Requisito',
     'downloads.requirementsValue': 'Android API 24+',
     'downloads.distribution': 'Distribución',
-    'downloads.distributionValue': 'APK de release',
+    'downloads.distributionValue': 'Google Play',
+    'downloads.platforms': 'Plataformas',
+    'downloads.windows': 'Windows',
+    'downloads.macos': 'macOS',
+    'downloads.linux': 'Linux',
+    'downloads.googlePlay': 'Google Play',
+    'downloads.androidReleases': 'GitHub Releases Android',
     'downloads.versionLabel': 'Versión actual',
     'downloads.loading': 'Consultando la última release Android pública...',
     'downloads.readyWithApk': 'APK detectada en la última release Android pública.',
@@ -86,6 +96,20 @@ const translations = {
     'downloads.releases': 'Ver releases',
     'downloads.changelog': 'Ver changelog',
     'downloads.previous': 'Versiones anteriores',
+    'downloads.desktopLoading': 'Consultando la última release Desktop pública...',
+    'downloads.desktopReady': 'Última release Desktop pública disponible.',
+    'downloads.desktopEmpty': 'Todavía no hay una release Desktop pública disponible.',
+    'downloads.desktopError': 'No se pudo consultar GitHub en este momento. El botón de descarga sigue disponible para revisar las releases manualmente.',
+    'downloads.downloadDesktop': 'Descargar FridaMusic Desktop',
+    'downloads.downloadWindows': 'Descargar para Windows',
+    'downloads.downloadMacos': 'Descargar para macOS',
+    'downloads.downloadLinux': 'Descargar para Linux',
+    'downloads.latestRelease': 'Ver última release',
+    'downloads.viewAllVersions': 'Ver todas las versiones',
+    'downloads.sourceCode': 'Código fuente',
+    'downloads.github': 'GitHub',
+    'downloads.sourceCopy': 'Explora el proyecto, revisa el código y sigue su desarrollo público en GitHub.',
+    'downloads.viewSource': 'Ver código en GitHub',
     'beta.kicker': 'Programa de pruebas',
     'beta.title': 'Acceso beta cerrada',
     'beta.copy': 'Solicita acceso anticipado a FridaMusic y ayuda a probar las próximas versiones antes de su lanzamiento público.',
@@ -189,14 +213,22 @@ const translations = {
     'interface.slide6.alt': 'Free FridaMusic download poster with Google Play and GitHub access',
     'downloads.kicker': 'Downloads',
     'downloads.title': 'Install FridaMusic',
-    'downloads.copy': 'Availability is pulled from the repository public Android releases so versions and links are not invented or stale.',
+    'downloads.copy': 'Choose the official Android or Desktop edition, or explore the project source code.',
     'downloads.platform': 'Platform',
     'downloads.android': 'Android',
+    'downloads.desktop': 'FridaMusic Desktop',
     'downloads.available': 'Available',
+    'downloads.openSource': 'Open Source',
     'downloads.requirements': 'Requirement',
     'downloads.requirementsValue': 'Android API 24+',
     'downloads.distribution': 'Distribution',
-    'downloads.distributionValue': 'Release APK',
+    'downloads.distributionValue': 'Google Play',
+    'downloads.platforms': 'Platforms',
+    'downloads.windows': 'Windows',
+    'downloads.macos': 'macOS',
+    'downloads.linux': 'Linux',
+    'downloads.googlePlay': 'Google Play',
+    'downloads.androidReleases': 'Android GitHub Releases',
     'downloads.versionLabel': 'Current version',
     'downloads.loading': 'Checking the latest public Android release...',
     'downloads.readyWithApk': 'APK detected in the latest public Android release.',
@@ -208,6 +240,20 @@ const translations = {
     'downloads.releases': 'View releases',
     'downloads.changelog': 'View changelog',
     'downloads.previous': 'Previous versions',
+    'downloads.desktopLoading': 'Checking the latest public Desktop release...',
+    'downloads.desktopReady': 'Latest public Desktop release available.',
+    'downloads.desktopEmpty': 'There is no public Desktop release available yet.',
+    'downloads.desktopError': 'GitHub could not be queried right now. The download button remains available to check releases manually.',
+    'downloads.downloadDesktop': 'Download FridaMusic Desktop',
+    'downloads.downloadWindows': 'Download for Windows',
+    'downloads.downloadMacos': 'Download for macOS',
+    'downloads.downloadLinux': 'Download for Linux',
+    'downloads.latestRelease': 'View latest release',
+    'downloads.viewAllVersions': 'View all versions',
+    'downloads.sourceCode': 'Source code',
+    'downloads.github': 'GitHub',
+    'downloads.sourceCopy': 'Explore the project, review the code, and follow its public development on GitHub.',
+    'downloads.viewSource': 'View source on GitHub',
     'beta.kicker': 'Testing program',
     'beta.title': 'Closed beta access',
     'beta.copy': 'Request early access to FridaMusic and help test upcoming versions before their public release.',
@@ -311,14 +357,22 @@ const translations = {
     'interface.slide6.alt': 'Cartaz de download gratuito do FridaMusic com acessos ao Google Play e GitHub',
     'downloads.kicker': 'Downloads',
     'downloads.title': 'Instale FridaMusic',
-    'downloads.copy': 'A disponibilidade é obtida das releases Android públicas do repositório para evitar versões inventadas ou links desatualizados.',
+    'downloads.copy': 'Escolha a edição oficial para Android ou Desktop, ou consulte o código-fonte do projeto.',
     'downloads.platform': 'Plataforma',
     'downloads.android': 'Android',
+    'downloads.desktop': 'FridaMusic Desktop',
     'downloads.available': 'Disponível',
+    'downloads.openSource': 'Open Source',
     'downloads.requirements': 'Requisito',
     'downloads.requirementsValue': 'Android API 24+',
     'downloads.distribution': 'Distribuição',
-    'downloads.distributionValue': 'APK de release',
+    'downloads.distributionValue': 'Google Play',
+    'downloads.platforms': 'Plataformas',
+    'downloads.windows': 'Windows',
+    'downloads.macos': 'macOS',
+    'downloads.linux': 'Linux',
+    'downloads.googlePlay': 'Google Play',
+    'downloads.androidReleases': 'GitHub Releases Android',
     'downloads.versionLabel': 'Versão atual',
     'downloads.loading': 'Consultando a release Android pública mais recente...',
     'downloads.readyWithApk': 'APK detectado na release Android pública mais recente.',
@@ -330,6 +384,20 @@ const translations = {
     'downloads.releases': 'Ver releases',
     'downloads.changelog': 'Ver changelog',
     'downloads.previous': 'Versões anteriores',
+    'downloads.desktopLoading': 'Consultando a release Desktop pública mais recente...',
+    'downloads.desktopReady': 'Release Desktop pública mais recente disponível.',
+    'downloads.desktopEmpty': 'Ainda não há uma release Desktop pública disponível.',
+    'downloads.desktopError': 'Não foi possível consultar o GitHub agora. O botão de download continua disponível para revisar as releases manualmente.',
+    'downloads.downloadDesktop': 'Baixar FridaMusic Desktop',
+    'downloads.downloadWindows': 'Baixar para Windows',
+    'downloads.downloadMacos': 'Baixar para macOS',
+    'downloads.downloadLinux': 'Baixar para Linux',
+    'downloads.latestRelease': 'Ver release mais recente',
+    'downloads.viewAllVersions': 'Ver todas as versões',
+    'downloads.sourceCode': 'Código-fonte',
+    'downloads.github': 'GitHub',
+    'downloads.sourceCopy': 'Explore o projeto, revise o código e acompanhe seu desenvolvimento público no GitHub.',
+    'downloads.viewSource': 'Ver código no GitHub',
     'beta.kicker': 'Programa de testes',
     'beta.title': 'Acesso beta fechado',
     'beta.copy': 'Solicite acesso antecipado ao FridaMusic e ajude a testar as próximas versões antes do lançamento público.',
@@ -384,6 +452,12 @@ let releaseState = {
   publishedAt: '',
   htmlUrl: RELEASES_URL,
   assetUrl: '',
+};
+let desktopReleaseState = {
+  status: 'loading',
+  version: '',
+  publishedAt: '',
+  htmlUrl: DESKTOP_RELEASES_URL,
 };
 let interfaceSlideIndex = 0;
 let interfaceAnimationTimer = 0;
@@ -464,6 +538,7 @@ function applyTranslations(language) {
 
   renderInterfaceSlide(interfaceSlideIndex, { animate: false });
   renderReleaseState();
+  renderDesktopReleaseState();
 }
 
 function renderInterfaceSlide(index, options = {}) {
@@ -590,10 +665,9 @@ function renderReleaseState() {
   const releaseLink = document.querySelector('[data-release-link]');
   const changelogLink = document.querySelector('[data-changelog-link]');
   const previousLink = document.querySelector('[data-previous-link]');
-  const downloadButton = document.querySelector('[data-download-button]');
   const releaseDate = document.querySelector('[data-release-date]');
 
-  if (!versionValue || !statusValue || !releaseLink || !changelogLink || !previousLink || !downloadButton || !releaseDate) {
+  if (!versionValue || !statusValue || !releaseLink || !changelogLink || !previousLink || !releaseDate) {
     return;
   }
 
@@ -613,16 +687,8 @@ function renderReleaseState() {
 
     if (releaseState.assetUrl) {
       statusValue.textContent = translate('downloads.readyWithApk');
-      downloadButton.href = releaseState.assetUrl;
-      downloadButton.removeAttribute('aria-disabled');
-      downloadButton.removeAttribute('tabindex');
-      downloadButton.textContent = translate('downloads.downloadApk');
     } else {
       statusValue.textContent = translate('downloads.readyWithoutApk');
-      downloadButton.href = RELEASES_URL;
-      downloadButton.setAttribute('aria-disabled', 'true');
-      downloadButton.setAttribute('tabindex', '-1');
-      downloadButton.textContent = translate('downloads.unavailable');
     }
 
     return;
@@ -630,10 +696,6 @@ function renderReleaseState() {
 
   versionValue.textContent = '—';
   releaseDate.textContent = '—';
-  downloadButton.href = RELEASES_URL;
-  downloadButton.setAttribute('aria-disabled', 'true');
-  downloadButton.setAttribute('tabindex', '-1');
-  downloadButton.textContent = translate('downloads.unavailable');
 
   if (releaseState.status === 'empty') {
     statusValue.textContent = translate('downloads.empty');
@@ -646,6 +708,75 @@ function renderReleaseState() {
   }
 
   statusValue.textContent = translate('downloads.loading');
+}
+
+function getDesktopDownloadKey() {
+  const detectedPlatform = [
+    navigator.userAgentData?.platform,
+    navigator.platform,
+    navigator.userAgent,
+  ].filter(Boolean).join(' ').toLowerCase();
+  const isMobile = /android|iphone|ipad|ipod|mobile/.test(detectedPlatform);
+
+  if (/windows|win32|win64/.test(detectedPlatform)) {
+    return 'downloads.downloadWindows';
+  }
+
+  if (!isMobile && /macintosh|mac os|macintel|darwin/.test(detectedPlatform)) {
+    return 'downloads.downloadMacos';
+  }
+
+  if (!isMobile && /linux|x11/.test(detectedPlatform)) {
+    return 'downloads.downloadLinux';
+  }
+
+  return 'downloads.downloadDesktop';
+}
+
+function renderDesktopReleaseState() {
+  const versionValue = document.querySelector('[data-desktop-release-version]');
+  const statusValue = document.querySelector('[data-desktop-release-status]');
+  const releaseLink = document.querySelector('[data-desktop-release-link]');
+  const allReleasesLink = document.querySelector('[data-desktop-all-releases-link]');
+  const downloadButton = document.querySelector('[data-desktop-download-button]');
+  const releaseDate = document.querySelector('[data-desktop-release-date]');
+
+  if (!versionValue || !statusValue || !releaseLink || !allReleasesLink || !downloadButton || !releaseDate) {
+    return;
+  }
+
+  downloadButton.href = DESKTOP_RELEASES_URL;
+  downloadButton.textContent = translate(getDesktopDownloadKey());
+  allReleasesLink.href = DESKTOP_RELEASES_URL;
+  releaseLink.href = desktopReleaseState.htmlUrl || DESKTOP_RELEASES_URL;
+
+  if (desktopReleaseState.status === 'ready') {
+    versionValue.textContent = desktopReleaseState.version;
+    releaseDate.textContent = desktopReleaseState.publishedAt
+      ? new Intl.DateTimeFormat(localeMap[currentLanguage], {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(desktopReleaseState.publishedAt))
+      : '—';
+    statusValue.textContent = translate('downloads.desktopReady');
+    return;
+  }
+
+  versionValue.textContent = '—';
+  releaseDate.textContent = '—';
+
+  if (desktopReleaseState.status === 'empty') {
+    statusValue.textContent = translate('downloads.desktopEmpty');
+    return;
+  }
+
+  if (desktopReleaseState.status === 'error') {
+    statusValue.textContent = translate('downloads.desktopError');
+    return;
+  }
+
+  statusValue.textContent = translate('downloads.desktopLoading');
 }
 
 async function loadLatestRelease() {
@@ -688,6 +819,43 @@ async function loadLatestRelease() {
   }
 
   renderReleaseState();
+}
+
+async function loadLatestDesktopRelease() {
+  desktopReleaseState = { ...desktopReleaseState, status: 'loading' };
+  renderDesktopReleaseState();
+
+  try {
+    const response = await fetch(DESKTOP_RELEASE_ENDPOINT, {
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub responded with ${response.status}`);
+    }
+
+    const releases = await response.json();
+    const release = Array.isArray(releases)
+      ? releases.find((candidate) => !candidate.draft && !candidate.prerelease)
+      : null;
+
+    if (!release) {
+      desktopReleaseState = { ...desktopReleaseState, status: 'empty' };
+      renderDesktopReleaseState();
+      return;
+    }
+
+    desktopReleaseState = {
+      status: 'ready',
+      version: release.tag_name || release.name || '',
+      publishedAt: release.published_at || release.created_at || '',
+      htmlUrl: release.html_url || DESKTOP_RELEASES_URL,
+    };
+  } catch (error) {
+    desktopReleaseState = { ...desktopReleaseState, status: 'error' };
+  }
+
+  renderDesktopReleaseState();
 }
 
 function setupNavbar() {
@@ -894,4 +1062,5 @@ document.addEventListener('DOMContentLoaded', () => {
   preserveExistingRestrictions();
   applyTranslations(currentLanguage);
   loadLatestRelease();
+  loadLatestDesktopRelease();
 });

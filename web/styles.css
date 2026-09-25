@@ -1026,7 +1026,7 @@ button {
 
 .download-grid {
   display: grid;
-  grid-template-columns: minmax(240px, 0.82fr) minmax(320px, 1.18fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
   margin-bottom: 18px;
 }
@@ -1043,6 +1043,12 @@ button {
 
 .platform-card {
   padding: 24px;
+}
+
+.download-option-card {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
 }
 
 .platform-topline,
@@ -1104,6 +1110,21 @@ button {
   font-weight: 500;
 }
 
+.platform-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.platform-badges span {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+}
+
 .release-panel {
   padding: 24px;
 }
@@ -1111,6 +1132,12 @@ button {
 .release-meta {
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.option-release-meta {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .release-title {
@@ -1135,6 +1162,14 @@ button {
 
 .download-actions {
   margin-bottom: 14px;
+}
+
+.download-option-card .download-actions {
+  margin-top: auto;
+}
+
+.source-description {
+  margin-top: 18px;
 }
 
 .download-action {
