@@ -243,9 +243,12 @@ FridaMusic es un proyecto independiente desarrollado por **Frida Labs**. Si disf
 
 Las distribuciones compatibles de Google Play pueden ofrecer aportes voluntarios mediante **Google Play Billing**.
 
-### GitHub / PayPal
+### GitHub / Ko-fi / PayPal
 
-Las distribuciones publicadas mediante GitHub permiten apoyar directamente mediante PayPal:
+Las distribuciones publicadas mediante GitHub permiten apoyar directamente mediante Ko-fi o PayPal:
+
+**Ko-fi:**  
+https://ko-fi.com/frida_labs
 
 **PayPal:**  
 https://paypal.me/JAGRDEVELOPER?locale.x=es_XC&country.x=MX
