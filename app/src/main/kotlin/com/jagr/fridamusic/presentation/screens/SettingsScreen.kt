@@ -60,6 +60,7 @@ import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.SettingsEthernet
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Tune
@@ -586,6 +587,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.playbackItems() {
                 stringResource(R.string.preload_next_song_desc), PreloadNextSongEnabledKey, true)
             PrefSwitch(Icons.Rounded.WbSunny, stringResource(R.string.keep_screen_on),
                 stringResource(R.string.keep_screen_on_desc), KeepScreenOn, false)
+            PrefSwitch(Icons.Rounded.Swipe, stringResource(R.string.enable_swipe_thumbnail),
+                stringResource(R.string.enable_swipe_thumbnail_desc), SwipeThumbnailKey, true)
             PrefSwitch(Icons.Rounded.Stop, stringResource(R.string.stop_music_on_task_clear),
                 stringResource(R.string.stop_music_on_task_clear_desc), StopMusicOnTaskClearKey, false)
         }
