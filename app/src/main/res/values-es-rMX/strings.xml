@@ -881,6 +881,7 @@
     <string name="enable_wavy_slider">Habilitar barra ondulada</string>
     <string name="wavy">Ondulado</string>
     <string name="enable_swipe_thumbnail">Habilitar deslizar para cambiar canción</string>
+    <string name="enable_swipe_thumbnail_desc">Desliza a la izquierda o derecha sobre la carátula del reproductor para pasar a la siguiente canción o volver a la anterior</string>
     <string name="swipe_song_to_add">Desliza a la izquierda para añadir a la cola o a la derecha para siguiente</string>
     <string name="swipe_song_to_remove">Desliza para quitar de la lista</string>
     <string name="lyrics_click_change">Cambiar letras al hacer clic</string>

@@ -9,6 +9,8 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -24,6 +26,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -61,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -69,6 +73,9 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -99,6 +106,7 @@ import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.stringResource
 import com.jagr.fridamusic.R
 import com.jagr.fridamusic.constants.AutoLoadMoreKey
+import com.jagr.fridamusic.constants.SwipeThumbnailKey
 import com.jagr.fridamusic.db.entities.LyricsEntity
 import com.jagr.fridamusic.extensions.metadata
 import com.jagr.fridamusic.models.MediaMetadata
@@ -124,8 +132,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.pow
+import kotlin.math.sign
 
 @UnstableApi
 @Composable
@@ -228,6 +238,8 @@ fun NowPlayingScreen(
 
     val hasLyrics = currentLyrics != null
     val coroutineScope = rememberCoroutineScope()
+    val swipeToChangeSongEnabled by rememberPreference(SwipeThumbnailKey, true)
+    val artworkSwipeOffset = remember { Animatable(0f) }
     val panelMotion = remember { PlayerPanelMotionState() }
     val panelMotionSpec = remember {
         spring<Float>(
@@ -419,13 +431,28 @@ fun NowPlayingScreen(
                             .then(
                                 if (panelMotion.activePanel == null) collapseDragModifier
                                 else Modifier,
+                            )
+                            .artworkSwipeToChangeSong(
+                                enabled = swipeToChangeSongEnabled && panelMotion.activePanel == null,
+                                offset = artworkSwipeOffset,
+                                canSkipNext = canSkipNext,
+                                canSkipPrevious = canSkipPrevious,
+                                onSwipeLeft = playerConnection::seekToNext,
+                                onSwipeRight = playerConnection::seekToPrevious,
                             ),
                     ) {
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                .graphicsLayer {
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                    val swipe = artworkSwipeOffset.value
+                                    translationX = swipe
+                                    alpha = if (size.width > 0f) {
+                                        (1f - abs(swipe) / size.width).coerceIn(0f, 1f)
+                                    } else 1f
+                                }
                                 .drawWithContent {
                                     drawContent()
 
@@ -1004,6 +1031,89 @@ private fun NowPlayingArtistPickerSheet(
         }
     }
 }
+
+/**
+ * Horizontal swipe on the artwork to change the song.
+ * Swipe left -> next song, swipe right -> previous song.
+ * The song changes when the drag passes [ArtworkSwipeThresholdDp] or is flung
+ * faster than [ArtworkSwipeVelocityThresholdDp] per second; otherwise it snaps back.
+ * Vertical drags are left to the collapse gesture (touch slop decides the axis).
+ */
+private fun Modifier.artworkSwipeToChangeSong(
+    enabled: Boolean,
+    offset: Animatable<Float, AnimationVector1D>,
+    canSkipNext: Boolean,
+    canSkipPrevious: Boolean,
+    onSwipeLeft: () -> Unit,
+    onSwipeRight: () -> Unit,
+): Modifier = if (!enabled) this else composed {
+    val scope = rememberCoroutineScope()
+    val currentCanSkipNext by rememberUpdatedState(canSkipNext)
+    val currentCanSkipPrevious by rememberUpdatedState(canSkipPrevious)
+    val currentOnSwipeLeft by rememberUpdatedState(onSwipeLeft)
+    val currentOnSwipeRight by rememberUpdatedState(onSwipeRight)
+
+    pointerInput(offset) {
+        val velocityTracker = VelocityTracker()
+        val distanceThreshold = ArtworkSwipeThresholdDp.dp.toPx()
+        val velocityThreshold = ArtworkSwipeVelocityThresholdDp.dp.toPx()
+        var dragOffset = 0f
+
+        fun settleBack() {
+            scope.launch { offset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+        }
+
+        detectHorizontalDragGestures(
+            onDragStart = {
+                velocityTracker.resetTracking()
+                dragOffset = offset.value
+                scope.launch { offset.stop() }
+            },
+            onHorizontalDrag = { change, dragAmount ->
+                velocityTracker.addPointerInputChange(change)
+                change.consume()
+                val target = dragOffset + dragAmount
+                val blocked = (target < 0f && !currentCanSkipNext) ||
+                    (target > 0f && !currentCanSkipPrevious)
+                // Rubber-band when there is no song in that direction.
+                dragOffset = if (blocked) dragOffset + dragAmount * 0.25f else target
+                val applied = dragOffset
+                scope.launch { offset.snapTo(applied) }
+            },
+            onDragCancel = {
+                velocityTracker.resetTracking()
+                dragOffset = 0f
+                settleBack()
+            },
+            onDragEnd = {
+                val velocityX = velocityTracker.calculateVelocity().x
+                velocityTracker.resetTracking()
+                val drag = dragOffset
+                dragOffset = 0f
+                val width = size.width.toFloat().coerceAtLeast(1f)
+                val passed = abs(drag) > distanceThreshold ||
+                    (abs(velocityX) > velocityThreshold && sign(velocityX) == sign(drag))
+                val direction = sign(drag)
+                val allowed = (direction < 0f && currentCanSkipNext) ||
+                    (direction > 0f && currentCanSkipPrevious)
+                if (!passed || !allowed || drag == 0f) {
+                    settleBack()
+                } else {
+                    scope.launch {
+                        offset.animateTo(direction * width, tween(durationMillis = 140))
+                        if (direction < 0f) currentOnSwipeLeft() else currentOnSwipeRight()
+                        // Enter the new artwork from the opposite side.
+                        offset.snapTo(-direction * width * 0.35f)
+                        offset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                    }
+                }
+            },
+        )
+    }
+}
+
+private const val ArtworkSwipeThresholdDp = 72
+private const val ArtworkSwipeVelocityThresholdDp = 600
 
 private fun isNavigableAlbumId(id: String): Boolean =
     id.startsWith("MPREb_") || id.startsWith("LOCAL_ALBUM_")
