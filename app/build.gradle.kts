@@ -57,7 +57,7 @@ android {
         applicationId = "com.jagr.fridamusic"
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
+        versionCode = 27
         versionName = "2.2.2.21"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
