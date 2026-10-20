@@ -104,6 +104,15 @@ private val developers = listOf(
         gradientColors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6)),
         avatarRes = R.drawable.developer_julio_cesar,
     ),
+    Developer(
+        name = "Juan Carlos Jimenez",
+        role = "Contributor",
+        githubUrl = "https://github.com/JuanCarlosJimenezRoman",
+        githubHandle = "@JuanCarlosJimenezRoman",
+        initials = "JC",
+        gradientColors = listOf(Color(0xFF14B8A6), Color(0xFF0EA5E9)),
+        avatarRes = R.drawable.developer_juan_carlos_jimenez,
+    ),
 )
 
 private val betaTesters = listOf(
